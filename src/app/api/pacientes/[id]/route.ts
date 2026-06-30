@@ -1,0 +1,46 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { lerSessao } from '@/lib/auth';
+import {
+  atualizarPaciente,
+  criarTriagem,
+  listarAgendamentos,
+  listarTriagens,
+  obterPaciente,
+} from '@/lib/db';
+
+interface Ctx { params: { id: string } }
+
+// Detalhe completo: paciente + histórico de agendamentos + triagens
+export async function GET(_req: NextRequest, { params }: Ctx) {
+  if (!(await lerSessao())) return NextResponse.json({ erro: 'não autorizado' }, { status: 401 });
+  const paciente = await obterPaciente(params.id);
+  if (!paciente) return NextResponse.json({ erro: 'paciente não encontrado' }, { status: 404 });
+  const [historico, triagens] = await Promise.all([
+    listarAgendamentos({ pacienteId: params.id }),
+    listarTriagens(params.id),
+  ]);
+  return NextResponse.json({ paciente, historico, triagens });
+}
+
+// Atualiza ficha médica / dados cadastrais
+export async function PATCH(req: NextRequest, { params }: Ctx) {
+  if (!(await lerSessao())) return NextResponse.json({ erro: 'não autorizado' }, { status: 401 });
+  const patch = await req.json();
+  const atualizado = await atualizarPaciente(params.id, patch);
+  if (!atualizado) return NextResponse.json({ erro: 'não encontrado' }, { status: 404 });
+  return NextResponse.json({ paciente: atualizado });
+}
+
+// Cria uma triagem para este paciente
+export async function POST(req: NextRequest, { params }: Ctx) {
+  const sessao = await lerSessao();
+  if (!sessao) return NextResponse.json({ erro: 'não autorizado' }, { status: 401 });
+  const dados = await req.json();
+  const triagem = await criarTriagem({
+    ...dados,
+    pacienteId: params.id,
+    data: dados.data ?? new Date().toISOString(),
+    responsavel: sessao.nome,
+  });
+  return NextResponse.json({ triagem });
+}

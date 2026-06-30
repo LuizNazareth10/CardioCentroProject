@@ -1,0 +1,153 @@
+import type { Agendamento, Paciente, Triagem, Usuario } from '../types';
+import { memoria, novoId } from './store';
+
+// =============================================================
+// API ÚNICA DE DADOS usada por toda a aplicação.
+// Implementação atual: memória (dev/demo). Para produção, cada
+// função tem o equivalente Firestore comentado/derivável a partir
+// de ./firestore. Mantemos a MESMA assinatura para troca limpa.
+// =============================================================
+
+const isFirestore = process.env.DATA_BACKEND === 'firestore';
+
+// ---- helper firestore (lazy import p/ não quebrar no modo memory) ----
+async function fs() {
+  const { db } = await import('./firestore');
+  return db();
+}
+
+// ============== PACIENTES ==============
+export async function listarPacientes(busca?: string): Promise<Paciente[]> {
+  if (isFirestore) {
+    const snap = await (await fs()).collection('pacientes').orderBy('nome').get();
+    let arr = snap.docs.map((d) => d.data() as Paciente);
+    if (busca) arr = filtrarPacientes(arr, busca);
+    return arr;
+  }
+  return filtrarPacientes(memoria.pacientes, busca);
+}
+
+function filtrarPacientes(arr: Paciente[], busca?: string) {
+  if (!busca) return arr;
+  const q = busca.toLowerCase();
+  return arr.filter(
+    (p) =>
+      p.nome.toLowerCase().includes(q) ||
+      (p.cpf ?? '').includes(busca) ||
+      p.telefone.includes(busca),
+  );
+}
+
+export async function obterPaciente(id: string): Promise<Paciente | null> {
+  if (isFirestore) {
+    const doc = await (await fs()).collection('pacientes').doc(id).get();
+    return doc.exists ? (doc.data() as Paciente) : null;
+  }
+  return memoria.pacientes.find((p) => p.id === id) ?? null;
+}
+
+export async function criarPaciente(
+  dados: Omit<Paciente, 'id' | 'criadoEm' | 'atualizadoEm'>,
+): Promise<Paciente> {
+  const agora = new Date().toISOString();
+  const paciente: Paciente = { ...dados, id: novoId('pac'), criadoEm: agora, atualizadoEm: agora };
+  if (isFirestore) {
+    await (await fs()).collection('pacientes').doc(paciente.id).set(paciente);
+  } else {
+    memoria.pacientes.push(paciente);
+  }
+  return paciente;
+}
+
+export async function atualizarPaciente(id: string, patch: Partial<Paciente>): Promise<Paciente | null> {
+  const atual = await obterPaciente(id);
+  if (!atual) return null;
+  const novo = { ...atual, ...patch, atualizadoEm: new Date().toISOString() };
+  if (isFirestore) {
+    await (await fs()).collection('pacientes').doc(id).set(novo, { merge: true });
+  } else {
+    const i = memoria.pacientes.findIndex((p) => p.id === id);
+    memoria.pacientes[i] = novo;
+  }
+  return novo;
+}
+
+// ============== AGENDAMENTOS ==============
+export async function listarAgendamentos(filtro?: {
+  de?: string;
+  ate?: string;
+  pacienteId?: string;
+}): Promise<Agendamento[]> {
+  let arr: Agendamento[];
+  if (isFirestore) {
+    const snap = await (await fs()).collection('agendamentos').orderBy('inicio').get();
+    arr = snap.docs.map((d) => d.data() as Agendamento);
+  } else {
+    arr = [...memoria.agendamentos].sort((a, b) => a.inicio.localeCompare(b.inicio));
+  }
+  if (filtro?.de) arr = arr.filter((a) => a.inicio >= filtro.de!);
+  if (filtro?.ate) arr = arr.filter((a) => a.inicio <= filtro.ate!);
+  if (filtro?.pacienteId) arr = arr.filter((a) => a.pacienteId === filtro.pacienteId);
+  return arr;
+}
+
+export async function criarAgendamentos(itens: Omit<Agendamento, 'id' | 'criadoEm'>[]): Promise<Agendamento[]> {
+  const grupoId = itens.length > 1 ? novoId('grp') : undefined;
+  const criados = itens.map((it) => ({
+    ...it,
+    id: novoId('ag'),
+    grupoId: it.grupoId ?? grupoId,
+    criadoEm: new Date().toISOString(),
+  }));
+  if (isFirestore) {
+    const batch = (await fs()).batch();
+    const col = (await fs()).collection('agendamentos');
+    criados.forEach((c) => batch.set(col.doc(c.id), c));
+    await batch.commit();
+  } else {
+    memoria.agendamentos.push(...criados);
+  }
+  return criados;
+}
+
+export async function atualizarAgendamento(id: string, patch: Partial<Agendamento>): Promise<void> {
+  if (isFirestore) {
+    await (await fs()).collection('agendamentos').doc(id).set(patch, { merge: true });
+  } else {
+    const i = memoria.agendamentos.findIndex((a) => a.id === id);
+    if (i >= 0) memoria.agendamentos[i] = { ...memoria.agendamentos[i], ...patch };
+  }
+}
+
+// ============== TRIAGENS ==============
+export async function listarTriagens(pacienteId: string): Promise<Triagem[]> {
+  if (isFirestore) {
+    const snap = await (await fs())
+      .collection('triagens')
+      .where('pacienteId', '==', pacienteId)
+      .get();
+    return snap.docs.map((d) => d.data() as Triagem).sort((a, b) => b.data.localeCompare(a.data));
+  }
+  return memoria.triagens
+    .filter((t) => t.pacienteId === pacienteId)
+    .sort((a, b) => b.data.localeCompare(a.data));
+}
+
+export async function criarTriagem(dados: Omit<Triagem, 'id'>): Promise<Triagem> {
+  const triagem: Triagem = { ...dados, id: novoId('tri') };
+  if (isFirestore) {
+    await (await fs()).collection('triagens').doc(triagem.id).set(triagem);
+  } else {
+    memoria.triagens.push(triagem);
+  }
+  return triagem;
+}
+
+// ============== USUÁRIOS ==============
+export async function obterUsuarioPorEmail(email: string): Promise<Usuario | null> {
+  if (isFirestore) {
+    const snap = await (await fs()).collection('usuarios').where('email', '==', email).limit(1).get();
+    return snap.empty ? null : (snap.docs[0].data() as Usuario);
+  }
+  return memoria.usuarios.find((u) => u.email === email) ?? null;
+}

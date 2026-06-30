@@ -1,0 +1,15 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Bloqueia todo acesso direto do browser por padrão.
+    // O app acessa o Firestore exclusivamente via Firebase Admin SDK
+    // no servidor (Next.js API routes), que usa service account
+    // e ignora estas regras. Elas protegem acesso não autorizado
+    // caso alguém tente acessar o Firestore diretamente.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
