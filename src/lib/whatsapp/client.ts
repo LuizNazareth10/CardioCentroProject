@@ -44,6 +44,29 @@ export async function enviarBotoes(to: string, texto: string, botoes: Array<{ id
   });
 }
 
+/**
+ * Baixa uma mídia recebida (ex.: foto do pedido médico) via API da Meta.
+ * Retorna o conteúdo em base64 + mime, ou null se não configurado/falhar.
+ */
+export async function baixarMidia(mediaId: string): Promise<{ base64: string; mime: string } | null> {
+  const { token, ativo } = cfg();
+  if (!ativo || !token) {
+    console.log('[whatsapp:dev] baixaria mídia', mediaId);
+    return null;
+  }
+  try {
+    const meta = await fetch(`${API}/${mediaId}`, { headers: { Authorization: `Bearer ${token}` } });
+    const info = (await meta.json()) as { url?: string; mime_type?: string };
+    if (!info.url) return null;
+    const bin = await fetch(info.url, { headers: { Authorization: `Bearer ${token}` } });
+    const buf = Buffer.from(await bin.arrayBuffer());
+    return { base64: buf.toString('base64'), mime: info.mime_type ?? 'image/jpeg' };
+  } catch (e) {
+    console.error('[whatsapp] erro ao baixar mídia:', e);
+    return null;
+  }
+}
+
 /** lista de opções (ideal p/ muitos itens, ex.: exames) */
 export async function enviarLista(
   to: string,

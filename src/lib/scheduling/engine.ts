@@ -1,12 +1,17 @@
-import type { Agendamento, Exame, Medico, SlotDisponivel } from '../types';
-import { GRID_MIN, addDays, ceilToGrid, fromISO, hhmmToMin, toISO, weekdayOf } from './time';
+import type { Agendamento, AparelhoConfig, Exame, Medico, SlotDisponivel, Weekday } from '../types';
+import {
+  GRID_MIN, addDays, ceilToGrid, fromISO, hhmmToMin, semanaQuinzenalAtiva, toISO, weekdayOf,
+} from './time';
 
 // ============================================================
-// MOTOR DE AGENDAMENTO
-// Regras:
-//  - exames só começam/terminam em múltiplos de 15min
-//  - um médico nunca tem dois exames sobrepostos
-//  - é possível filtrar por médico de preferência
+// MOTOR DE AGENDAMENTO — dois modos:
+//  1) MÉDICO: respeita janelas do médico, exames por janela,
+//     duração por médico e disponibilidade quinzenal (quartas).
+//  2) APARELHO (Mapa/Holter): slots fixos por dia, sexta bloqueada,
+//     capacidade por slot (1 aparelho por horário).
+// Regras gerais:
+//  - exames começam em múltiplos de 15min
+//  - um médico/aparelho nunca tem dois exames sobrepostos
 //  - exames consecutivos são priorizados com o MESMO médico
 // ============================================================
 
@@ -21,6 +26,16 @@ interface BuscaOpts {
   naoAntesDe?: string;
   /** limite de slots retornados */
   limite?: number;
+}
+
+/** duração (min) de um exame PARA ESTE médico (override do padrão) */
+export function duracaoDoMedico(medico: Medico, exame: Exame): number {
+  return medico.duracoes?.[exame.id] ?? exame.duracaoMin;
+}
+
+/** o médico oferece este exame nesta janela? (respeita exames da janela) */
+function janelaOferece(medico: Medico, janela: { exames?: string[] }, exameId: string): boolean {
+  return janela.exames ? janela.exames.includes(exameId) : medico.examesHabilitados.includes(exameId);
 }
 
 /** dois intervalos [a1,a2) e [b1,b2) se sobrepõem? */
@@ -44,26 +59,32 @@ function ocupacoesDoDia(
     .map((a) => [fromISO(a.inicio).min, fromISO(a.fim).min] as [number, number]);
 }
 
-/** um bloco [inicio, fim) cabe livre na grade do médico naquele dia? */
+/** janelas de um médico num dia (respeita quinzenal) */
+function janelasDoDia(medico: Medico, date: string) {
+  const wd = weekdayOf(date);
+  const ativa = semanaQuinzenalAtiva(date);
+  return medico.disponibilidade.filter((j) => j.weekday === wd && (!j.quinzenal || ativa));
+}
+
+/** um bloco [inicio, fim) cabe livre nas janelas do médico naquele dia p/ o exame? */
 function blocoLivre(
   medico: Medico,
   date: string,
   inicio: number,
   fim: number,
+  exameId: string,
   ocupacoes: Array<[number, number]>,
 ): boolean {
-  const wd = weekdayOf(date);
-  // precisa estar inteiramente dentro de ALGUMA janela de disponibilidade
-  const dentroDeJanela = medico.disponibilidade.some(
-    (j) => j.weekday === wd && hhmmToMin(j.inicio) <= inicio && fim <= hhmmToMin(j.fim),
+  // precisa estar inteiramente dentro de ALGUMA janela que ofereça o exame
+  const dentroDeJanela = janelasDoDia(medico, date).some(
+    (j) => janelaOferece(medico, j, exameId) && hhmmToMin(j.inicio) <= inicio && fim <= hhmmToMin(j.fim),
   );
   if (!dentroDeJanela) return false;
-  // não pode colidir com nenhuma ocupação
   return !ocupacoes.some(([o1, o2]) => sobrepoe(inicio, fim, o1, o2));
 }
 
 /**
- * Gera slots livres para UM exame.
+ * Gera slots livres para UM exame de médico.
  * Se houver médico de preferência, só ele é considerado.
  */
 export function gerarSlots(
@@ -85,22 +106,21 @@ export function gerarSlots(
 
   for (let d = 0; d < dias && slots.length < limite; d++) {
     const date = addDays(dataInicio, d);
-    const wd = weekdayOf(date);
 
     for (const medico of elegiveis) {
-      const janelas = medico.disponibilidade.filter((j) => j.weekday === wd);
+      const janelas = janelasDoDia(medico, date).filter((j) => janelaOferece(medico, j, exame.id));
       if (janelas.length === 0) continue;
       const ocup = ocupacoesDoDia(medico.id, date, agendamentos);
+      const dur = duracaoDoMedico(medico, exame);
 
       for (const j of janelas) {
         const janInicio = hhmmToMin(j.inicio);
         const janFim = hhmmToMin(j.fim);
-        for (let start = janInicio; start + exame.duracaoMin <= janFim; start += GRID_MIN) {
-          const end = start + exame.duracaoMin;
-          // respeita "não antes de"
+        for (let start = janInicio; start + dur <= janFim; start += GRID_MIN) {
+          const end = start + dur;
           if (piso && date === piso.date && start < ceilToGrid(piso.min)) continue;
           if (piso && date < piso.date) continue;
-          if (blocoLivre(medico, date, start, end, ocup)) {
+          if (!ocup.some(([o1, o2]) => sobrepoe(start, end, o1, o2))) {
             slots.push({
               medicoId: medico.id,
               medicoNome: medico.nome,
@@ -113,7 +133,54 @@ export function gerarSlots(
     }
   }
 
-  // ordena por horário e limita
+  slots.sort((a, b) => a.inicio.localeCompare(b.inicio));
+  return slots.slice(0, limite);
+}
+
+/**
+ * Gera slots livres de um APARELHO (Mapa/Holter): horários fixos por dia,
+ * sexta e fim de semana bloqueados, capacidade por slot.
+ */
+export function gerarSlotsAparelho(
+  config: AparelhoConfig,
+  agendamentos: Agendamento[],
+  opts: { dataInicio: string; dias?: number; naoAntesDe?: string; limite?: number },
+): SlotDisponivel[] {
+  const { dataInicio, dias = 14, naoAntesDe, limite = 60 } = opts;
+  const piso = naoAntesDe ? fromISO(naoAntesDe) : null;
+  const slots: SlotDisponivel[] = [];
+
+  for (let d = 0; d < dias && slots.length < limite; d++) {
+    const date = addDays(dataInicio, d);
+    const wd = weekdayOf(date);
+    // sexta (5) e fim de semana (0,6) — clínica não abre no sábado p/ retirar
+    if (wd === 5 || wd === 0 || wd === 6) continue;
+    const horarios = config.slots[wd as Weekday] ?? [];
+
+    for (const hhmm of horarios) {
+      const start = hhmmToMin(hhmm);
+      if (piso && date === piso.date && start < ceilToGrid(piso.min)) continue;
+      if (piso && date < piso.date) continue;
+
+      const ocupados = agendamentos.filter(
+        (a) =>
+          a.exameId === config.exameId &&
+          a.status !== 'cancelado' &&
+          a.inicio.slice(0, 10) === date &&
+          a.inicio.slice(11, 16) === hhmm,
+      ).length;
+
+      if (ocupados < config.capacidadePorSlot) {
+        slots.push({
+          medicoId: config.tipo, // "aparelho virtual" (mapa|holter)
+          medicoNome: config.nome,
+          inicio: toISO(date, start),
+          fim: toISO(date, start + config.duracaoMin),
+        });
+      }
+    }
+  }
+
   slots.sort((a, b) => a.inicio.localeCompare(b.inicio));
   return slots.slice(0, limite);
 }
@@ -135,9 +202,9 @@ export interface Proposta {
 
 /**
  * Para uma sequência de exames consecutivos (uma "sessão"), tenta encaixar
- * TODOS com o MESMO médico, em blocos contíguos. Se nenhum médico conseguir
- * o bloco inteiro, faz fallback distribuindo entre médicos preservando a
- * sequência temporal.
+ * TODOS com o MESMO médico, num bloco contíguo dentro de UMA janela que
+ * ofereça todos os exames. Fallback: distribui exame a exame preservando a
+ * ordem cronológica.
  */
 export function proporSessao(
   examesSeq: Exame[],
@@ -146,7 +213,6 @@ export function proporSessao(
   opts: BuscaOpts,
 ): Proposta | null {
   const { dataInicio, dias = 14, medicoPreferidoId, naoAntesDe } = opts;
-  const duracaoTotal = examesSeq.reduce((s, e) => s + e.duracaoMin, 0);
   const piso = naoAntesDe ? fromISO(naoAntesDe) : null;
 
   // 1) tenta o mesmo médico para o bloco inteiro
@@ -159,29 +225,32 @@ export function proporSessao(
 
   for (let d = 0; d < dias; d++) {
     const date = addDays(dataInicio, d);
-    const wd = weekdayOf(date);
     for (const medico of candidatos) {
-      const janelas = medico.disponibilidade.filter((j) => j.weekday === wd);
+      const duracaoTotal = examesSeq.reduce((s, e) => s + duracaoDoMedico(medico, e), 0);
       const ocup = ocupacoesDoDia(medico.id, date, agendamentos);
+      // só janelas que ofereçam TODOS os exames da sessão
+      const janelas = janelasDoDia(medico, date).filter((j) =>
+        examesSeq.every((e) => janelaOferece(medico, j, e.id)),
+      );
       for (const j of janelas) {
         const janInicio = hhmmToMin(j.inicio);
         const janFim = hhmmToMin(j.fim);
         for (let start = janInicio; start + duracaoTotal <= janFim; start += GRID_MIN) {
           if (piso && date === piso.date && start < ceilToGrid(piso.min)) continue;
           if (piso && date < piso.date) continue;
-          if (blocoLivre(medico, date, start, start + duracaoTotal, ocup)) {
-            // monta itens consecutivos
+          if (!ocup.some(([o1, o2]) => sobrepoe(start, start + duracaoTotal, o1, o2))) {
             let cursor = start;
             const itens: ItemProposta[] = examesSeq.map((e) => {
+              const dur = duracaoDoMedico(medico, e);
               const item: ItemProposta = {
                 exameId: e.id,
                 exameNome: e.nome,
                 medicoId: medico.id,
                 medicoNome: medico.nome,
                 inicio: toISO(date, cursor),
-                fim: toISO(date, cursor + e.duracaoMin),
+                fim: toISO(date, cursor + dur),
               };
-              cursor += e.duracaoMin;
+              cursor += dur;
               return item;
             });
             return { mesmoMedico: true, itens };
@@ -191,8 +260,7 @@ export function proporSessao(
     }
   }
 
-  // 2) fallback: distribui exame a exame pelo melhor slot disponível,
-  //    mantendo a ordem cronológica.
+  // 2) fallback: distribui exame a exame pelo melhor slot disponível.
   const itens: ItemProposta[] = [];
   let cursorISO = naoAntesDe ?? toISO(dataInicio, 0);
   for (const e of examesSeq) {

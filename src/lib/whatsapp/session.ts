@@ -8,7 +8,8 @@ export type EtapaConversa =
   | 'escolhendo_medico'
   | 'escolhendo_horario'
   | 'identificacao'
-  | 'confirmando';
+  | 'confirmando'
+  | 'humano'; // handoff: o agente para de processar, a recepção assume
 
 export interface ConversaState {
   etapa: EtapaConversa;

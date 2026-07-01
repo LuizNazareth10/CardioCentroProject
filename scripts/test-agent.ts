@@ -15,20 +15,21 @@ async function run() {
   let falhas = 0;
   const check = (n: string, c: boolean) => { orig(`${c ? '✅' : '❌'} ${n}`); if (!c) falhas++; };
 
-  await passo('oi', 'texto');            // menu
-  await passo('agendar');                // lista de exames
-  await passo('ex:ecg');                 // adiciona ECG
-  await passo('ex:ecg');                 // adiciona outro ECG (sessão)
-  await passo('concluir_exames');        // pergunta médico
-  await passo('med_qualquer');           // calcula horários
-  await passo('slot:0');                 // escolhe 1ª opção -> pede nome
-  await passo('João da Silva', 'texto'); // informa nome -> pede convênio
-  await passo('conv:unimed');            // convênio -> confirmação
-  await passo('confirmar_sim');          // confirma -> grava
+  await passo('oi', 'texto');               // menu
+  await passo('agendar');                   // lista de exames
+  await passo('ex:eco-doppler');            // adiciona Eco
+  await passo('ex:duplex-carotidas');       // adiciona Carótida (sessão)
+  await passo('concluir_exames');           // pergunta médico
+  await passo('med_qualquer');              // calcula horários
+  await passo('slot:0');                    // escolhe 1ª opção -> pede nome
+  await passo('João da Silva', 'texto');    // informa nome -> pede convênio
+  await passo('conv:unimed');               // convênio -> confirmação
+  await passo('confirmar_sim');             // confirma -> grava
 
   const ags = await listarAgendamentos();
-  const doZap = ags.filter((a) => a.origem === 'whatsapp');
-  check('Agendou via WhatsApp', doZap.length === 2);
+  // filtra pelos agendamentos criados NESTE teste (o seed já traz alguns via WhatsApp)
+  const doZap = ags.filter((a) => a.origem === 'whatsapp' && a.pacienteNome === 'João da Silva');
+  check('Agendou os 2 exames via WhatsApp', doZap.length === 2);
   check('Mesmo paciente nos dois exames', doZap.length === 2 && doZap[0].pacienteId === doZap[1].pacienteId);
   check('Exames consecutivos (fim de um = início do outro)',
     doZap.length === 2 && [doZap[0], doZap[1]].sort((a, b) => a.inicio.localeCompare(b.inicio))

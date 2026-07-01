@@ -1,46 +1,84 @@
-import type { Convenio, Exame, Medico } from './types';
+import type { AparelhoConfig, Convenio, Exame, Medico } from './types';
 
 // =============================================================
-// Dados-base extraídos das imagens reais da clínica (Instagram).
-// Os horários dos médicos e durações de exame são PLACEHOLDERS
-// (múltiplos de 15min) e devem ser substituídos pelos dados reais
-// que serão enviados depois. Ver docs/DECISOES.md.
+// Dados-base da clínica CardioCentro (Juiz de Fora).
+// Médicos, janelas e durações são os REAIS informados pela clínica.
+// Mapa e Holter são exames de APARELHO (slots fixos, ver APARELHOS).
 // =============================================================
 
+// Catálogo REAL da clínica: apenas 4 exames de médico + 2 de aparelho.
+// (A duração é a PADRÃO; cada médico pode ter duração própria via `duracoes`.)
 export const EXAMES: Exame[] = [
-  { id: 'consulta', nome: 'Consulta Cardiológica', duracaoMin: 30, ativo: true },
-  { id: 'ecg', nome: 'Eletrocardiograma (ECG)', duracaoMin: 15, ativo: true },
-  { id: 'risco-cirurgico', nome: 'Risco Cirúrgico', duracaoMin: 30, ativo: true },
   {
     id: 'eco-doppler',
     nome: 'Ecocardiograma com Doppler Colorido',
-    duracaoMin: 30,
+    duracaoMin: 15,
     preparo: 'Não há preparo específico.',
     ativo: true,
   },
   {
     id: 'duplex-carotidas',
     nome: 'Duplex Scan de Carótidas e Vertebrais',
-    duracaoMin: 30,
+    duracaoMin: 15,
     ativo: true,
   },
   {
     id: 'ergometrico',
     nome: 'Teste Ergométrico Computadorizado',
-    duracaoMin: 45,
+    duracaoMin: 25,
     preparo: 'Trazer roupa e tênis para esforço. Verificar medicações com o médico.',
     ativo: true,
   },
   {
     id: 'cardiopulmonar',
     nome: 'Teste Cardiopulmonar',
-    duracaoMin: 60,
+    duracaoMin: 30,
     preparo: 'Trazer roupa e tênis para esforço.',
     ativo: true,
   },
-  { id: 'holter', nome: 'Holter 24h', duracaoMin: 15, preparo: 'Retorno em 24h para retirada.', ativo: true },
-  { id: 'mapa', nome: 'MAPA 24h', duracaoMin: 15, preparo: 'Retorno em 24h para retirada.', ativo: true },
+  { id: 'holter', nome: 'Holter 24h', duracaoMin: 15, preparo: 'Retorno em 24h para retirada. Não disponível às sextas.', aparelho: 'holter', ativo: true },
+  { id: 'mapa', nome: 'MAPA 24h', duracaoMin: 15, preparo: 'Retorno em 24h para retirada. Não disponível às sextas.', aparelho: 'mapa', ativo: true },
 ];
+
+// =============================================================
+// APARELHOS (Mapa e Holter) — slots fixos por dia, não vinculados a
+// médico. O paciente coloca o aparelho no slot e retorna em 24h para
+// retirar; por isso NÃO há agendamento de sexta (clínica fecha sábado).
+// Cada horário listado corresponde a UM aparelho (capacidade por slot = 1);
+// o nº de slots por dia = nº de aparelhos (4 Mapa, 3 Holter).
+// =============================================================
+export const APARELHOS: Record<'mapa' | 'holter', AparelhoConfig> = {
+  mapa: {
+    tipo: 'mapa',
+    nome: 'MAPA 24h',
+    exameId: 'mapa',
+    capacidade: 4,
+    capacidadePorSlot: 1,
+    duracaoMin: 15,
+    slots: {
+      1: ['08:30', '09:00', '14:30', '15:00'],
+      2: ['09:00', '09:30', '15:00', '15:30'],
+      3: ['09:30', '10:00', '15:30', '16:00'],
+      4: ['10:00', '10:30', '16:00', '16:30'],
+      // 5 (sexta) bloqueado
+    },
+  },
+  holter: {
+    tipo: 'holter',
+    nome: 'Holter 24h',
+    exameId: 'holter',
+    capacidade: 3,
+    capacidadePorSlot: 1,
+    duracaoMin: 15,
+    slots: {
+      1: ['08:45', '09:15', '14:45'],
+      2: ['09:15', '09:45', '15:15'],
+      3: ['09:45', '10:15', '15:45'],
+      4: ['10:15', '10:45', '16:15'],
+      // 5 (sexta) bloqueado
+    },
+  },
+};
 
 export const CONVENIOS: Convenio[] = [
   'Particular',
@@ -71,80 +109,84 @@ export const CONVENIOS: Convenio[] = [
   ativo: true,
 }));
 
-// Grade semanal padrão (seg–sex). PLACEHOLDER — trocar pelos horários reais.
-const grade = (inicio: string, fim: string) =>
-  [1, 2, 3, 4, 5].map((weekday) => ({ weekday: weekday as 1 | 2 | 3 | 4 | 5, inicio, fim }));
-
-// retrato Unsplash (mesmo padrão usado na landing)
-const retrato = (id: string) =>
-  `https://images.unsplash.com/${id}?auto=format&fit=crop&q=80&w=700`;
+// ids de exame usados nas janelas (atalhos legíveis)
+const ECO = 'eco-doppler';
+const CARO = 'duplex-carotidas';
+const ERGO = 'ergometrico';
+const CARDIOPULM = 'cardiopulmonar';
 
 // =============================================================
-// FONTE ÚNICA DE VERDADE dos 6 médicos.
+// FONTE ÚNICA DE VERDADE dos médicos (dados REAIS da clínica).
 // A landing (src/components/landing/content.ts) deriva a lista de
-// "doctors" a partir daqui — landing e área restrita ficam sempre
-// sincronizadas. Nomes são fictícios (placeholder), a trocar pelos
-// reais. Ver docs/DECISOES.md.
+// "doctors" daqui — landing e área restrita ficam sempre sincronizadas.
+// Cada janela informa quais exames oferece e (quando aplicável) se é
+// quinzenal. As durações por exame variam por médico (campo `duracoes`).
+// Mapa/Holter NÃO ficam com médico — ver APARELHOS acima.
 // =============================================================
 export const MEDICOS: Medico[] = [
   {
-    id: 'med-1',
-    nome: 'Dra. Helena Marques',
-    crm: 'CRM-MG 41.209',
+    id: 'med-daher',
+    nome: 'Dr. Ricardo Daher',
+    crm: '',
+    especialidade: 'Cardiologista · Ecocardiografia e Doppler',
+    foto: '',
+    examesHabilitados: [ECO, CARO, ERGO],
+    duracoes: { [ECO]: 15, [CARO]: 15, [ERGO]: 15 },
+    disponibilidade: [
+      { weekday: 1, inicio: '13:30', fim: '17:00', exames: [ECO, CARO, ERGO] }, // seg tarde
+      { weekday: 2, inicio: '09:15', fim: '11:30', exames: [ECO, CARO, ERGO] }, // ter manhã
+      { weekday: 2, inicio: '13:30', fim: '17:00', exames: [ECO, CARO, ERGO] }, // ter tarde
+      { weekday: 4, inicio: '09:00', fim: '11:30', exames: [ECO, CARO] },       // qui manhã
+      { weekday: 4, inicio: '13:30', fim: '17:00', exames: [ECO, CARO] },       // qui tarde
+      { weekday: 5, inicio: '13:40', fim: '16:00', exames: [ECO, CARO] },       // sex tarde
+    ],
+    ativo: true,
+  },
+  {
+    id: 'med-zorzo',
+    nome: 'Dr. Paulo Zorzo',
+    crm: '',
     especialidade: 'Cardiologista · Ecocardiografia',
-    foto: retrato('photo-1559839734-2b71ea197ec2'),
-    examesHabilitados: ['consulta', 'ecg', 'eco-doppler', 'duplex-carotidas', 'mapa', 'holter', 'risco-cirurgico'],
-    disponibilidade: grade('08:00', '12:00'),
+    foto: '',
+    examesHabilitados: [ECO, CARO],
+    duracoes: { [ECO]: 20, [CARO]: 20 },
+    disponibilidade: [
+      { weekday: 2, inicio: '14:00', fim: '15:20', exames: [ECO] },       // ter tarde
+      { weekday: 3, inicio: '14:00', fim: '15:20', exames: [ECO, CARO] }, // qua tarde
+      { weekday: 4, inicio: '11:40', fim: '12:20', exames: [ECO, CARO] }, // qui manhã
+    ],
     ativo: true,
   },
   {
-    id: 'med-2',
-    nome: 'Dr. Rafael Andrade',
-    crm: 'CRM-MG 38.744',
-    especialidade: 'Cardiologista · Arritmias',
-    foto: retrato('photo-1612349317150-e413f6a5b16d'),
-    examesHabilitados: ['consulta', 'ecg', 'holter', 'mapa', 'ergometrico', 'risco-cirurgico'],
-    disponibilidade: grade('13:00', '18:00'),
+    id: 'med-lovisi',
+    nome: 'Dr. Júlio Lovisi',
+    crm: '',
+    especialidade: 'Cardiologista · Teste Cardiopulmonar',
+    foto: '',
+    examesHabilitados: [ECO, CARO, CARDIOPULM],
+    duracoes: { [CARDIOPULM]: 30, [ECO]: 15, [CARO]: 15 },
+    disponibilidade: [
+      { weekday: 1, inicio: '09:00', fim: '11:30', exames: [ECO, CARO, CARDIOPULM] },       // seg manhã
+      { weekday: 3, inicio: '09:00', fim: '11:15', exames: [ECO, CARO], quinzenal: true },  // qua manhã (quinzenal) — só eco/carótida
+      { weekday: 5, inicio: '09:00', fim: '11:30', exames: [ECO, CARO, CARDIOPULM] },       // sex manhã
+    ],
     ativo: true,
   },
   {
-    id: 'med-3',
-    nome: 'Dra. Beatriz Nunes',
-    crm: 'CRM-MG 45.117',
-    especialidade: 'Cardiologista · Hipertensão',
-    foto: retrato('photo-1527613426441-4da17471b66d'),
-    examesHabilitados: ['consulta', 'ecg', 'mapa', 'holter', 'eco-doppler', 'risco-cirurgico'],
-    disponibilidade: grade('08:00', '14:00'),
-    ativo: true,
-  },
-  {
-    id: 'med-4',
-    nome: 'Dr. Marcelo Ribeiro',
-    crm: 'CRM-MG 33.586',
-    especialidade: 'Cardiologista · Ergometria e Reabilitação',
-    foto: retrato('photo-1537368910025-700350fe46c7'),
-    examesHabilitados: ['consulta', 'ecg', 'ergometrico', 'cardiopulmonar', 'risco-cirurgico'],
-    disponibilidade: grade('09:00', '15:00'),
-    ativo: true,
-  },
-  {
-    id: 'med-5',
-    nome: 'Dra. Carolina Teixeira',
-    crm: 'CRM-MG 48.902',
-    especialidade: 'Cardiologista · Cardiologia Clínica',
-    foto: retrato('photo-1651008376811-b90baee60c1f'),
-    examesHabilitados: EXAMES.map((e) => e.id),
-    disponibilidade: grade('13:00', '19:00'),
-    ativo: true,
-  },
-  {
-    id: 'med-6',
-    nome: 'Dr. Eduardo Salgado',
-    crm: 'CRM-MG 29.415',
-    especialidade: 'Cardiologista · Cardiologia Intervencionista',
-    foto: retrato('photo-1582750433449-648ed127bb54'),
-    examesHabilitados: ['consulta', 'ecg', 'eco-doppler', 'duplex-carotidas', 'ergometrico', 'risco-cirurgico'],
-    disponibilidade: grade('07:00', '13:00'),
+    id: 'med-lanzoni',
+    nome: 'Dra. Fernanda Lanzoni',
+    crm: '',
+    especialidade: 'Cardiologista · Teste Ergométrico',
+    foto: '',
+    examesHabilitados: [ERGO],
+    duracoes: { [ERGO]: 25 },
+    disponibilidade: [
+      { weekday: 3, inicio: '08:20', fim: '11:00', exames: [ERGO], quinzenal: true },
+      { weekday: 3, inicio: '13:20', fim: '16:20', exames: [ERGO] },
+      { weekday: 4, inicio: '08:20', fim: '11:00', exames: [ERGO] },
+      { weekday: 4, inicio: '13:20', fim: '16:20', exames: [ERGO] },
+      { weekday: 5, inicio: '13:20', fim: '15:20', exames: [ERGO] },
+    ],
     ativo: true,
   },
 ];
@@ -153,8 +195,8 @@ export const MEDICOS: Medico[] = [
 // Contato oficial da clínica — usado na landing e na área restrita.
 // =============================================================
 const WHATSAPP_NUMERO = '5532999952138'; // formato internacional (wa.me)
-const WHATSAPP_MENSAGEM =
-  'Olá! Gostaria de marcar um exame na Cardiocentro. Pode me ajudar?';
+// mensagem do deep link — o agente detecta esta frase e já inicia o fluxo
+const WHATSAPP_MENSAGEM = 'Olá, gostaria de agendar um exame';
 
 export const CONTATO = {
   nomeClinica: 'Cardiocentro',

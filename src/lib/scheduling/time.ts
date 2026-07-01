@@ -46,3 +46,18 @@ export function addDays(dateStr: string, n: number): string {
 export function ceilToGrid(min: number): number {
   return Math.ceil(min / GRID_MIN) * GRID_MIN;
 }
+
+// ============================================================
+// Agenda quinzenal (Dr. Júlio Lovisi e Dra. Fernanda Lanzoni às quartas)
+// A referência de semana "ativa" é 08/07/2026 (primeira quarta com os dois).
+// Ativa quando Math.floor(diferençaEmSemanas) % 2 === 0 a partir da ref.
+// ============================================================
+export const QUINZENAL_REF = '2026-07-08';
+
+/** true se a data "YYYY-MM-DD" cai numa semana quinzenal ativa */
+export function semanaQuinzenalAtiva(dateStr: string): boolean {
+  const ref = new Date(`${QUINZENAL_REF}T12:00:00Z`).getTime();
+  const d = new Date(`${dateStr}T12:00:00Z`).getTime();
+  const diffSemanas = (d - ref) / (7 * 24 * 60 * 60 * 1000);
+  return Math.floor(diffSemanas) % 2 === 0;
+}

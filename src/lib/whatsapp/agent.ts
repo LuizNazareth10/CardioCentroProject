@@ -1,15 +1,16 @@
-import { CONVENIOS, CONTATO, EXAMES, MEDICOS } from '../seed-data';
-import { criarAgendamentos, criarPaciente, listarAgendamentos, listarPacientes } from '../db';
-import { gerarSlots, proporSessao } from '../scheduling/engine';
+import { APARELHOS, CONVENIOS, CONTATO, EXAMES, MEDICOS } from '../seed-data';
+import { criarAgendamentos, criarPaciente, listarAgendamentos, listarPacientes, registrarMensagem } from '../db';
+import { gerarSlots, gerarSlotsAparelho, proporSessao } from '../scheduling/engine';
 import { fmtData, fmtHora } from '../format';
-import { enviarBotoes, enviarLista, enviarTexto } from './client';
+import { baixarMidia, enviarBotoes, enviarLista, enviarTexto } from './client';
 import { getSessao, limparSessao, salvarSessao } from './session';
-import { interpretar } from './ai';
+import { interpretar, lerPedidoMedico } from './ai';
 
 // entrada normalizada do webhook
 export interface Entrada {
-  tipo: 'texto' | 'interativo';
-  valor: string; // texto digitado ou id do botão/lista
+  tipo: 'texto' | 'interativo' | 'imagem';
+  valor: string; // texto digitado, id do botão/lista, OU id da mídia (imagem)
+  mime?: string; // mime type quando tipo === 'imagem'
 }
 
 function hojeJF(): string {
@@ -26,8 +27,32 @@ const nomeMedico = (id: string) => MEDICOS.find((m) => m.id === id)?.nome ?? id;
 
 export async function processarMensagem(from: string, e: Entrada): Promise<void> {
   const s = getSessao(from);
+
+  // (0) imagem de pedido médico — tratada em qualquer etapa
+  if (e.tipo === 'imagem') return tratarImagem(from, s, e);
+
   const v = e.valor.trim();
   const vlow = v.toLowerCase();
+
+  // (1) handoff ativo: o agente NÃO processa; apenas registra p/ a recepção
+  if (s.etapa === 'humano') {
+    await registrarMensagem(
+      from,
+      { de: 'paciente', texto: v, ts: new Date().toISOString() },
+      { nome: s.nome, status: 'aguardando' },
+    );
+    return; // a recepção assume a conversa
+  }
+
+  // (2) chegada pelo deep link ("olá, gostaria de agendar um exame") → já inicia o fluxo
+  if (
+    /gostaria de agendar|quero agendar|agendar (um )?exame|marcar (um )?exame/.test(vlow) &&
+    (s.etapa === 'inicio' || s.etapa === 'menu')
+  ) {
+    s.etapa = 'escolhendo_exames'; s.examesSelecionados = []; salvarSessao(from, s);
+    await enviarTexto(from, `Olá! 👋 Bem-vindo(a) à *${CONTATO.nomeClinica}*. Vou te ajudar a agendar seu exame agora mesmo.`);
+    return enviarListaExames(from);
+  }
 
   // comandos globais
   if (['menu', 'oi', 'olá', 'ola', 'início', 'inicio', 'começar', 'comecar'].includes(vlow)) {
@@ -42,6 +67,15 @@ export async function processarMensagem(from: string, e: Entrada): Promise<void>
         return enviarListaExames(from);
       }
       if (e.valor === 'falar_humano') return falarComHumano(from);
+      // confirmação dos exames lidos de um pedido médico (imagem)
+      if (e.valor === 'img_sim' && s.examesSelecionados.length) {
+        s.etapa = 'escolhendo_medico'; salvarSessao(from, s);
+        return enviarBotoes(from, 'Perfeito! Tem preferência de médico?', [
+          { id: 'med_qualquer', titulo: 'Sem preferência' },
+          { id: 'med_escolher', titulo: 'Escolher médico' },
+        ]);
+      }
+      if (e.valor === 'img_nao') { s.examesSelecionados = []; return menuPrincipal(from, s); }
       if (e.valor.startsWith('ex:')) { s.etapa = 'escolhendo_exames'; return tratarExames(from, s, e); }
       // texto livre no menu → IA
       if (e.tipo === 'texto' && !['menu', 'oi', 'olá', 'ola'].includes(vlow)) return rotearIA(from, s, e.valor);
@@ -105,6 +139,9 @@ async function tratarExames(from: string, s: ReturnType<typeof getSessao>, e: En
 
   if (e.valor === 'concluir_exames') {
     if (s.examesSelecionados.length === 0) return enviarListaExames(from);
+    // exame de aparelho (Mapa/Holter) não escolhe médico — vai direto p/ horário
+    const temAparelho = s.examesSelecionados.some((id) => EXAMES.find((x) => x.id === id)?.aparelho);
+    if (temAparelho) { s.medicoPreferidoId = undefined; return calcularEoferecer(from, s); }
     s.etapa = 'escolhendo_medico'; salvarSessao(from, s);
     return enviarBotoes(from, 'Você tem preferência de médico?', [
       { id: 'med_qualquer', titulo: 'Sem preferência' },
@@ -147,7 +184,17 @@ async function calcularEoferecer(from: string, s: ReturnType<typeof getSessao>) 
   const agendamentos = await listarAgendamentos();
   const opcoes: NonNullable<typeof s.opcoes> = [];
 
-  if (examesSeq.length === 1) {
+  if (examesSeq.length === 1 && examesSeq[0].aparelho) {
+    // exame de aparelho (Mapa/Holter): slots fixos, sexta bloqueada
+    const cfg = APARELHOS[examesSeq[0].aparelho];
+    const slots = gerarSlotsAparelho(cfg, agendamentos, {
+      dataInicio: hojeJF(), dias: 21, naoAntesDe: agoraJF(), limite: 3,
+    });
+    slots.forEach((sl) => opcoes.push({
+      rotulo: `${fmtData(sl.inicio)} ${fmtHora(sl.inicio)} — ${cfg.nome}`,
+      itens: [{ exameId: examesSeq[0].id, medicoId: sl.medicoId, inicio: sl.inicio, fim: sl.fim }],
+    }));
+  } else if (examesSeq.length === 1) {
     const slots = gerarSlots(examesSeq[0], MEDICOS, agendamentos, {
       dataInicio: hojeJF(), dias: 14, medicoPreferidoId: s.medicoPreferidoId, naoAntesDe: agoraJF(), limite: 3,
     });
@@ -304,8 +351,47 @@ async function rotearIA(from: string, s: ReturnType<typeof getSessao>, texto: st
 }
 
 async function falarComHumano(from: string) {
-  limparSessao(from);
-  await enviarTexto(from, `Claro! Você pode falar com nossa recepção pelo telefone *${CONTATO.telefoneFixo}* ou aqui mesmo no horário comercial. Já avisei a equipe. 💙`);
+  const s = getSessao(from);
+  s.etapa = 'humano'; salvarSessao(from, s);
+  // coloca a conversa na fila de atendimento humano (painel /atendimentos)
+  await registrarMensagem(
+    from,
+    { de: 'agente', texto: 'Paciente solicitou falar com um atendente.', ts: new Date().toISOString() },
+    { nome: s.nome, status: 'aguardando' },
+  );
+  await enviarTexto(
+    from,
+    `Tudo bem! 💙 Vou te transferir para a nossa recepção. Em instantes alguém do time assume por aqui.\n\nSe preferir, ligue para *${CONTATO.telefone}*.`,
+  );
+}
+
+// -------- IMAGEM (pedido médico) --------
+async function tratarImagem(from: string, s: ReturnType<typeof getSessao>, e: Entrada) {
+  // durante handoff, a foto também é só registrada para a recepção
+  if (s.etapa === 'humano') {
+    await registrarMensagem(
+      from,
+      { de: 'paciente', texto: '📷 (enviou uma imagem)', ts: new Date().toISOString() },
+      { nome: s.nome, status: 'aguardando' },
+    );
+    return;
+  }
+
+  await enviarTexto(from, 'Recebi seu pedido médico 📄. Deixa eu dar uma olhada…');
+  const midia = await baixarMidia(e.valor);
+  if (!midia) {
+    return enviarTexto(from, 'Não consegui abrir a imagem agora. 😕 Você pode me dizer quais exames deseja agendar, ou responder *menu* para ver as opções.');
+  }
+  const ids = await lerPedidoMedico(midia.base64, midia.mime);
+  if (ids.length === 0) {
+    return enviarTexto(from, 'Não consegui identificar os exames na imagem. Pode digitar os exames desejados ou responder *menu* para ver a lista.');
+  }
+  s.examesSelecionados = ids; s.etapa = 'menu'; salvarSessao(from, s);
+  const lista = ids.map((id, i) => `${i + 1}. ${nomeExame(id)}`).join('\n');
+  return enviarBotoes(from, `Identifiquei os seguintes exames no seu pedido:\n${lista}\n\nPosso agendar esses exames para você?`, [
+    { id: 'img_sim', titulo: 'Sim, agendar' },
+    { id: 'img_nao', titulo: 'Não' },
+  ]);
 }
 
 async function acharPacientePorTelefone(from: string) {

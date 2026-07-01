@@ -2,8 +2,8 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { CONVENIOS, EXAMES, MEDICOS } from '@/lib/seed-data';
-import type { Paciente, SlotDisponivel } from '@/lib/types';
+import { APARELHOS, CONVENIOS, EXAMES, MEDICOS } from '@/lib/seed-data';
+import type { Paciente, SlotDisponivel, TipoAparelho } from '@/lib/types';
 import type { ItemProposta, Proposta } from '@/lib/scheduling/engine';
 import { fmtData, fmtHora } from '@/lib/format';
 import { hhmmToMin, toISO } from '@/lib/scheduling/time';
@@ -24,10 +24,14 @@ function AgendarConteudo() {
 
   // slot forçado (veio de um clique num horário livre na agenda)
   const medicoForcadoId = searchParams.get('medico') || '';
+  const aparelhoForcado = (searchParams.get('aparelho') || '') as TipoAparelho | '';
   const dataForcada = searchParams.get('data') || '';
   const horaForcada = searchParams.get('hora') || '';
-  const slotForcado = !!(medicoForcadoId && dataForcada && horaForcada);
+  const slotForcado = !!((medicoForcadoId || aparelhoForcado) && dataForcada && horaForcada);
   const medicoForcado = MEDICOS.find((m) => m.id === medicoForcadoId);
+  const aparelhoCfg = aparelhoForcado ? APARELHOS[aparelhoForcado] : null;
+  // rótulo do "prestador" do slot forçado (médico OU aparelho)
+  const prestadorForcado = medicoForcado?.nome ?? aparelhoCfg?.nome ?? '';
 
   const [passo, setPasso] = useState<Passo>(1);
 
@@ -36,8 +40,8 @@ function AgendarConteudo() {
   const [resultados, setResultados] = useState<Paciente[]>([]);
   const [paciente, setPaciente] = useState<Paciente | null>(null);
 
-  // passo 2
-  const [exames, setExames] = useState<string[]>([]); // pode repetir (sessão)
+  // passo 2 — se veio de um aparelho, o exame já está fixado
+  const [exames, setExames] = useState<string[]>(aparelhoCfg ? [aparelhoCfg.exameId] : []);
   const [convenioId, setConvenioId] = useState('particular');
   const [medicoPref, setMedicoPref] = useState(medicoForcadoId);
 
@@ -60,21 +64,31 @@ function AgendarConteudo() {
   function addExame(id: string) { setExames((e) => [...e, id]); }
   function removeExame(idx: number) { setExames((e) => e.filter((_, i) => i !== idx)); }
 
+  /** duração de um exame no contexto do slot forçado (médico ou aparelho) */
+  function duracaoNoSlot(exameId: string): number {
+    const exame = EXAMES.find((e) => e.id === exameId)!;
+    if (aparelhoCfg) return aparelhoCfg.duracaoMin;
+    return medicoForcado?.duracoes?.[exameId] ?? exame.duracaoMin;
+  }
+
   /** monta a proposta direto no horário clicado na agenda, sem buscar disponibilidade */
   function montarPropostaDoSlot() {
-    if (!medicoForcado) return;
+    if (!medicoForcado && !aparelhoCfg) return;
+    const prestadorId = medicoForcado?.id ?? aparelhoForcado; // 'mapa'|'holter' se aparelho
+    const prestadorNome = prestadorForcado;
     let cursor = hhmmToMin(horaForcada);
     const itens: ItemProposta[] = exames.map((id) => {
       const exame = EXAMES.find((e) => e.id === id)!;
+      const dur = duracaoNoSlot(id);
       const item: ItemProposta = {
         exameId: exame.id,
         exameNome: exame.nome,
-        medicoId: medicoForcado.id,
-        medicoNome: medicoForcado.nome,
+        medicoId: prestadorId,
+        medicoNome: prestadorNome,
         inicio: toISO(dataForcada, cursor),
-        fim: toISO(dataForcada, cursor + exame.duracaoMin),
+        fim: toISO(dataForcada, cursor + dur),
       };
-      cursor += exame.duracaoMin;
+      cursor += dur;
       return item;
     });
     setProposta({ mesmoMedico: true, itens });
@@ -125,7 +139,9 @@ function AgendarConteudo() {
     }
   }
 
-  const nomeMedico = (id: string) => MEDICOS.find((m) => m.id === id)?.nome ?? id;
+  const nomeMedico = (id: string) =>
+    MEDICOS.find((m) => m.id === id)?.nome ??
+    (id === 'mapa' || id === 'holter' ? APARELHOS[id].nome : id);
   const nomeExame = (id: string) => EXAMES.find((e) => e.id === id)?.nome ?? id;
 
   return (
@@ -133,10 +149,10 @@ function AgendarConteudo() {
       <h1 className="font-serif text-3xl font-bold tracking-tight text-navy-900">Novo agendamento</h1>
       <Stepper passo={passo} />
 
-      {slotForcado && medicoForcado && passo !== 3 && (
+      {slotForcado && passo !== 3 && (
         <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-cardio/30 bg-cardio/5 px-4 py-3 text-sm">
           <div className="text-navy-900">
-            Horário selecionado: <strong>{fmtData(dataForcada + 'T00:00')} às {horaForcada}</strong> — {medicoForcado.nome}
+            Horário selecionado: <strong>{fmtData(dataForcada + 'T00:00')} às {horaForcada}</strong> — {prestadorForcado}
           </div>
           <button className="text-xs font-semibold text-brand-red hover:underline" onClick={() => router.push('/agenda')}>
             Trocar horário
@@ -179,19 +195,30 @@ function AgendarConteudo() {
           </div>
 
           <div className="card p-5">
-            <label className="label">Adicionar exames (clique para empilhar exames consecutivos)</label>
-            <div className="flex flex-wrap gap-2">
-              {EXAMES.filter((e) => e.ativo && (!slotForcado || medicoForcado?.examesHabilitados.includes(e.id))).map((e) => (
-                <button key={e.id} onClick={() => addExame(e.id)}
-                  className="rounded-xl border border-navy-100 px-3 py-1.5 text-xs font-medium text-navy-700 hover:bg-navy-50">
-                  + {e.nome} <span className="text-muted">({e.duracaoMin}min)</span>
-                </button>
-              ))}
-            </div>
+            {aparelhoCfg ? (
+              <div className="rounded-2xl border border-navy-100 bg-navy-50/60 p-4 text-sm">
+                <div className="font-semibold text-navy-900">{aparelhoCfg.nome}</div>
+                <div className="mt-1 text-xs text-muted">
+                  Exame de aparelho — o paciente coloca no horário marcado e retorna em 24h para retirar.
+                </div>
+              </div>
+            ) : (
+              <>
+                <label className="label">Adicionar exames (clique para empilhar exames consecutivos)</label>
+                <div className="flex flex-wrap gap-2">
+                  {EXAMES.filter((e) => e.ativo && !e.aparelho && (!slotForcado || medicoForcado?.examesHabilitados.includes(e.id))).map((e) => (
+                    <button key={e.id} onClick={() => addExame(e.id)}
+                      className="rounded-xl border border-navy-100 px-3 py-1.5 text-xs font-medium text-navy-700 hover:bg-navy-50">
+                      + {e.nome} <span className="text-muted">({slotForcado ? duracaoNoSlot(e.id) : e.duracaoMin}min)</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
-            {exames.length > 0 && (
+            {exames.length > 0 && !aparelhoCfg && (
               <div className="mt-4">
-                <div className="text-xs font-semibold text-muted mb-2">Sessão ({exames.length} exame{exames.length > 1 ? 's' : ''} · {exames.reduce((s, id) => s + (EXAMES.find((e) => e.id === id)?.duracaoMin ?? 0), 0)}min)</div>
+                <div className="text-xs font-semibold text-muted mb-2">Sessão ({exames.length} exame{exames.length > 1 ? 's' : ''} · {exames.reduce((s, id) => s + (slotForcado ? duracaoNoSlot(id) : EXAMES.find((e) => e.id === id)?.duracaoMin ?? 0), 0)}min)</div>
                 <ul className="space-y-1.5">
                   {exames.map((id, i) => (
                     <li key={i} className="flex items-center justify-between rounded-lg bg-navy-50 px-3 py-2 text-sm">
@@ -204,7 +231,7 @@ function AgendarConteudo() {
                   <p className="mt-2 text-xs text-navy-600">⚡ O sistema vai priorizar marcar todos com o <strong>mesmo médico</strong>, em sequência.</p>
                 )}
                 {exames.length > 1 && slotForcado && (
-                  <p className="mt-2 text-xs text-navy-600">⚡ Os exames serão encaixados em sequência a partir de {horaForcada}, com {medicoForcado?.nome}.</p>
+                  <p className="mt-2 text-xs text-navy-600">⚡ Os exames serão encaixados em sequência a partir de {horaForcada}, com {prestadorForcado}.</p>
                 )}
               </div>
             )}
@@ -217,9 +244,9 @@ function AgendarConteudo() {
                 </select>
               </div>
               <div>
-                <label className="label">Médico de preferência {slotForcado ? '' : '(opcional)'}</label>
+                <label className="label">{aparelhoCfg ? 'Aparelho' : `Médico de preferência ${slotForcado ? '' : '(opcional)'}`}</label>
                 {slotForcado ? (
-                  <div className="input flex items-center bg-navy-50 text-navy-800">{medicoForcado?.nome}</div>
+                  <div className="input flex items-center bg-navy-50 text-navy-800">{prestadorForcado}</div>
                 ) : (
                   <select className="input" value={medicoPref} onChange={(e) => setMedicoPref(e.target.value)}>
                     <option value="">Sem preferência (sistema decide)</option>
@@ -249,16 +276,18 @@ function AgendarConteudo() {
             <div className="card p-5">
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-navy-900">{slotForcado ? 'Confirmar horário' : 'Proposta de horário'}</h3>
-                {proposta.mesmoMedico
-                  ? <span className="badge bg-green-50 text-green-700">Mesmo médico ✓</span>
-                  : <span className="badge bg-amber-50 text-amber-700">Médicos diferentes</span>}
+                {!aparelhoCfg && proposta.itens.length > 1 && (
+                  proposta.mesmoMedico
+                    ? <span className="badge bg-green-50 text-green-700">Mesmo médico ✓</span>
+                    : <span className="badge bg-amber-50 text-amber-700">Médicos diferentes</span>
+                )}
               </div>
               <ul className="mt-4 space-y-2">
                 {proposta.itens.map((it, i) => (
                   <li key={i} className="flex items-center justify-between rounded-xl border border-navy-100 px-4 py-3">
                     <div>
                       <div className="text-sm font-semibold text-ink">{it.exameNome}</div>
-                      <div className="text-xs text-muted">{nomeMedico(it.medicoId)}</div>
+                      <div className="text-xs text-muted">{it.medicoNome}</div>
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-bold text-navy-700">{fmtHora(it.inicio)}–{fmtHora(it.fim)}</div>

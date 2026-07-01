@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { lerSessao } from '@/lib/auth';
 import { listarAgendamentos } from '@/lib/db';
-import { EXAMES, MEDICOS } from '@/lib/seed-data';
-import { gerarSlots, proporSessao } from '@/lib/scheduling/engine';
+import { APARELHOS, EXAMES, MEDICOS } from '@/lib/seed-data';
+import { gerarSlots, gerarSlotsAparelho, proporSessao } from '@/lib/scheduling/engine';
 
 // GET /api/disponibilidade?exames=ecg,ecg,mapa&medico=med-1&data=2026-07-06
 // - 1 exame  -> retorna { slots: [...] }
@@ -26,7 +26,18 @@ export async function GET(req: NextRequest) {
   const agendamentos = await listarAgendamentos();
 
   if (examesSeq.length === 1) {
-    const slots = gerarSlots(examesSeq[0], MEDICOS, agendamentos, {
+    const exame = examesSeq[0];
+    // exame de aparelho (Mapa/Holter) → slots fixos, sem médico
+    if (exame.aparelho) {
+      const slots = gerarSlotsAparelho(APARELHOS[exame.aparelho], agendamentos, {
+        dataInicio,
+        dias: 21,
+        naoAntesDe: agoraJF(),
+        limite: 80,
+      });
+      return NextResponse.json({ slots });
+    }
+    const slots = gerarSlots(exame, MEDICOS, agendamentos, {
       dataInicio,
       dias: 14,
       medicoPreferidoId,

@@ -5,14 +5,19 @@
 /** Dia da semana no padrão JS: 0 = domingo ... 6 = sábado */
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
+/** Aparelho físico com slots fixos (não vinculado a médico) */
+export type TipoAparelho = 'mapa' | 'holter';
+
 /** Exame oferecido pela clínica */
 export interface Exame {
   id: string;
   nome: string;
-  /** duração SEMPRE em múltiplos de 15 (15, 30, 45, 60...) */
+  /** duração PADRÃO em múltiplos de 15 (pode ser sobrescrita por médico) */
   duracaoMin: number;
   /** se exige preparo/jejum, observação curta exibida ao paciente */
   preparo?: string;
+  /** se for exame de aparelho (Mapa/Holter), qual — usa a lógica de slots fixos */
+  aparelho?: TipoAparelho;
   ativo: boolean;
 }
 
@@ -22,6 +27,10 @@ export interface JanelaDisponibilidade {
   /** "HH:MM" 24h */
   inicio: string;
   fim: string;
+  /** exames oferecidos NESTA janela; se ausente, usa examesHabilitados do médico */
+  exames?: string[];
+  /** true = só ocorre nas semanas quinzenais ativas (referência 2026-07-08) */
+  quinzenal?: boolean;
 }
 
 /** Médico da clínica */
@@ -35,9 +44,27 @@ export interface Medico {
   foto?: string;
   /** exames que este médico realiza (ids de Exame) */
   examesHabilitados: string[];
+  /** duração (min) por exame PARA ESTE médico; fallback = Exame.duracaoMin */
+  duracoes?: Record<string, number>;
   /** grade fixa semanal de atendimento */
   disponibilidade: JanelaDisponibilidade[];
   ativo: boolean;
+}
+
+/** Configuração de um aparelho com slots fixos por dia da semana */
+export interface AparelhoConfig {
+  tipo: TipoAparelho;
+  nome: string;
+  /** id do Exame correspondente ('mapa' | 'holter') */
+  exameId: string;
+  /** nº de aparelhos físicos (= nº de slots por dia) */
+  capacidade: number;
+  /** quantos pacientes cabem no MESMO horário/dia (cada slot = 1 aparelho) */
+  capacidadePorSlot: number;
+  /** duração da colocação do aparelho (min) */
+  duracaoMin: number;
+  /** weekday (1=seg..5=sex) -> horários "HH:MM"; sexta é bloqueada (sem slots) */
+  slots: Partial<Record<Weekday, string[]>>;
 }
 
 /** Convênio aceito (ou particular) */
@@ -169,4 +196,22 @@ export interface SlotDisponivel {
   medicoNome: string;
   inicio: string; // ISO
   fim: string; // ISO
+}
+
+// ---------- Atendimento humano (handoff do WhatsApp) ----------
+export type StatusAtendimento = 'aguardando' | 'em_atendimento' | 'resolvido';
+
+export interface MensagemConversa {
+  de: 'paciente' | 'recepcao' | 'agente';
+  texto: string;
+  ts: string; // ISO
+}
+
+/** Conversa de WhatsApp transferida para atendimento humano */
+export interface Conversa {
+  telefone: string;
+  nome?: string;
+  status: StatusAtendimento;
+  mensagens: MensagemConversa[];
+  atualizadoEm: string;
 }

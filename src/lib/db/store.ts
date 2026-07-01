@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
-import type { Agendamento, FichaMedica, Paciente, Triagem, Usuario } from '../types';
-import { CONVENIOS, EXAMES } from '../seed-data';
+import type { Agendamento, Conversa, FichaMedica, Paciente, TipoAparelho, Triagem, Usuario } from '../types';
+import { APARELHOS, CONVENIOS, EXAMES, MEDICOS } from '../seed-data';
+import { hhmmToMin, semanaQuinzenalAtiva } from '../scheduling/time';
 
 // =============================================================
 // Store em memória (modo DATA_BACKEND=memory).
@@ -108,45 +109,73 @@ const pacientes: Paciente[] = [
 ];
 
 // ---- agendamentos fictícios do dia de hoje ----
+// Gerados dinamicamente a partir das janelas/aparelhos REAIS ativos hoje,
+// para o painel e a agenda ficarem sempre coerentes com a grade do dia.
 function hojeJF(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 }
 
-function slot(hhmm: string, exameId: string): { inicio: string; fim: string } {
-  const dur = EXAMES.find((e) => e.id === exameId)?.duracaoMin ?? 30;
-  const [h, m] = hhmm.split(':').map(Number);
-  const total = h * 60 + m + dur;
-  const fh = String(Math.floor(total / 60)).padStart(2, '0');
-  const fm = String(total % 60).padStart(2, '0');
-  const dia = hojeJF();
-  return { inicio: `${dia}T${hhmm}:00-03:00`, fim: `${dia}T${fh}:${fm}:00-03:00` };
+const HOJE = hojeJF();
+const WD = new Date(`${HOJE}T12:00:00Z`).getUTCDay();
+const SEMANA_ATIVA = semanaQuinzenalAtiva(HOJE);
+
+function isoDeHoje(minutos: number): string {
+  const hh = String(Math.floor(minutos / 60)).padStart(2, '0');
+  const mm = String(minutos % 60).padStart(2, '0');
+  return `${HOJE}T${hh}:${mm}:00-03:00`;
 }
 
-type SeedAg = {
-  pacienteId: string; pacienteNome: string; medicoId: string; exameId: string;
-  convenioId?: string; hora: string; status: Agendamento['status']; origem: Agendamento['origem'];
-};
+const statuses: Agendamento['status'][] = ['confirmado', 'agendado', 'realizado', 'agendado'];
+const pacientesFake = pacientes.map((p) => ({ id: p.id, nome: p.nome, convenioId: p.convenioId }));
 
-const seedAgs: SeedAg[] = [
-  { pacienteId: 'pac_joao', pacienteNome: 'João Batista Ferreira', medicoId: 'med-6', exameId: 'consulta', convenioId: convId('IPSEMG'), hora: '07:30', status: 'realizado', origem: 'sistema' },
-  { pacienteId: 'pac_maria', pacienteNome: 'Maria das Dores Silva', medicoId: 'med-1', exameId: 'eco-doppler', convenioId: convId('Unimed'), hora: '08:00', status: 'confirmado', origem: 'whatsapp' },
-  { pacienteId: 'pac_rosangela', pacienteNome: 'Rosângela Aparecida Lima', medicoId: 'med-3', exameId: 'mapa', convenioId: convId('CASSI'), hora: '08:30', status: 'agendado', origem: 'sistema' },
-  { pacienteId: 'pac_geraldo', pacienteNome: 'Geraldo Magela Costa', medicoId: 'med-6', exameId: 'duplex-carotidas', convenioId: convId('CEMIG Saúde'), hora: '09:00', status: 'confirmado', origem: 'sistema' },
-  { pacienteId: 'pac_claudia', pacienteNome: 'Cláudia Regina Santos', medicoId: 'med-1', exameId: 'consulta', convenioId: convId('Bradesco'), hora: '09:30', status: 'agendado', origem: 'whatsapp' },
-  { pacienteId: 'pac_sebastiao', pacienteNome: 'Sebastião Pereira Gomes', medicoId: 'med-4', exameId: 'ergometrico', convenioId: convId('Particular'), hora: '10:00', status: 'agendado', origem: 'sistema' },
-  { pacienteId: 'pac_vera', pacienteNome: 'Vera Lúcia Andrade', medicoId: 'med-2', exameId: 'holter', convenioId: convId('Sul América'), hora: '13:30', status: 'agendado', origem: 'whatsapp' },
-  { pacienteId: 'pac_antonio', pacienteNome: 'Antônio Carlos Moura', medicoId: 'med-5', exameId: 'consulta', convenioId: convId('AMAGIS'), hora: '14:00', status: 'agendado', origem: 'sistema' },
-  { pacienteId: 'pac_maria', pacienteNome: 'Maria das Dores Silva', medicoId: 'med-5', exameId: 'ecg', convenioId: convId('Unimed'), hora: '15:00', status: 'agendado', origem: 'sistema' },
-];
+const agendamentos: Agendamento[] = [];
+let idx = 0;
+function proximoPaciente() {
+  const p = pacientesFake[idx % pacientesFake.length];
+  idx += 1;
+  return p;
+}
 
-const agendamentos: Agendamento[] = seedAgs.map((a) => {
-  const { inicio, fim } = slot(a.hora, a.exameId);
-  return {
-    id: uid('ag'), pacienteId: a.pacienteId, pacienteNome: a.pacienteNome,
-    medicoId: a.medicoId, exameId: a.exameId, convenioId: a.convenioId ?? 'particular',
-    inicio, fim, status: a.status, origem: a.origem, criadoEm: agora,
-  };
-});
+// 1) até 2 agendamentos por médico ativo hoje (respeita quinzenal)
+for (const m of MEDICOS.filter((x) => x.ativo)) {
+  const janelas = m.disponibilidade.filter((j) => j.weekday === WD && (!j.quinzenal || SEMANA_ATIVA));
+  if (janelas.length === 0) continue;
+  const j = janelas[0];
+  const exIds = j.exames ?? m.examesHabilitados;
+  let cursor = hhmmToMin(j.inicio);
+  const fim = hhmmToMin(j.fim);
+  for (let n = 0; n < 2; n++) {
+    const exameId = exIds[n % exIds.length];
+    const dur = m.duracoes?.[exameId] ?? EXAMES.find((e) => e.id === exameId)?.duracaoMin ?? 15;
+    if (cursor + dur > fim) break;
+    const pac = proximoPaciente();
+    agendamentos.push({
+      id: uid('ag'), pacienteId: pac.id, pacienteNome: pac.nome,
+      medicoId: m.id, exameId, convenioId: pac.convenioId ?? 'particular',
+      inicio: isoDeHoje(cursor), fim: isoDeHoje(cursor + dur),
+      status: statuses[(idx + n) % statuses.length], origem: n % 2 === 0 ? 'sistema' : 'whatsapp',
+      criadoEm: agora,
+    });
+    cursor += dur + 15; // deixa um vão livre entre eles
+  }
+}
+
+// 2) alguns agendamentos de aparelho (Mapa/Holter) nos slots de hoje
+for (const tipo of ['mapa', 'holter'] as TipoAparelho[]) {
+  const cfg = APARELHOS[tipo];
+  const horarios = WD === 5 || WD === 0 || WD === 6 ? [] : cfg.slots[WD as 1 | 2 | 3 | 4] ?? [];
+  horarios.slice(0, 2).forEach((hhmm, n) => {
+    const t = hhmmToMin(hhmm);
+    const pac = proximoPaciente();
+    agendamentos.push({
+      id: uid('ag'), pacienteId: pac.id, pacienteNome: pac.nome,
+      medicoId: tipo, exameId: cfg.exameId, convenioId: pac.convenioId ?? 'particular',
+      inicio: isoDeHoje(t), fim: isoDeHoje(t + cfg.duracaoMin),
+      status: n === 0 ? 'confirmado' : 'agendado', origem: n % 2 === 0 ? 'whatsapp' : 'sistema',
+      criadoEm: agora,
+    });
+  });
+}
 
 export const memoria = {
   usuarios: [
@@ -163,6 +192,7 @@ export const memoria = {
   pacientes,
   agendamentos,
   triagens: [] as Triagem[],
+  conversas: [] as Conversa[],
 };
 
 export const novoId = uid;

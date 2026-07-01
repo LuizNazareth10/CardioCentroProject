@@ -32,25 +32,31 @@ export const photos = {
 export const stats = [
   { value: '25+', label: 'anos cuidando de corações', icon: Award },
   { value: '80mil', label: 'pacientes atendidos', icon: Users },
-  { value: '6', label: 'cardiologistas especialistas', icon: Stethoscope },
+  { value: '4', label: 'cardiologistas especialistas', icon: Stethoscope },
   { value: '98%', label: 'satisfação dos pacientes', icon: HeartPulse },
 ];
 
+// Exames REAIS oferecidos pela clínica (4 de médico + 2 de aparelho).
 export const services = [
   {
     icon: ScanHeart,
-    title: 'Ecocardiograma',
+    title: 'Ecocardiograma com Doppler',
     desc: 'Ultrassom do coração com imagem de alta definição para avaliar estrutura e função cardíaca.',
   },
   {
     icon: Activity,
-    title: 'Eletrocardiograma',
-    desc: 'Registro rápido e indolor da atividade elétrica do coração, com laudo no mesmo dia.',
+    title: 'Duplex de Carótidas',
+    desc: 'Ultrassom com Doppler das artérias carótidas e vertebrais para avaliar o fluxo sanguíneo.',
   },
   {
     icon: Gauge,
     title: 'Teste Ergométrico',
     desc: 'Avaliação do coração sob esforço físico controlado, com acompanhamento médico integral.',
+  },
+  {
+    icon: Stethoscope,
+    title: 'Teste Cardiopulmonar',
+    desc: 'Análise integrada do coração, pulmões e músculos durante o esforço, com precisão máxima.',
   },
   {
     icon: Waves,
@@ -61,11 +67,6 @@ export const services = [
     icon: HeartPulse,
     title: 'MAPA 24h',
     desc: 'Medição da pressão arterial ao longo de 24 horas para diagnóstico preciso da hipertensão.',
-  },
-  {
-    icon: Stethoscope,
-    title: 'Consulta Cardiológica',
-    desc: 'Avaliação clínica completa com cardiologistas experientes e escuta atenta.',
   },
 ];
 
@@ -87,13 +88,14 @@ export const differentials = [
   },
 ];
 
-// Derivado da fonte única (src/lib/seed-data.ts) — os 6 médicos ficam
-// sincronizados entre a landing e a área restrita.
+// Derivado da fonte única (src/lib/seed-data.ts) — médicos sincronizados
+// entre a landing e a área restrita. Fotos e CRM ficam em branco na landing
+// até a clínica enviar o material oficial (usa `m.foto`/`m.crm` quando houver).
 export const doctors = MEDICOS.filter((m) => m.ativo).map((m) => ({
   name: m.nome,
   role: m.especialidade ?? 'Cardiologista',
-  crm: m.crm,
-  photo: m.foto ?? q('photo-1559839734-2b71ea197ec2', 700),
+  crm: m.crm ?? '',
+  photo: m.foto ?? '',
 }));
 
 export const testimonials = [

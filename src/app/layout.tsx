@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter, Playfair_Display } from 'next/font/google';
 import './globals.css';
+import '@/lib/env'; // valida variáveis de ambiente no boot do servidor
 
 const inter = Inter({
   subsets: ['latin'],

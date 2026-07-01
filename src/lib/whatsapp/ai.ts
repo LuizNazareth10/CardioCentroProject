@@ -56,6 +56,59 @@ Responda SOMENTE com um JSON válido, sem texto fora dele, no formato:
   }
 }
 
+/**
+ * Lê a foto de um pedido médico (Claude Vision) e retorna os IDs de EXAMES
+ * identificados. Sem ANTHROPIC_API_KEY, retorna [] (sem OCR).
+ */
+export async function lerPedidoMedico(base64: string, mime: string): Promise<string[]> {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return [];
+
+  const nomes = EXAMES.map((e) => e.nome).join(', ');
+  const prompt =
+    'Este é um pedido médico de cardiologia. Identifique os exames solicitados. ' +
+    `Considere apenas esta lista de exames disponíveis: ${nomes}. ` +
+    'Responda SOMENTE com um JSON no formato {"exames":["nome exato da lista", ...]}, sem texto fora dele.';
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-5', // modelo com visão, mais capaz p/ leitura de imagem
+        max_tokens: 400,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mime, data: base64 } },
+              { type: 'text', text: prompt },
+            ],
+          },
+        ],
+      }),
+    });
+    const data = await res.json();
+    const raw = (data.content ?? []).map((c: { text?: string }) => c.text ?? '').join('').trim();
+    const limpo = raw.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(limpo) as { exames?: string[] };
+    // mapeia nomes retornados -> ids de EXAMES (match aproximado)
+    const ids = (parsed.exames ?? [])
+      .map((nome) => {
+        const alvo = nome.toLowerCase();
+        const found = EXAMES.find(
+          (e) => e.nome.toLowerCase().includes(alvo) || alvo.includes(e.nome.toLowerCase().split(' ')[0]),
+        );
+        return found?.id;
+      })
+      .filter((id): id is string => Boolean(id));
+    return Array.from(new Set(ids));
+  } catch (e) {
+    console.error('[agente:visão] falha ao ler pedido médico:', e);
+    return [];
+  }
+}
+
 function fallbackPorPalavras(texto: string): Intencao {
   const t = texto.toLowerCase();
   if (/(atendente|humano|pessoa|recep)/.test(t)) return { acao: 'humano', exames: [] };

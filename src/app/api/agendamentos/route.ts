@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { lerSessao } from '@/lib/auth';
-import { criarAgendamentos, listarAgendamentos } from '@/lib/db';
-import type { Agendamento } from '@/lib/types';
+import { atualizarAgendamento, listarAgendamentos, criarAgendamentos } from '@/lib/db';
+import type { Agendamento, StatusAgendamento } from '@/lib/types';
 import { fromISO } from '@/lib/scheduling/time';
+
+const STATUS_VALIDOS: StatusAgendamento[] = ['agendado', 'confirmado', 'realizado', 'cancelado', 'faltou'];
 
 // GET /api/agendamentos?de=2026-07-06&ate=2026-07-07
 export async function GET(req: NextRequest) {
@@ -44,4 +46,16 @@ export async function POST(req: NextRequest) {
 
   const criados = await criarAgendamentos(itens);
   return NextResponse.json({ agendamentos: criados });
+}
+
+// PATCH /api/agendamentos  { id, status } — muda o status (confirmar/realizado/faltou/cancelar)
+export async function PATCH(req: NextRequest) {
+  if (!(await lerSessao())) return NextResponse.json({ erro: 'não autorizado' }, { status: 401 });
+  const body = await req.json();
+  const id = typeof body.id === 'string' ? body.id : '';
+  const status = body.status as StatusAgendamento;
+  if (!id) return NextResponse.json({ erro: 'id obrigatório' }, { status: 400 });
+  if (!STATUS_VALIDOS.includes(status)) return NextResponse.json({ erro: 'status inválido' }, { status: 400 });
+  await atualizarAgendamento(id, { status });
+  return NextResponse.json({ ok: true });
 }

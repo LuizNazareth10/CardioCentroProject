@@ -46,6 +46,9 @@ export default function PacientePage({ params }: { params: { id: string } }) {
         </div>
       </div>
 
+      {/* alerta de fatores críticos + alergias (destaque de segurança) */}
+      <AlertasCriticos paciente={paciente} />
+
       {/* abas */}
       <div className="mt-4 flex gap-1 border-b border-navy-100">
         {(['ficha', 'historico', 'triagens'] as Aba[]).map((a) => (
@@ -79,7 +82,7 @@ export default function PacientePage({ params }: { params: { id: string } }) {
         {aba === 'triagens' && (
           <div className="space-y-3">
             {triagens.length === 0 ? <div className="card p-8 text-center text-sm text-muted">Nenhuma triagem registrada.</div> :
-              triagens.map((t) => <TriagemCard key={t.id} t={t} nomeExame={nomeExame} />)}
+              triagens.map((t, i) => <TriagemCard key={t.id} t={t} anterior={triagens[i + 1]} nomeExame={nomeExame} />)}
           </div>
         )}
       </div>
@@ -102,7 +105,7 @@ function FichaView({ paciente }: { paciente: Paciente }) {
     ['Marca-passo', fm.marcapasso], ['Hist. fam. DAC', fm.histFamiliarDac], ['Hist. fam. morte súbita', fm.histFamiliarMorteSubita],
   ].filter(([, v]) => v) as [string, boolean][];
 
-  const imc = fm.pesoKg && fm.alturaCm ? (fm.pesoKg / Math.pow(fm.alturaCm / 100, 2)).toFixed(1) : null;
+  const imcInfo = classificarIMC(fm.pesoKg, fm.alturaCm);
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -111,12 +114,17 @@ function FichaView({ paciente }: { paciente: Paciente }) {
         <div className="mt-3 grid grid-cols-3 gap-3 text-center">
           <Metric label="Peso" valor={fm.pesoKg ? `${fm.pesoKg} kg` : '—'} />
           <Metric label="Altura" valor={fm.alturaCm ? `${fm.alturaCm} cm` : '—'} />
-          <Metric label="IMC" valor={imc ?? '—'} />
+          <Metric label="IMC" valor={imcInfo ? imcInfo.valor : '—'} />
         </div>
+        {imcInfo && (
+          <div className="mt-2 flex justify-center">
+            <span className={`badge ${imcInfo.cls}`}>{imcInfo.label}</span>
+          </div>
+        )}
         <h3 className="mt-5 font-bold text-navy-900">Fatores de risco</h3>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {fatores.length === 0 ? <span className="text-sm text-muted">Nenhum registrado.</span> :
-            fatores.map(([l]) => <span key={l} className="badge bg-brand-red/10 text-brand-red-600">{l}</span>)}
+            fatores.map(([l]) => <span key={l} className={`badge ${FATORES_CRITICOS.includes(l) ? 'bg-brand-red text-white' : 'bg-brand-red/10 text-brand-red-600'}`}>{l}</span>)}
         </div>
       </div>
       <div className="card p-5 space-y-3">
@@ -130,7 +138,7 @@ function FichaView({ paciente }: { paciente: Paciente }) {
   );
 }
 
-function TriagemCard({ t, nomeExame }: { t: Triagem; nomeExame: (i: string) => string }) {
+function TriagemCard({ t, anterior, nomeExame }: { t: Triagem; anterior?: Triagem; nomeExame: (i: string) => string }) {
   const risco = { verde: 'bg-green-50 text-green-700', amarelo: 'bg-amber-50 text-amber-700', vermelho: 'bg-red-50 text-brand-red' };
   const sintomas = [
     ['Dor torácica', t.dorToracica], ['Dispneia', t.dispneia], ['Palpitação', t.palpitacao],
@@ -146,15 +154,23 @@ function TriagemCard({ t, nomeExame }: { t: Triagem; nomeExame: (i: string) => s
         {t.classificacaoRisco && <span className={`badge ${risco[t.classificacaoRisco]}`}>Risco {t.classificacaoRisco}</span>}
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Metric label="PA" valor={t.paSistolica ? `${t.paSistolica}/${t.paDiastolica}` : '—'} />
-        <Metric label="FC" valor={t.frequenciaCardiaca ? `${t.frequenciaCardiaca} bpm` : '—'} />
+        <Metric label="PA" valor={t.paSistolica ? `${t.paSistolica}/${t.paDiastolica}` : '—'} trend={tendencia(t.paSistolica, anterior?.paSistolica)} />
+        <Metric label="FC" valor={t.frequenciaCardiaca ? `${t.frequenciaCardiaca} bpm` : '—'} trend={tendencia(t.frequenciaCardiaca, anterior?.frequenciaCardiaca)} />
         <Metric label="SatO₂" valor={t.saturacao ? `${t.saturacao}%` : '—'} />
-        <Metric label="Peso" valor={t.pesoKg ? `${t.pesoKg} kg` : '—'} />
+        <Metric label="Peso" valor={t.pesoKg ? `${t.pesoKg} kg` : '—'} trend={tendencia(t.pesoKg, anterior?.pesoKg)} />
       </div>
       {sintomas.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{sintomas.map((s) => <span key={s} className="badge bg-amber-50 text-amber-700">{s}</span>)}</div>}
       {t.observacoes && <p className="mt-3 text-sm text-ink/80">{t.observacoes}</p>}
     </div>
   );
+}
+
+/** compara com a triagem anterior e devolve ↑/↓/→ com cor */
+function tendencia(atual?: number, anterior?: number): { seta: string; cls: string } | undefined {
+  if (typeof atual !== 'number' || typeof anterior !== 'number' || atual === anterior) {
+    return typeof atual === 'number' && typeof anterior === 'number' ? { seta: '→', cls: 'text-muted' } : undefined;
+  }
+  return atual > anterior ? { seta: '↑', cls: 'text-brand-red' } : { seta: '↓', cls: 'text-success' };
 }
 
 function ModalTriagem({ pacienteId, historico, onClose, onSalvo }: {
@@ -163,6 +179,7 @@ function ModalTriagem({ pacienteId, historico, onClose, onSalvo }: {
   const [d, setD] = useState<Record<string, string>>({});
   const [sint, setSint] = useState<Record<string, boolean>>({});
   const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
   const set = (k: string, v: string) => setD((x) => ({ ...x, [k]: v }));
 
   const exameOptions = historico.length > 0
@@ -180,8 +197,11 @@ function ModalTriagem({ pacienteId, historico, onClose, onSalvo }: {
       medicacaoTomadaHoje: d.medicacaoTomadaHoje, observacoes: d.observacoes,
     };
     ['paSistolica', 'paDiastolica', 'frequenciaCardiaca', 'saturacao', 'pesoKg'].forEach((k) => { if (d[k]) body[k] = Number(d[k]); });
-    await fetch(`/api/pacientes/${pacienteId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    setSalvando(false); onSalvo();
+    setErro('');
+    const res = await fetch(`/api/pacientes/${pacienteId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    setSalvando(false);
+    if (!res.ok) { setErro((await res.json()).erro ?? 'Falha ao salvar a triagem.'); return; }
+    onSalvo();
   }
 
   const SINTOMAS = [['dorToracica', 'Dor torácica'], ['dispneia', 'Dispneia'], ['palpitacao', 'Palpitação'], ['sincope', 'Síncope'], ['edema', 'Edema']];
@@ -229,6 +249,7 @@ function ModalTriagem({ pacienteId, historico, onClose, onSalvo }: {
           <div><label className="label">Observações</label><textarea className="input min-h-[60px]" value={d.observacoes ?? ''} onChange={(e) => set('observacoes', e.target.value)} /></div>
         </div>
 
+        {erro && <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-brand-red">{erro}</p>}
         <div className="mt-5 flex gap-2">
           <button className="btn-red" disabled={salvando} onClick={salvar}>{salvando ? 'Salvando…' : 'Salvar triagem'}</button>
           <button className="btn-outline" onClick={onClose}>Cancelar</button>
@@ -238,12 +259,55 @@ function ModalTriagem({ pacienteId, historico, onClose, onSalvo }: {
   );
 }
 
-function Metric({ label, valor }: { label: string; valor: string }) {
-  return <div className="rounded-xl bg-navy-50 px-2 py-2.5"><div className="text-sm font-bold text-navy-900">{valor}</div><div className="text-[10px] uppercase tracking-wide text-muted">{label}</div></div>;
+function Metric({ label, valor, trend }: { label: string; valor: string; trend?: { seta: string; cls: string } }) {
+  return (
+    <div className="rounded-xl bg-navy-50 px-2 py-2.5">
+      <div className="flex items-center justify-center gap-1 text-sm font-bold text-navy-900">
+        {valor}
+        {trend && <span className={`text-xs ${trend.cls}`}>{trend.seta}</span>}
+      </div>
+      <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>
+    </div>
+  );
 }
 function Bloco({ titulo, texto }: { titulo: string; texto?: string }) {
   return <div><div className="text-xs font-semibold uppercase tracking-wide text-muted">{titulo}</div><div className="text-sm text-ink/85">{texto || '—'}</div></div>;
 }
 function statusCor(s: string) {
   return { agendado: 'bg-navy-50 text-navy-700', confirmado: 'bg-blue-50 text-blue-700', realizado: 'bg-green-50 text-green-700', cancelado: 'bg-gray-100 text-gray-500', faltou: 'bg-red-50 text-brand-red' }[s] ?? 'bg-navy-50 text-navy-700';
+}
+
+// fatores de risco que ganham destaque máximo no prontuário
+const FATORES_CRITICOS = ['IAM prévio', 'AVC prévio', 'Marca-passo', 'Doença renal'];
+
+/** classificação de IMC (OMS) com cor */
+function classificarIMC(pesoKg?: number, alturaCm?: number): { valor: string; label: string; cls: string } | null {
+  if (!pesoKg || !alturaCm) return null;
+  const imc = pesoKg / Math.pow(alturaCm / 100, 2);
+  const valor = imc.toFixed(1);
+  if (imc < 18.5) return { valor, label: 'Baixo peso', cls: 'bg-amber-50 text-amber-700' };
+  if (imc < 25) return { valor, label: 'Peso normal', cls: 'bg-green-50 text-green-700' };
+  if (imc < 30) return { valor, label: 'Sobrepeso', cls: 'bg-amber-50 text-amber-700' };
+  if (imc < 35) return { valor, label: 'Obesidade grau I', cls: 'bg-brand-red/10 text-brand-red-600' };
+  if (imc < 40) return { valor, label: 'Obesidade grau II', cls: 'bg-brand-red/10 text-brand-red-600' };
+  return { valor, label: 'Obesidade grau III', cls: 'bg-brand-red text-white' };
+}
+
+/** banner de alerta com fatores críticos + alergias (segurança do paciente) */
+function AlertasCriticos({ paciente }: { paciente: Paciente }) {
+  const fm = paciente.fichaMedica;
+  const criticos: string[] = [];
+  if (fm.iamPrevio) criticos.push('IAM prévio');
+  if (fm.avcPrevio) criticos.push('AVC prévio');
+  if (fm.marcapasso) criticos.push('Marca-passo');
+  if (fm.doencaRenal) criticos.push('Doença renal');
+  const temAlergia = fm.alergias && fm.alergias.trim() && !/^(não|nao|nega|nenhuma)/i.test(fm.alergias.trim());
+  if (criticos.length === 0 && !temAlergia) return null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-brand-red/30 bg-brand-red/5 px-4 py-3">
+      <span className="text-sm font-bold text-brand-red-600">⚠ Atenção clínica:</span>
+      {criticos.map((c) => <span key={c} className="badge bg-brand-red text-white">{c}</span>)}
+      {temAlergia && <span className="badge bg-warning/20 text-amber-700">Alergia: {fm.alergias}</span>}
+    </div>
+  );
 }

@@ -1,4 +1,4 @@
-import type { Agendamento, Paciente, Triagem, Usuario } from '../types';
+import type { Agendamento, Conversa, MensagemConversa, Paciente, StatusAtendimento, Triagem, Usuario } from '../types';
 import { memoria, novoId } from './store';
 
 // =============================================================
@@ -141,6 +141,67 @@ export async function criarTriagem(dados: Omit<Triagem, 'id'>): Promise<Triagem>
     memoria.triagens.push(triagem);
   }
   return triagem;
+}
+
+// ============== ATENDIMENTOS (handoff WhatsApp) ==============
+export async function listarConversas(): Promise<Conversa[]> {
+  let arr: Conversa[];
+  if (isFirestore) {
+    const snap = await (await fs()).collection('conversas').get();
+    arr = snap.docs.map((d) => d.data() as Conversa);
+  } else {
+    arr = [...memoria.conversas];
+  }
+  // mais recentes primeiro; resolvidos por último
+  const peso = (s: StatusAtendimento) => (s === 'aguardando' ? 0 : s === 'em_atendimento' ? 1 : 2);
+  return arr.sort((a, b) => peso(a.status) - peso(b.status) || b.atualizadoEm.localeCompare(a.atualizadoEm));
+}
+
+export async function obterConversa(telefone: string): Promise<Conversa | null> {
+  if (isFirestore) {
+    const doc = await (await fs()).collection('conversas').doc(telefone).get();
+    return doc.exists ? (doc.data() as Conversa) : null;
+  }
+  return memoria.conversas.find((c) => c.telefone === telefone) ?? null;
+}
+
+/** anexa uma mensagem à conversa (cria se não existir) e ajusta metadados */
+export async function registrarMensagem(
+  telefone: string,
+  msg: MensagemConversa,
+  meta?: { nome?: string; status?: StatusAtendimento },
+): Promise<Conversa> {
+  const atual = (await obterConversa(telefone)) ?? {
+    telefone, nome: meta?.nome, status: 'aguardando' as StatusAtendimento,
+    mensagens: [], atualizadoEm: new Date().toISOString(),
+  };
+  const nova: Conversa = {
+    ...atual,
+    nome: meta?.nome ?? atual.nome,
+    status: meta?.status ?? atual.status,
+    mensagens: [...atual.mensagens, msg],
+    atualizadoEm: new Date().toISOString(),
+  };
+  if (isFirestore) {
+    await (await fs()).collection('conversas').doc(telefone).set(nova);
+  } else {
+    const i = memoria.conversas.findIndex((c) => c.telefone === telefone);
+    if (i >= 0) memoria.conversas[i] = nova;
+    else memoria.conversas.push(nova);
+  }
+  return nova;
+}
+
+export async function definirStatusConversa(telefone: string, status: StatusAtendimento): Promise<void> {
+  const atual = await obterConversa(telefone);
+  if (!atual) return;
+  const nova = { ...atual, status, atualizadoEm: new Date().toISOString() };
+  if (isFirestore) {
+    await (await fs()).collection('conversas').doc(telefone).set(nova, { merge: true });
+  } else {
+    const i = memoria.conversas.findIndex((c) => c.telefone === telefone);
+    if (i >= 0) memoria.conversas[i] = nova;
+  }
 }
 
 // ============== USUÁRIOS ==============

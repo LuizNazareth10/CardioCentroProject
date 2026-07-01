@@ -23,38 +23,49 @@ export function CorpoMedico() {
           </p>
         </Reveal>
 
-        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {doctors.map((d, i) => (
-            <motion.article
-              key={d.name}
-              initial={reduce ? { opacity: 0 } : { opacity: 0, y: 22 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-60px' }}
-              transition={{ duration: 0.6, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] }}
-              className="group overflow-hidden rounded-3xl border border-navyblue-100/70 bg-white shadow-card transition-shadow hover:shadow-lift"
-            >
-              <div className="relative overflow-hidden">
-                <Image
-                  src={d.photo}
-                  alt={`Retrato de ${d.name}, ${d.role}`}
-                  width={500}
-                  height={560}
-                  className="h-72 w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-                <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-navyblue-900/30 to-transparent" />
-              </div>
-              <div className="p-6">
-                <h3 className="flex items-center gap-1.5 text-lg font-bold text-navyblue-900">
-                  {d.name}
-                  <BadgeCheck className="h-4 w-4 text-info" aria-hidden />
-                </h3>
-                <p className="mt-1 text-sm font-medium text-cardio">{d.role}</p>
-                <p className="mt-2 text-xs font-medium uppercase tracking-wide text-gray-500">
-                  {d.crm}
-                </p>
-              </div>
-            </motion.article>
-          ))}
+        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {doctors.map((d, i) => {
+            const iniciais = d.name.replace(/^(Dr|Dra)\.?\s*/i, '').split(' ').slice(0, 2).map((p) => p[0]).join('');
+            return (
+              <motion.article
+                key={d.name}
+                initial={reduce ? { opacity: 0 } : { opacity: 0, y: 22 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-60px' }}
+                transition={{ duration: 0.6, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] }}
+                className="group overflow-hidden rounded-3xl border border-navyblue-100/70 bg-white shadow-card transition-shadow hover:shadow-lift"
+              >
+                <div className="relative overflow-hidden">
+                  {d.photo ? (
+                    <Image
+                      src={d.photo}
+                      alt={`Retrato de ${d.name}, ${d.role}`}
+                      width={500}
+                      height={560}
+                      className="h-64 w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                  ) : (
+                    // placeholder até a foto oficial da médica/médico ser enviada
+                    <div className="relative flex h-64 w-full items-center justify-center bg-gradient-to-br from-navyblue-600 to-navyblue-800">
+                      <span className="font-serif text-4xl font-bold text-white/90">{iniciais}</span>
+                      <div className="dotgrid pointer-events-none absolute inset-0 opacity-[0.12]" />
+                    </div>
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-navyblue-900/30 to-transparent" />
+                </div>
+                <div className="p-6">
+                  <h3 className="flex items-center gap-1.5 text-lg font-bold text-navyblue-900">
+                    {d.name}
+                    <BadgeCheck className="h-4 w-4 text-info" aria-hidden />
+                  </h3>
+                  <p className="mt-1 text-sm font-medium text-cardio">{d.role}</p>
+                  {d.crm && (
+                    <p className="mt-2 text-xs font-medium uppercase tracking-wide text-gray-500">{d.crm}</p>
+                  )}
+                </div>
+              </motion.article>
+            );
+          })}
         </div>
       </div>
     </section>
