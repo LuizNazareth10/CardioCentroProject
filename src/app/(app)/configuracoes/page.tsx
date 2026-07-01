@@ -5,7 +5,7 @@ const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 export default function ConfiguracoesPage() {
   return (
     <div>
-      <h1 className="text-2xl font-bold text-navy-900">Configurações</h1>
+      <h1 className="font-serif text-3xl font-bold tracking-tight text-navy-900">Configurações</h1>
       <p className="text-sm text-muted">Base de médicos, exames e convênios da clínica.</p>
 
       <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
@@ -57,10 +57,22 @@ export default function ConfiguracoesPage() {
 
       <section className="mt-7">
         <h2 className="mb-3 font-bold text-navy-900">Contato</h2>
-        <div className="card p-4 text-sm text-ink/85">
-          <div>Telefone fixo: <strong>{CONTATO.telefoneFixo}</strong></div>
-          <div>WhatsApp: <strong>{CONTATO.whatsapp}</strong></div>
-          <div>{CONTATO.cidade}</div>
+        <div className="card p-5 text-sm text-ink/85 space-y-1.5">
+          <div>Endereço: <strong>{CONTATO.enderecoCompleto}</strong></div>
+          <div>Telefone: <strong>{CONTATO.telefone}</strong></div>
+          <div>
+            WhatsApp: <strong>{CONTATO.whatsapp}</strong>{' '}
+            <a href={CONTATO.whatsappLink} target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-red hover:underline">
+              abrir conversa →
+            </a>
+          </div>
+          <div>E-mail: <strong>{CONTATO.email}</strong></div>
+          <div>
+            Instagram:{' '}
+            <a href={CONTATO.instagram} target="_blank" rel="noopener noreferrer" className="font-semibold text-navy-700 hover:underline">
+              {CONTATO.instagramHandle}
+            </a>
+          </div>
         </div>
       </section>
     </div>

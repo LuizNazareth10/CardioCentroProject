@@ -29,6 +29,10 @@ export interface Medico {
   id: string;
   nome: string;
   crm: string;
+  /** área de atuação exibida na landing e na área restrita */
+  especialidade?: string;
+  /** retrato usado na landing (URL) */
+  foto?: string;
   /** exames que este médico realiza (ids de Exame) */
   examesHabilitados: string[];
   /** grade fixa semanal de atendimento */

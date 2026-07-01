@@ -34,22 +34,26 @@ export function Sidebar({ nome }: { nome: string }) {
   }
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-navy-100/70 bg-white px-3 py-4">
-      <div className="flex items-center gap-2.5 px-2 pb-5">
-        <Logo size={34} />
+    <aside className="flex w-64 shrink-0 flex-col border-r border-navy-100/70 bg-white/70 px-4 py-6 backdrop-blur-sm">
+      <div className="flex items-center gap-2.5 px-2 pb-7">
+        <Logo size={36} />
         <div className="leading-tight">
-          <div className="text-sm font-extrabold text-navy-900">Cardio<span className="text-brand-red">centro</span></div>
-          <div className="text-[10px] font-medium text-muted">Agenda clínica</div>
+          <div className="font-serif text-[17px] font-bold tracking-tight text-navy-900">
+            Cardio<span className="text-brand-red">centro</span>
+          </div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Área da equipe</div>
         </div>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1">
+      <nav className="flex flex-1 flex-col gap-1.5">
         {links.map((l) => {
           const ativo = pathname === l.href || pathname.startsWith(l.href + '/');
           return (
             <Link key={l.href} href={l.href}
-              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition
-                ${ativo ? 'bg-navy-700 text-white shadow-sm' : 'text-ink/70 hover:bg-navy-50'}`}>
+              className={`flex items-center gap-3 rounded-2xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200
+                ${ativo
+                  ? 'bg-navyblue text-white shadow-soft'
+                  : 'text-ink/70 hover:-translate-y-0.5 hover:bg-navy-50 hover:text-navy-900'}`}>
               <Icon name={l.icon} />
               {l.label}
             </Link>
@@ -57,9 +61,9 @@ export function Sidebar({ nome }: { nome: string }) {
         })}
       </nav>
 
-      <div className="mt-2 rounded-xl border border-navy-100 p-3">
+      <div className="mt-3 rounded-2xl border border-navy-100/70 bg-white/70 p-4 shadow-card">
         <div className="text-xs font-semibold text-navy-900">{nome}</div>
-        <button onClick={sair} className="mt-2 text-xs font-medium text-brand-red hover:underline">
+        <button onClick={sair} className="mt-2 text-xs font-semibold text-brand-red hover:underline">
           Sair
         </button>
       </div>

@@ -26,7 +26,7 @@ export default async function Dashboard() {
     <div>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-navy-900">Painel</h1>
+          <h1 className="font-serif text-3xl font-bold tracking-tight text-navy-900">Painel</h1>
           <p className="text-sm capitalize text-muted">{fmtDataExtenso(hoje)}</p>
         </div>
         <Link href="/agendar" className="btn-red">+ Novo agendamento</Link>

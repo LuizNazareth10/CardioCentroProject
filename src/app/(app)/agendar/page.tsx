@@ -1,16 +1,34 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { CONVENIOS, EXAMES, MEDICOS } from '@/lib/seed-data';
 import type { Paciente, SlotDisponivel } from '@/lib/types';
-import type { Proposta } from '@/lib/scheduling/engine';
+import type { ItemProposta, Proposta } from '@/lib/scheduling/engine';
 import { fmtData, fmtHora } from '@/lib/format';
+import { hhmmToMin, toISO } from '@/lib/scheduling/time';
 
 type Passo = 1 | 2 | 3;
 
 export default function AgendarPage() {
+  return (
+    <Suspense fallback={<div className="card p-8 text-center text-sm text-muted">Carregando…</div>}>
+      <AgendarConteudo />
+    </Suspense>
+  );
+}
+
+function AgendarConteudo() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // slot forçado (veio de um clique num horário livre na agenda)
+  const medicoForcadoId = searchParams.get('medico') || '';
+  const dataForcada = searchParams.get('data') || '';
+  const horaForcada = searchParams.get('hora') || '';
+  const slotForcado = !!(medicoForcadoId && dataForcada && horaForcada);
+  const medicoForcado = MEDICOS.find((m) => m.id === medicoForcadoId);
+
   const [passo, setPasso] = useState<Passo>(1);
 
   // passo 1
@@ -21,7 +39,7 @@ export default function AgendarPage() {
   // passo 2
   const [exames, setExames] = useState<string[]>([]); // pode repetir (sessão)
   const [convenioId, setConvenioId] = useState('particular');
-  const [medicoPref, setMedicoPref] = useState('');
+  const [medicoPref, setMedicoPref] = useState(medicoForcadoId);
 
   // passo 3
   const [slots, setSlots] = useState<SlotDisponivel[]>([]);
@@ -42,7 +60,30 @@ export default function AgendarPage() {
   function addExame(id: string) { setExames((e) => [...e, id]); }
   function removeExame(idx: number) { setExames((e) => e.filter((_, i) => i !== idx)); }
 
+  /** monta a proposta direto no horário clicado na agenda, sem buscar disponibilidade */
+  function montarPropostaDoSlot() {
+    if (!medicoForcado) return;
+    let cursor = hhmmToMin(horaForcada);
+    const itens: ItemProposta[] = exames.map((id) => {
+      const exame = EXAMES.find((e) => e.id === id)!;
+      const item: ItemProposta = {
+        exameId: exame.id,
+        exameNome: exame.nome,
+        medicoId: medicoForcado.id,
+        medicoNome: medicoForcado.nome,
+        inicio: toISO(dataForcada, cursor),
+        fim: toISO(dataForcada, cursor + exame.duracaoMin),
+      };
+      cursor += exame.duracaoMin;
+      return item;
+    });
+    setProposta({ mesmoMedico: true, itens });
+    setSlots([]);
+    setPasso(3);
+  }
+
   async function buscarDisponibilidade() {
+    if (slotForcado) return montarPropostaDoSlot();
     setErro(''); setCarregando(true); setSlots([]); setProposta(null);
     const params = new URLSearchParams({ exames: exames.join(',') });
     if (medicoPref) params.set('medico', medicoPref);
@@ -76,7 +117,12 @@ export default function AgendarPage() {
     });
     setCarregando(false);
     if (res.ok) router.push('/agenda');
-    else setErro((await res.json()).erro ?? 'Falha ao agendar.');
+    else {
+      const j = await res.json();
+      setErro(j.erro ?? 'Falha ao agendar.');
+      // conflito de horário no slot forçado → volta pra agenda escolher outro
+      if (res.status === 409 && slotForcado) setPasso(2);
+    }
   }
 
   const nomeMedico = (id: string) => MEDICOS.find((m) => m.id === id)?.nome ?? id;
@@ -84,8 +130,19 @@ export default function AgendarPage() {
 
   return (
     <div className="max-w-3xl">
-      <h1 className="text-2xl font-bold text-navy-900">Novo agendamento</h1>
+      <h1 className="font-serif text-3xl font-bold tracking-tight text-navy-900">Novo agendamento</h1>
       <Stepper passo={passo} />
+
+      {slotForcado && medicoForcado && passo !== 3 && (
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-cardio/30 bg-cardio/5 px-4 py-3 text-sm">
+          <div className="text-navy-900">
+            Horário selecionado: <strong>{fmtData(dataForcada + 'T00:00')} às {horaForcada}</strong> — {medicoForcado.nome}
+          </div>
+          <button className="text-xs font-semibold text-brand-red hover:underline" onClick={() => router.push('/agenda')}>
+            Trocar horário
+          </button>
+        </div>
+      )}
 
       {/* PASSO 1 — paciente */}
       {passo === 1 && (
@@ -124,7 +181,7 @@ export default function AgendarPage() {
           <div className="card p-5">
             <label className="label">Adicionar exames (clique para empilhar exames consecutivos)</label>
             <div className="flex flex-wrap gap-2">
-              {EXAMES.filter((e) => e.ativo).map((e) => (
+              {EXAMES.filter((e) => e.ativo && (!slotForcado || medicoForcado?.examesHabilitados.includes(e.id))).map((e) => (
                 <button key={e.id} onClick={() => addExame(e.id)}
                   className="rounded-xl border border-navy-100 px-3 py-1.5 text-xs font-medium text-navy-700 hover:bg-navy-50">
                   + {e.nome} <span className="text-muted">({e.duracaoMin}min)</span>
@@ -143,8 +200,11 @@ export default function AgendarPage() {
                     </li>
                   ))}
                 </ul>
-                {exames.length > 1 && (
+                {exames.length > 1 && !slotForcado && (
                   <p className="mt-2 text-xs text-navy-600">⚡ O sistema vai priorizar marcar todos com o <strong>mesmo médico</strong>, em sequência.</p>
+                )}
+                {exames.length > 1 && slotForcado && (
+                  <p className="mt-2 text-xs text-navy-600">⚡ Os exames serão encaixados em sequência a partir de {horaForcada}, com {medicoForcado?.nome}.</p>
                 )}
               </div>
             )}
@@ -157,16 +217,20 @@ export default function AgendarPage() {
                 </select>
               </div>
               <div>
-                <label className="label">Médico de preferência (opcional)</label>
-                <select className="input" value={medicoPref} onChange={(e) => setMedicoPref(e.target.value)}>
-                  <option value="">Sem preferência (sistema decide)</option>
-                  {MEDICOS.filter((m) => m.ativo).map((m) => <option key={m.id} value={m.id}>{m.nome}</option>)}
-                </select>
+                <label className="label">Médico de preferência {slotForcado ? '' : '(opcional)'}</label>
+                {slotForcado ? (
+                  <div className="input flex items-center bg-navy-50 text-navy-800">{medicoForcado?.nome}</div>
+                ) : (
+                  <select className="input" value={medicoPref} onChange={(e) => setMedicoPref(e.target.value)}>
+                    <option value="">Sem preferência (sistema decide)</option>
+                    {MEDICOS.filter((m) => m.ativo).map((m) => <option key={m.id} value={m.id}>{m.nome}</option>)}
+                  </select>
+                )}
               </div>
             </div>
 
             <button className="btn-red mt-5 w-full" disabled={exames.length === 0} onClick={buscarDisponibilidade}>
-              Ver horários disponíveis
+              {slotForcado ? 'Confirmar neste horário' : 'Ver horários disponíveis'}
             </button>
           </div>
         </div>
@@ -180,11 +244,11 @@ export default function AgendarPage() {
 
           {carregando && <div className="card p-8 text-center text-sm text-muted">Calculando horários…</div>}
 
-          {/* sessão (vários exames) */}
+          {/* sessão (vários exames) ou horário forçado a partir da agenda */}
           {!carregando && proposta && (
             <div className="card p-5">
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-navy-900">Proposta de horário</h3>
+                <h3 className="font-bold text-navy-900">{slotForcado ? 'Confirmar horário' : 'Proposta de horário'}</h3>
                 {proposta.mesmoMedico
                   ? <span className="badge bg-green-50 text-green-700">Mesmo médico ✓</span>
                   : <span className="badge bg-amber-50 text-amber-700">Médicos diferentes</span>}
@@ -206,12 +270,12 @@ export default function AgendarPage() {
               <button className="btn-red mt-5 w-full" disabled={carregando} onClick={confirmarProposta}>Confirmar agendamento</button>
             </div>
           )}
-          {!carregando && proposta === null && exames.length > 1 && (
+          {!carregando && proposta === null && exames.length > 1 && !slotForcado && (
             <div className="card p-8 text-center text-sm text-muted">Não foi possível encontrar horários consecutivos. Tente reduzir os exames ou outra data.</div>
           )}
 
-          {/* exame único — lista de slots */}
-          {!carregando && exames.length === 1 && (
+          {/* exame único — lista de slots (fluxo de busca livre) */}
+          {!carregando && !slotForcado && exames.length === 1 && (
             slots.length === 0
               ? <div className="card p-8 text-center text-sm text-muted">Sem horários disponíveis nos próximos dias.</div>
               : <SlotsPorDia slots={slots} onPick={confirmarSlot} nomeMedico={nomeMedico} />

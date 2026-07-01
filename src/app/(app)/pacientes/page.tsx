@@ -26,7 +26,7 @@ export default function PacientesPage() {
   return (
     <div>
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <h1 className="text-2xl font-bold text-navy-900">Pacientes</h1>
+        <h1 className="font-serif text-3xl font-bold tracking-tight text-navy-900">Pacientes</h1>
         <Link href="/pacientes/novo" className="btn-red">+ Novo paciente</Link>
       </header>
 

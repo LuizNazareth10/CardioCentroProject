@@ -14,9 +14,9 @@ export function Logo({ size = 40 }: { size?: number }) {
       />
       <defs>
         <linearGradient id="cc-grad" x1="14" y1="50" x2="86" y2="50" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#DC2F2A" />
+          <stop stopColor="#FF3B46" />
           <stop offset="0.5" stopColor="#9A2A52" />
-          <stop offset="1" stopColor="#16285A" />
+          <stop offset="1" stopColor="#2C3E7F" />
         </linearGradient>
       </defs>
     </svg>
@@ -28,7 +28,7 @@ export function LogoLockup() {
     <div className="flex items-center gap-2.5">
       <Logo size={36} />
       <div className="leading-tight">
-        <div className="text-[17px] font-extrabold tracking-tight text-navy-900">
+        <div className="font-serif text-[18px] font-bold tracking-tight text-navy-900">
           Cardio<span className="text-brand-red">centro</span>
         </div>
         <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">

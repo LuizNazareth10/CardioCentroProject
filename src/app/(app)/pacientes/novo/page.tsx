@@ -54,7 +54,7 @@ export default function NovoPaciente() {
 
   return (
     <form onSubmit={salvar} className="max-w-3xl">
-      <h1 className="text-2xl font-bold text-navy-900">Novo paciente</h1>
+      <h1 className="font-serif text-3xl font-bold tracking-tight text-navy-900">Novo paciente</h1>
       <p className="text-sm text-muted">Ficha médica inicial — padrão cardiologia.</p>
 
       <section className="mt-5 card p-5">

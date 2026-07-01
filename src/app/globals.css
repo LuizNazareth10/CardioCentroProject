@@ -3,60 +3,187 @@
 @tailwind utilities;
 
 :root {
+  /* Tipografia */
   --font-inter: 'Inter', system-ui, sans-serif;
-  --navy: #16285a;
-  --red: #dc2f2a;
-  --cream: #f7f4ee;
+  --font-playfair: 'Playfair Display', Georgia, serif;
+
+  /* === Design tokens da marca (derivados do logo) === */
+  --color-cardio-red: #ff3b46;
+  --color-navy-blue: #2c3e7f;
+  --color-white: #ffffff;
+  --color-off-white: #fafaf8;
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-500: #6b7280;
+  --color-gray-700: #374151;
+  --color-gray-900: #1f2937;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+
+  /* tokens legados do sistema interno — alinhados à paleta 2026 */
+  --navy: #2c3e7f;
+  --red: #ff3b46;
+  --cream: #fafaf8;
 }
 
 html,
 body {
-  background-color: var(--cream);
-  color: #1b2440;
+  background-color: var(--color-off-white);
+  color: #111938;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* faixa ondulada decorativa, inspirada nos materiais da clínica */
+/* ============================================================
+   LANDING — utilitários de marca (glass, gradientes, texto)
+   ============================================================ */
+
+/* fundo canvas claro da landing */
+.bg-canvas {
+  background-color: var(--color-off-white);
+}
+
+/* Glassmorphism sutil (cards translúcidos) */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+.glass-dark {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+/* Header translúcido ao rolar */
+.header-glass {
+  background: rgba(250, 250, 248, 0.72);
+  backdrop-filter: blur(14px) saturate(180%);
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+  border-bottom: 1px solid rgba(44, 62, 127, 0.08);
+}
+
+/* Gradiente de texto (headline de destaque) */
+.text-gradient {
+  background: linear-gradient(120deg, #ff3b46 0%, #e62a35 40%, #2c3e7f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* malha decorativa suave */
+.dotgrid {
+  background-image: radial-gradient(rgba(44, 62, 127, 0.12) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* aura/brilho atmosférico */
+.aura {
+  filter: blur(60px);
+  opacity: 0.55;
+}
+
+/* ============================================================
+   Componentes reutilizáveis (landing + sistema)
+   ============================================================ */
+
+/* --- botões da landing --- */
+.cta {
+  @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold
+         transition-all duration-200 will-change-transform focus-visible:outline-none
+         focus-visible:ring-2 focus-visible:ring-offset-2;
+}
+.cta-primary {
+  @apply cta bg-cardio text-white shadow-redglow hover:bg-cardio-600 hover:-translate-y-0.5
+         hover:shadow-lift focus-visible:ring-cardio/50;
+}
+.cta-navy {
+  @apply cta bg-navyblue text-white hover:bg-navyblue-700 hover:-translate-y-0.5
+         focus-visible:ring-navyblue/50;
+}
+.cta-ghost {
+  @apply cta border border-navyblue-100 bg-white/70 text-navyblue-700 hover:bg-white
+         hover:-translate-y-0.5 focus-visible:ring-navyblue/40;
+}
+.cta-outline-white {
+  @apply cta border border-white/40 bg-white/10 text-white hover:bg-white/20
+         focus-visible:ring-white/60;
+}
+
+.pill {
+  @apply inline-flex items-center gap-2 rounded-full border border-navyblue-100 bg-white/70
+         px-3.5 py-1.5 text-xs font-semibold text-navyblue-700;
+}
+
+/* --- componentes do sistema interno (mesma linguagem visual da landing) --- */
+/* fundo atmosférico suave azul tom-sobre-tom, como o hero da landing */
 .wave-top {
   background:
-    radial-gradient(120% 60% at 50% -10%, rgba(22, 40, 90, 0.05), transparent 60%);
+    radial-gradient(120% 70% at 12% -8%, rgba(90, 107, 176, 0.12), transparent 55%),
+    radial-gradient(110% 60% at 98% 0%, rgba(255, 59, 70, 0.06), transparent 50%);
 }
-
+/* card translúcido com profundidade sutil (glassmorphism leve) */
 .card {
-  @apply bg-paper rounded-2xl shadow-card border border-navy-100/60;
+  @apply rounded-3xl border border-navy-100/70 bg-white/85 shadow-card backdrop-blur-sm;
 }
-
 .label {
   @apply block text-xs font-semibold text-muted mb-1.5;
 }
-
 .input {
   @apply w-full rounded-xl border border-navy-100 bg-white px-3.5 py-2.5 text-sm text-ink
          outline-none transition focus:border-navy-600 focus:ring-2 focus:ring-navy-600/15
          placeholder:text-muted/60;
 }
-
 .btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold
-         transition active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none;
+  @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold
+         transition-all duration-200 active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none
+         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
 }
 .btn-primary {
-  @apply btn bg-navy-700 text-white hover:bg-navy-900;
+  @apply btn bg-navyblue text-white shadow-soft hover:-translate-y-0.5 hover:bg-navyblue-700
+         focus-visible:ring-navyblue/40;
 }
 .btn-red {
-  @apply btn bg-brand-red text-white hover:bg-brand-red-600;
+  @apply btn bg-cardio text-white shadow-redglow hover:-translate-y-0.5 hover:bg-cardio-600
+         focus-visible:ring-cardio/50;
 }
 .btn-ghost {
   @apply btn bg-transparent text-navy-700 hover:bg-navy-50;
 }
 .btn-outline {
-  @apply btn border border-navy-100 bg-white text-navy-700 hover:bg-navy-50;
+  @apply btn border border-navy-100 bg-white/80 text-navy-700 hover:-translate-y-0.5 hover:bg-navy-50;
 }
-
 .badge {
   @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold;
 }
 
 /* scrollbar discreta */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #c9d2e6; border-radius: 8px; border: 2px solid var(--cream); }
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #c9d2e6;
+  border-radius: 8px;
+  border: 2px solid var(--cream);
+}
+
+/* Acessibilidade: respeitar quem prefere menos movimento */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}

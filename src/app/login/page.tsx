@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { LogoLockup } from '@/components/Logo';
 
 export default function LoginPage() {
@@ -35,7 +36,7 @@ export default function LoginPage() {
           <div className="rounded-2xl bg-white/95 px-4 py-3"><LogoLockup /></div>
         </div>
         <div className="relative z-10">
-          <h1 className="text-4xl font-extrabold leading-tight">
+          <h1 className="font-serif text-4xl font-bold leading-tight tracking-tight">
             Agenda inteligente para<br />sua clínica de cardiologia.
           </h1>
           <p className="mt-4 max-w-md text-white/70">
@@ -54,8 +55,11 @@ export default function LoginPage() {
       {/* formulário */}
       <div className="flex items-center justify-center p-6">
         <form onSubmit={entrar} className="w-full max-w-sm">
+          <Link href="/" className="mb-6 inline-flex items-center gap-1 text-xs font-semibold text-muted hover:text-navy-700">
+            ← Voltar ao site
+          </Link>
           <div className="lg:hidden mb-8"><LogoLockup /></div>
-          <h2 className="text-2xl font-bold text-navy-900">Bem-vindo de volta</h2>
+          <h2 className="font-serif text-3xl font-bold tracking-tight text-navy-900">Bem-vindo de volta</h2>
           <p className="mt-1 text-sm text-muted">Acesso restrito à equipe da clínica.</p>
 
           <div className="mt-8 space-y-4">

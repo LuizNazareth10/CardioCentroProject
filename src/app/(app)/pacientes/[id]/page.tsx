@@ -1,14 +1,14 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Agendamento, Paciente, Triagem } from '@/lib/types';
 import { CONVENIOS, EXAMES, MEDICOS } from '@/lib/seed-data';
 import { fmtData, fmtHora, idade, iniciais } from '@/lib/format';
 
 type Aba = 'ficha' | 'historico' | 'triagens';
 
-export default function PacientePage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function PacientePage({ params }: { params: { id: string } }) {
+  const { id } = params;
   const [paciente, setPaciente] = useState<Paciente | null>(null);
   const [historico, setHistorico] = useState<Agendamento[]>([]);
   const [triagens, setTriagens] = useState<Triagem[]>([]);
@@ -35,7 +35,7 @@ export default function PacientePage({ params }: { params: Promise<{ id: string 
         <div className="flex flex-wrap items-center gap-4">
           <div className="grid h-14 w-14 place-items-center rounded-2xl bg-navy-700 text-lg font-bold text-white">{iniciais(paciente.nome)}</div>
           <div className="flex-1">
-            <h1 className="text-xl font-bold text-navy-900">{paciente.nome}</h1>
+            <h1 className="font-serif text-2xl font-bold tracking-tight text-navy-900">{paciente.nome}</h1>
             <div className="text-sm text-muted">{paciente.telefone} · {idade(paciente.dataNascimento)} · {paciente.sexo === 'F' ? 'Feminino' : paciente.sexo === 'M' ? 'Masculino' : '—'}</div>
           </div>
           <div className="text-right">
