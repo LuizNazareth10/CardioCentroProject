@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { lerSessao } from '@/lib/auth';
 import { listarAgendamentos } from '@/lib/db';
-import { APARELHOS, EXAMES, MEDICOS } from '@/lib/seed-data';
+import { carregarClinicConfig } from '@/lib/clinic-config';
+import { APARELHOS } from '@/lib/seed-data';
 import { gerarSlots, gerarSlotsAparelho, proporSessao } from '@/lib/scheduling/engine';
 
 // GET /api/disponibilidade?exames=eco-doppler,mapa&medico=med-1&data=2026-07-06&dias=28
@@ -17,6 +18,7 @@ export async function GET(req: NextRequest) {
 
   if (ids.length === 0) return NextResponse.json({ erro: 'informe ao menos um exame' }, { status: 400 });
 
+  const { exames: EXAMES, medicos: MEDICOS } = await carregarClinicConfig();
   const examesSeq = ids.map((id) => EXAMES.find((e) => e.id === id)).filter(Boolean) as typeof EXAMES;
   if (examesSeq.length !== ids.length) {
     return NextResponse.json({ erro: 'exame inválido' }, { status: 400 });

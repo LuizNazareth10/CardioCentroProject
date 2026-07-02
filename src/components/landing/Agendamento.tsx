@@ -12,9 +12,10 @@ const exames = examesAgendamento;
 
 const contatos = [
   { icon: MapPin, title: 'Endereço', lines: [contato.endereco, contato.bairro] },
-  { icon: Phone, title: 'Telefone', lines: [contato.telefone, `WhatsApp: ${contato.whatsapp}`] },
+  { icon: Phone, title: 'Telefone fixo', lines: [contato.telefoneFixo] },
+  { icon: MessageCircle, title: 'WhatsApp', lines: [contato.whatsapp, contato.whatsappDescricao] },
   { icon: Mail, title: 'E-mail', lines: [contato.email] },
-  { icon: Clock, title: 'Horário', lines: ['Seg a Sex · 7h às 19h', 'Sáb · 8h às 12h'] },
+  { icon: Clock, title: 'Horário de atendimento', lines: contato.horarios },
 ];
 
 const mapaSrc = `https://maps.google.com/maps?q=${encodeURIComponent(

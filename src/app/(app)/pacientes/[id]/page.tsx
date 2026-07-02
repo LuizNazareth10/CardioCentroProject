@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { Agendamento, Paciente, Triagem } from '@/lib/types';
+import type { Agendamento, FichaMedica, Paciente, Triagem } from '@/lib/types';
 import { CONVENIOS, EXAMES, MEDICOS } from '@/lib/seed-data';
 import { fmtData, fmtHora, idade, iniciais } from '@/lib/format';
 
@@ -60,7 +60,7 @@ export default function PacientePage({ params }: { params: { id: string } }) {
       </div>
 
       <div className="mt-5">
-        {aba === 'ficha' && <FichaView paciente={paciente} />}
+        {aba === 'ficha' && <FichaView paciente={paciente} onAtualizado={carregar} />}
         {aba === 'historico' && (
           <div className="card divide-y divide-navy-100/70">
             {historico.length === 0 ? <div className="p-8 text-center text-sm text-muted">Nenhuma visita registrada.</div> :
@@ -96,46 +96,143 @@ export default function PacientePage({ params }: { params: { id: string } }) {
   );
 }
 
-function FichaView({ paciente }: { paciente: Paciente }) {
-  const fm = paciente.fichaMedica;
-  const fatores = [
-    ['Hipertensão', fm.hipertensao], ['Diabetes', fm.diabetes], ['Dislipidemia', fm.dislipidemia],
-    ['Tabagismo', fm.tabagismo], ['Etilismo', fm.etilismo], ['Sedentarismo', fm.sedentarismo],
-    ['IAM prévio', fm.iamPrevio], ['AVC prévio', fm.avcPrevio], ['Doença renal', fm.doencaRenal],
-    ['Marca-passo', fm.marcapasso], ['Hist. fam. DAC', fm.histFamiliarDac], ['Hist. fam. morte súbita', fm.histFamiliarMorteSubita],
-  ].filter(([, v]) => v) as [string, boolean][];
+function FichaView({ paciente, onAtualizado }: { paciente: Paciente; onAtualizado: () => void }) {
+  const [editando, setEditando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [fm, setFm] = useState<FichaMedica>(paciente.fichaMedica);
+
+  useEffect(() => { setFm(paciente.fichaMedica); }, [paciente]);
+
+  const fatoresKeys: Array<[keyof FichaMedica, string]> = [
+    ['hipertensao', 'Hipertensão'], ['diabetes', 'Diabetes'], ['dislipidemia', 'Dislipidemia'],
+    ['tabagismo', 'Tabagismo'], ['etilismo', 'Etilismo'], ['sedentarismo', 'Sedentarismo'],
+    ['iamPrevio', 'IAM prévio'], ['avcPrevio', 'AVC prévio'], ['doencaRenal', 'Doença renal'],
+    ['marcapasso', 'Marca-passo'], ['histFamiliarDac', 'Hist. fam. DAC'], ['histFamiliarMorteSubita', 'Hist. fam. morte súbita'],
+  ];
+  const fatores = fatoresKeys.filter(([k]) => fm[k]).map(([, l]) => l);
 
   const imcInfo = classificarIMC(fm.pesoKg, fm.alturaCm);
 
+  async function salvar() {
+    setSalvando(true);
+    setErro('');
+    const res = await fetch(`/api/pacientes/${paciente.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fichaMedica: fm }),
+    });
+    setSalvando(false);
+    if (!res.ok) {
+      const j = await res.json();
+      setErro(j.erro ?? 'Erro ao salvar ficha.');
+      return;
+    }
+    setEditando(false);
+    onAtualizado();
+  }
+
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <div className="card p-5">
-        <h3 className="font-bold text-navy-900">Antropometria</h3>
-        <div className="mt-3 grid grid-cols-3 gap-3 text-center">
-          <Metric label="Peso" valor={fm.pesoKg ? `${fm.pesoKg} kg` : '—'} />
-          <Metric label="Altura" valor={fm.alturaCm ? `${fm.alturaCm} cm` : '—'} />
-          <Metric label="IMC" valor={imcInfo ? imcInfo.valor : '—'} />
-        </div>
-        {imcInfo && (
-          <div className="mt-2 flex justify-center">
-            <span className={`badge ${imcInfo.cls}`}>{imcInfo.label}</span>
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-sm text-muted">
+          {fichaVazia(fm)
+            ? 'Ficha ainda não preenchida — o médico pode completar na primeira consulta.'
+            : 'Ficha médica do paciente.'}
+        </p>
+        {!editando ? (
+          <button type="button" className="btn-primary" onClick={() => setEditando(true)}>Editar ficha</button>
+        ) : (
+          <div className="flex gap-2">
+            <button type="button" className="btn-ghost" onClick={() => { setEditando(false); setFm(paciente.fichaMedica); }}>Cancelar</button>
+            <button type="button" className="btn-red" disabled={salvando} onClick={salvar}>{salvando ? 'Salvando…' : 'Salvar ficha'}</button>
           </div>
         )}
-        <h3 className="mt-5 font-bold text-navy-900">Fatores de risco</h3>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {fatores.length === 0 ? <span className="text-sm text-muted">Nenhum registrado.</span> :
-            fatores.map(([l]) => <span key={l} className={`badge ${FATORES_CRITICOS.includes(l) ? 'bg-brand-red text-white' : 'bg-brand-red/10 text-brand-red-600'}`}>{l}</span>)}
-        </div>
       </div>
-      <div className="card p-5 space-y-3">
-        <Bloco titulo="Queixa principal" texto={fm.queixaPrincipal} />
-        <Bloco titulo="Medicações em uso" texto={fm.medicacoesEmUso} />
-        <Bloco titulo="Alergias" texto={fm.alergias} />
-        <Bloco titulo="Cirurgias prévias" texto={fm.cirurgiasPrevias} />
-        <Bloco titulo="Observações" texto={fm.observacoesGerais} />
+      {erro && <p className="mb-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-brand-red">{erro}</p>}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="card p-5">
+          <h3 className="font-bold text-navy-900">Antropometria</h3>
+          {editando ? (
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Peso (kg)</label>
+                <input className="input" type="number" value={fm.pesoKg ?? ''} onChange={(e) => setFm({ ...fm, pesoKg: e.target.value ? Number(e.target.value) : undefined })} />
+              </div>
+              <div>
+                <label className="label">Altura (cm)</label>
+                <input className="input" type="number" value={fm.alturaCm ?? ''} onChange={(e) => setFm({ ...fm, alturaCm: e.target.value ? Number(e.target.value) : undefined })} />
+              </div>
+            </div>
+          ) : (
+            <div className="mt-3 grid grid-cols-3 gap-3 text-center">
+              <Metric label="Peso" valor={fm.pesoKg ? `${fm.pesoKg} kg` : '—'} />
+              <Metric label="Altura" valor={fm.alturaCm ? `${fm.alturaCm} cm` : '—'} />
+              <Metric label="IMC" valor={imcInfo ? imcInfo.valor : '—'} />
+            </div>
+          )}
+          {imcInfo && !editando && (
+            <div className="mt-2 flex justify-center">
+              <span className={`badge ${imcInfo.cls}`}>{imcInfo.label}</span>
+            </div>
+          )}
+          <h3 className="mt-5 font-bold text-navy-900">Fatores de risco</h3>
+          {editando ? (
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {fatoresKeys.map(([k, l]) => (
+                <label key={k} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={!!fm[k]} onChange={(e) => setFm({ ...fm, [k]: e.target.checked })} />
+                  {l}
+                </label>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {fatores.length === 0 ? <span className="text-sm text-muted">Nenhum registrado.</span> :
+                fatores.map((l) => <span key={l} className={`badge ${FATORES_CRITICOS.includes(l) ? 'bg-brand-red text-white' : 'bg-brand-red/10 text-brand-red-600'}`}>{l}</span>)}
+            </div>
+          )}
+        </div>
+        <div className="card p-5 space-y-3">
+          {editando ? (
+            <>
+              <CampoFicha label="Queixa principal" value={fm.queixaPrincipal ?? ''} onChange={(v) => setFm({ ...fm, queixaPrincipal: v })} />
+              <CampoFicha label="Medicações em uso" value={fm.medicacoesEmUso ?? ''} onChange={(v) => setFm({ ...fm, medicacoesEmUso: v })} />
+              <CampoFicha label="Alergias" value={fm.alergias ?? ''} onChange={(v) => setFm({ ...fm, alergias: v })} />
+              <CampoFicha label="Cirurgias prévias" value={fm.cirurgiasPrevias ?? ''} onChange={(v) => setFm({ ...fm, cirurgiasPrevias: v })} />
+              <CampoFicha label="Observações" value={fm.observacoesGerais ?? ''} onChange={(v) => setFm({ ...fm, observacoesGerais: v })} />
+            </>
+          ) : (
+            <>
+              <Bloco titulo="Queixa principal" texto={fm.queixaPrincipal} />
+              <Bloco titulo="Medicações em uso" texto={fm.medicacoesEmUso} />
+              <Bloco titulo="Alergias" texto={fm.alergias} />
+              <Bloco titulo="Cirurgias prévias" texto={fm.cirurgiasPrevias} />
+              <Bloco titulo="Observações" texto={fm.observacoesGerais} />
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
+}
+
+function CampoFicha({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <textarea className="input min-h-[72px] resize-none text-sm" value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+function fichaVazia(fm: FichaMedica): boolean {
+  const temBool = ['hipertensao', 'diabetes', 'dislipidemia', 'tabagismo', 'etilismo', 'sedentarismo',
+    'iamPrevio', 'avcPrevio', 'doencaRenal', 'marcapasso', 'histFamiliarDac', 'histFamiliarMorteSubita']
+    .some((k) => fm[k as keyof FichaMedica]);
+  const temTexto = fm.queixaPrincipal || fm.medicacoesEmUso || fm.alergias || fm.cirurgiasPrevias || fm.observacoesGerais;
+  return !fm.pesoKg && !fm.alturaCm && !temBool && !temTexto;
 }
 
 function TriagemCard({ t, anterior, nomeExame }: { t: Triagem; anterior?: Triagem; nomeExame: (i: string) => string }) {

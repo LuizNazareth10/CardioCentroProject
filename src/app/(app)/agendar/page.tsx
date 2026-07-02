@@ -52,6 +52,11 @@ function AgendarConteudo() {
   const [erro, setErro] = useState('');
   const [avisoExame, setAvisoExame] = useState('');
   const [pendente, setPendente] = useState<Array<{ exameId: string; medicoId: string; inicio: string; fim: string }> | null>(null);
+  const [modoPaciente, setModoPaciente] = useState<'buscar' | 'cadastrar'>('buscar');
+  const [novoPaciente, setNovoPaciente] = useState({
+    nome: '', telefone: '', dataNascimento: '', convenioId: 'particular', cpf: '', sexo: '',
+  });
+  const [erroCadastro, setErroCadastro] = useState('');
 
   const modoAparelho = !!aparelhoCfg || exames.some((id) => EXAMES.find((e) => e.id === id)?.aparelho);
 
@@ -63,6 +68,37 @@ function AgendarConteudo() {
     }, 250);
     return () => clearTimeout(id);
   }, [busca]);
+
+  async function cadastrarPacienteRapido() {
+    setErroCadastro('');
+    setCarregando(true);
+    try {
+      const res = await fetch('/api/pacientes?rapido=1', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome: novoPaciente.nome,
+          telefone: novoPaciente.telefone,
+          dataNascimento: novoPaciente.dataNascimento,
+          convenioId: novoPaciente.convenioId,
+          cpf: novoPaciente.cpf || undefined,
+          sexo: novoPaciente.sexo || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setErroCadastro(json.erro ?? 'Não foi possível cadastrar o paciente.');
+        return;
+      }
+      setPaciente(json.paciente);
+      setConvenioId(json.paciente.convenioId ?? 'particular');
+      setPasso(2);
+    } catch {
+      setErroCadastro('Falha ao conectar com o servidor.');
+    } finally {
+      setCarregando(false);
+    }
+  }
 
   function addExame(id: string) {
     setAvisoExame('');
@@ -221,23 +257,96 @@ function AgendarConteudo() {
 
       {passo === 1 && (
         <div className="mt-4 card p-5">
-          <label className="label">Buscar paciente (nome, CPF ou telefone)</label>
-          <input className="input" autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Digite para buscar…" />
-          <div className="mt-3 divide-y divide-navy-100/70">
-            {resultados.map((p) => (
-              <button key={p.id} onClick={() => { setPaciente(p); setConvenioId(p.convenioId ?? 'particular'); setPasso(2); }}
-                className="flex w-full items-center justify-between py-3 text-left hover:bg-navy-50/50 rounded-lg px-2">
+          <div className="flex gap-2 rounded-xl bg-navy-50 p-1">
+            <button
+              type="button"
+              onClick={() => setModoPaciente('buscar')}
+              className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${modoPaciente === 'buscar' ? 'bg-white text-navy-900 shadow-sm' : 'text-muted'}`}
+            >
+              Buscar paciente
+            </button>
+            <button
+              type="button"
+              onClick={() => setModoPaciente('cadastrar')}
+              className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${modoPaciente === 'cadastrar' ? 'bg-white text-navy-900 shadow-sm' : 'text-muted'}`}
+            >
+              Cadastro rápido
+            </button>
+          </div>
+
+          {modoPaciente === 'buscar' ? (
+            <>
+              <label className="label mt-4">Buscar paciente (nome, CPF ou telefone)</label>
+              <input className="input" autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Digite para buscar…" />
+              <div className="mt-3 divide-y divide-navy-100/70">
+                {resultados.map((p) => (
+                  <button key={p.id} onClick={() => { setPaciente(p); setConvenioId(p.convenioId ?? 'particular'); setPasso(2); }}
+                    className="flex w-full items-center justify-between py-3 text-left hover:bg-navy-50/50 rounded-lg px-2">
+                    <div>
+                      <div className="text-sm font-semibold text-ink">{p.nome}</div>
+                      <div className="text-xs text-muted">{p.telefone}</div>
+                    </div>
+                    <span className="text-sm text-navy-700">Selecionar →</span>
+                  </button>
+                ))}
+              </div>
+              {busca.trim().length >= 2 && resultados.length === 0 && (
+                <p className="mt-3 text-sm text-muted">Nenhum paciente encontrado. Use o cadastro rápido ao lado.</p>
+              )}
+            </>
+          ) : (
+            <div className="mt-4 space-y-4">
+              <p className="text-sm text-muted">
+                Dados mínimos para agendar. A ficha médica completa será preenchida pelo médico na primeira consulta.
+              </p>
+              {erroCadastro && (
+                <p className="rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-brand-red">{erroCadastro}</p>
+              )}
+              <div>
+                <label className="label">Nome completo *</label>
+                <input className="input" value={novoPaciente.nome} onChange={(e) => setNovoPaciente((v) => ({ ...v, nome: e.target.value }))} />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <div className="text-sm font-semibold text-ink">{p.nome}</div>
-                  <div className="text-xs text-muted">{p.telefone}</div>
+                  <label className="label">Telefone *</label>
+                  <input className="input" type="tel" value={novoPaciente.telefone} onChange={(e) => setNovoPaciente((v) => ({ ...v, telefone: e.target.value }))} placeholder="(32) 99999-0000" />
                 </div>
-                <span className="text-sm text-navy-700">Selecionar →</span>
+                <div>
+                  <label className="label">Data de nascimento *</label>
+                  <input className="input" type="date" value={novoPaciente.dataNascimento} onChange={(e) => setNovoPaciente((v) => ({ ...v, dataNascimento: e.target.value }))} />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="label">Convênio *</label>
+                  <select className="input" value={novoPaciente.convenioId} onChange={(e) => setNovoPaciente((v) => ({ ...v, convenioId: e.target.value }))}>
+                    {CONVENIOS.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Sexo (opcional)</label>
+                  <select className="input" value={novoPaciente.sexo} onChange={(e) => setNovoPaciente((v) => ({ ...v, sexo: e.target.value }))}>
+                    <option value="">Não informado</option>
+                    <option value="F">Feminino</option>
+                    <option value="M">Masculino</option>
+                    <option value="O">Outro</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="label">CPF (opcional)</label>
+                <input className="input" value={novoPaciente.cpf} onChange={(e) => setNovoPaciente((v) => ({ ...v, cpf: e.target.value }))} />
+              </div>
+              <button
+                type="button"
+                className="btn-red w-full"
+                disabled={carregando || !novoPaciente.nome.trim() || !novoPaciente.telefone.trim() || !novoPaciente.dataNascimento}
+                onClick={cadastrarPacienteRapido}
+              >
+                {carregando ? 'Cadastrando…' : 'Cadastrar e continuar'}
               </button>
-            ))}
-          </div>
-          <div className="mt-4 rounded-xl bg-navy-50 p-3 text-sm text-muted">
-            Não encontrou? <a href="/pacientes/novo" className="font-semibold text-navy-700 hover:underline">Cadastrar novo paciente</a>
-          </div>
+            </div>
+          )}
         </div>
       )}
 

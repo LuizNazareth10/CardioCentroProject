@@ -3,8 +3,7 @@ import { brandAssets } from './content';
 
 /**
  * Lockup oficial da marca para a landing.
- * `variant="full"` exibe logo + texto; `variant="mark"` só o ícone.
- * `emphasis="header"` aumenta tipografia para o cabeçalho fixo.
+ * `variant="full"` exibe logo + texto; `variant="mark"` só o ícone circular.
  */
 export function BrandLogo({
   tone = 'light',
@@ -25,9 +24,7 @@ export function BrandLogo({
   return (
     <div className={`flex items-center ${isHeader ? 'gap-3.5' : 'gap-3'}`}>
       <div
-        className={`relative flex-none overflow-hidden shadow-soft ring-1 ring-black/5 ${
-          isHeader ? 'rounded-2xl' : 'rounded-2xl'
-        }`}
+        className="relative flex-none overflow-hidden rounded-full shadow-soft ring-2 ring-white/80"
         style={{ width: markSize, height: markSize }}
       >
         <Image
@@ -35,15 +32,15 @@ export function BrandLogo({
           alt="Cardiocentro"
           fill
           sizes={`${markSize}px`}
-          className="object-cover"
+          className="object-cover object-center scale-[1.55]"
           priority={isHeader}
         />
       </div>
       {variant === 'full' && (
         <div className="min-w-0 leading-tight">
           <div
-            className={`whitespace-nowrap font-serif font-bold tracking-tight ${title} ${
-              isHeader ? 'text-[1.55rem] leading-none xl:text-[1.7rem]' : 'text-[19px]'
+            className={`whitespace-nowrap font-brand font-extrabold tracking-tight ${title} ${
+              isHeader ? 'text-[1.65rem] leading-none xl:text-[1.85rem]' : 'text-[20px]'
             }`}
           >
             Cardio<span className="text-cardio">centro</span>
@@ -51,7 +48,7 @@ export function BrandLogo({
           <div
             className={`whitespace-nowrap font-semibold uppercase ${sub} ${
               isHeader
-                ? 'mt-1 text-[10px] tracking-[0.12em] xl:text-[11px]'
+                ? 'mt-1 text-[9px] tracking-[0.14em] xl:text-[10px]'
                 : 'text-[9px] tracking-[0.16em]'
             }`}
           >

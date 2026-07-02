@@ -69,14 +69,16 @@ export function Footer() {
                 {contato.enderecoCompleto}
               </li>
               <li>
-                <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2.5 transition-colors hover:text-cardio-400">
-                  <MessageCircle className="h-4 w-4 flex-none text-cardio-400" aria-hidden />
-                  WhatsApp: {contato.whatsapp}
+                <a href={contato.telefoneLink} className="flex items-center gap-2.5 transition-colors hover:text-cardio-400">
+                  <Phone className="h-4 w-4 flex-none text-cardio-400" aria-hidden />
+                  {contato.telefoneFixo}
                 </a>
               </li>
-              <li className="flex items-center gap-2.5">
-                <Phone className="h-4 w-4 flex-none text-cardio-400" aria-hidden />
-                {contato.telefone}
+              <li>
+                <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2.5 transition-colors hover:text-cardio-400">
+                  <MessageCircle className="h-4 w-4 flex-none text-cardio-400" aria-hidden />
+                  WhatsApp: {contato.whatsapp} ({contato.whatsappDescricao})
+                </a>
               </li>
               <li className="flex items-center gap-2.5">
                 <Mail className="h-4 w-4 flex-none text-cardio-400" aria-hidden />

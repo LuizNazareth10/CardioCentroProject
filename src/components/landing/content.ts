@@ -24,8 +24,8 @@ export const brandAssets = {
 // Imagens locais (public/img) — cardiologia, sem rostos.
 export const photos = {
   hero: '/img/hero-cardio.jpg',
-  about: '/img/about-estetoscopio-mesa.jpg',
-  aboutSecondary: '/img/about-monitor-linha.jpg',
+  about: '/img/FotoClinica.jpeg',
+  aboutSecondary: '/img/FotoClinicaFachada.jpg',
   cta: '/img/hero-cardio.jpg',
 };
 
@@ -125,7 +125,6 @@ export const nav = [
   { label: 'Exames', href: '#especialidades' },
   { label: 'A clínica', href: '#sobre' },
   { label: 'Corpo\u00A0médico', href: '#corpo-medico' },
-  { label: 'Depoimentos', href: '#depoimentos' },
   { label: 'Contato', href: '#agendamento' },
 ];
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { lerSessao } from '@/lib/auth';
 import { criarPaciente, listarPacientes } from '@/lib/db';
-import { sanitizarPaciente, ValidationError } from '@/lib/validation';
+import { sanitizarPaciente, sanitizarPacienteAgendamento, ValidationError } from '@/lib/validation';
 
 export async function GET(req: NextRequest) {
   if (!(await lerSessao())) return NextResponse.json({ erro: 'não autorizado' }, { status: 401 });
@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   if (!(await lerSessao())) return NextResponse.json({ erro: 'não autorizado' }, { status: 401 });
+  const rapido = new URL(req.url).searchParams.get('rapido') === '1';
   let raw: unknown;
   try {
     raw = await req.json();
@@ -19,7 +20,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ erro: 'corpo da requisição inválido' }, { status: 400 });
   }
   try {
-    const dados = sanitizarPaciente(raw as Record<string, unknown>);
+    const dados = rapido
+      ? sanitizarPacienteAgendamento(raw as Record<string, unknown>)
+      : sanitizarPaciente(raw as Record<string, unknown>);
     const paciente = await criarPaciente(dados);
     return NextResponse.json({ paciente });
   } catch (e) {

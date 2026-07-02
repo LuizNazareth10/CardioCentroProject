@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter, Playfair_Display } from 'next/font/google';
+import { Inter, Nunito, Playfair_Display } from 'next/font/google';
 import './globals.css';
 import '@/lib/env'; // valida variáveis de ambiente no boot do servidor
 
@@ -14,6 +14,13 @@ const playfair = Playfair_Display({
   subsets: ['latin'],
   weight: ['500', '600', '700', '800'],
   variable: '--font-playfair',
+  display: 'swap',
+});
+
+const nunito = Nunito({
+  subsets: ['latin'],
+  weight: ['600', '700', '800'],
+  variable: '--font-nunito',
   display: 'swap',
 });
 
@@ -37,7 +44,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${inter.variable} ${playfair.variable}`}>
+    <html lang="pt-BR" className={`${inter.variable} ${playfair.variable} ${nunito.variable}`}>
       <body className="font-sans antialiased">{children}</body>
     </html>
   );

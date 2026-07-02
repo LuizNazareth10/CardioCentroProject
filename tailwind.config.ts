@@ -56,6 +56,7 @@ const config: Config = {
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
         serif: ['var(--font-playfair)', 'Georgia', 'Cambria', 'serif'],
+        brand: ['var(--font-nunito)', 'Nunito', 'system-ui', 'sans-serif'],
       },
       fontSize: {
         // escala editorial para headlines de impacto

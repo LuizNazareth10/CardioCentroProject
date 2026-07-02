@@ -6,6 +6,7 @@
   /* Tipografia */
   --font-inter: 'Inter', system-ui, sans-serif;
   --font-playfair: 'Playfair Display', Georgia, serif;
+  --font-nunito: 'Nunito', system-ui, sans-serif;
 
   /* === Design tokens da marca (derivados do logo) === */
   --color-cardio-red: #dd1724;

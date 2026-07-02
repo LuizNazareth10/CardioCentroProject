@@ -16,24 +16,24 @@ export function Sobre() {
     <section id="sobre" className="scroll-mt-24 bg-white py-24 lg:py-28">
       <div className="mx-auto grid max-w-7xl items-center gap-14 px-5 lg:grid-cols-2 lg:px-8">
         <Reveal direction="right" className="relative">
-          <div className="grid gap-4 sm:grid-cols-[1.08fr_0.92fr]">
-            <div className="group relative overflow-hidden rounded-[2rem] shadow-lift ring-1 ring-navyblue-100/80">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="group relative aspect-[4/5] overflow-hidden rounded-[2rem] shadow-lift ring-1 ring-navyblue-100/80">
               <Image
                 src={photos.about}
-                alt="Estetoscópio cardiológico em superfície reflexiva"
-                width={520}
-                height={640}
-                className="h-[300px] w-full object-cover object-center transition duration-700 group-hover:scale-[1.03] sm:h-[380px]"
+                alt="Ambiente interno da clínica Cardiocentro"
+                fill
+                sizes="(max-width: 640px) 45vw, 280px"
+                className="object-cover object-center transition duration-700 group-hover:scale-[1.03]"
               />
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-navyblue-900/25 via-transparent to-transparent" />
             </div>
-            <div className="group relative overflow-hidden rounded-[2rem] shadow-lift ring-1 ring-navyblue-100/80 sm:mt-12">
+            <div className="group relative aspect-[4/5] overflow-hidden rounded-[2rem] shadow-lift ring-1 ring-navyblue-100/80">
               <Image
                 src={photos.aboutSecondary}
-                alt="Monitor cardíaco com traçado de eletrocardiograma"
-                width={420}
-                height={520}
-                className="h-[240px] w-full object-cover object-center transition duration-700 group-hover:scale-[1.03] sm:h-[320px]"
+                alt="Fachada da clínica Cardiocentro em Juiz de Fora"
+                fill
+                sizes="(max-width: 640px) 45vw, 280px"
+                className="object-cover object-[center_35%] transition duration-700 group-hover:scale-[1.03]"
               />
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-navyblue-900/30 via-navyblue-900/5 to-transparent" />
             </div>

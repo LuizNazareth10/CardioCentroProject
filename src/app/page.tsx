@@ -4,7 +4,6 @@ import { Especialidades } from '@/components/landing/Especialidades';
 import { Sobre } from '@/components/landing/Sobre';
 import { CorpoMedico } from '@/components/landing/CorpoMedico';
 import { Diferenciais } from '@/components/landing/Diferenciais';
-import { Depoimentos } from '@/components/landing/Depoimentos';
 import { Agendamento } from '@/components/landing/Agendamento';
 import { Footer } from '@/components/landing/Footer';
 
@@ -24,7 +23,6 @@ export default function LandingPage() {
         <Sobre />
         <CorpoMedico />
         <Diferenciais />
-        <Depoimentos />
         <Agendamento />
       </main>
       <Footer />

@@ -205,19 +205,22 @@ export const CONTATO = {
   endereco: 'Rua Delfim Moreira, 165',
   bairro: 'Centro · Juiz de Fora — MG',
   enderecoCompleto: 'Rua Delfim Moreira, 165 — Centro, Juiz de Fora — MG',
-  email: 'contato@cardiocentro.com.br',
-  // O único número informado pela clínica é o WhatsApp; ele é usado
-  // tanto como telefone de contato quanto para o botão do WhatsApp.
-  telefoneFixo: '(32) 99995-2138',
-  telefone: '(32) 99995-2138',
-  telefoneLink: 'tel:+5532999952138',
+  email: 'cardiocentrojf@hotmail.com',
+  telefoneFixo: '(32) 3215-8744',
+  telefone: '(32) 3215-8744',
+  telefoneLink: 'tel:+553232158744',
   whatsapp: '(32) 99995-2138',
+  whatsappDescricao: 'Exclusivo para mensagens',
   whatsappNumero: WHATSAPP_NUMERO,
   whatsappMensagem: WHATSAPP_MENSAGEM,
   whatsappLink: `https://wa.me/${WHATSAPP_NUMERO}?text=${encodeURIComponent(WHATSAPP_MENSAGEM)}`,
+  horarios: [
+    'Segunda a quinta-feira: 08h às 18h',
+    'Sexta-feira: 08h às 17h',
+    'Sábado e domingo: Fechado',
+  ],
   instagram: 'https://www.instagram.com/cardiocentro.jf/',
   instagramHandle: '@cardiocentro.jf',
-  // usado no embed do mapa (Google Maps sem chave de API)
   mapaQuery: 'Rua Delfim Moreira, 165, Centro, Juiz de Fora - MG',
 } as const;
 
