@@ -3,19 +3,12 @@
 import { useState, type FormEvent } from 'react';
 import { MapPin, Phone, Mail, Clock, CalendarCheck, CheckCircle2, Loader2, MessageCircle } from 'lucide-react';
 import { Reveal } from './Reveal';
-import { contato, whatsappLink } from './content';
+import { contato, whatsappLink, examesAgendamento } from './content';
 
 type Fields = { nome: string; telefone: string; email: string; exame: string; mensagem: string };
 type Errors = Partial<Record<keyof Fields, string>>;
 
-const exames = [
-  'Consulta cardiológica',
-  'Ecocardiograma',
-  'Eletrocardiograma',
-  'Teste ergométrico',
-  'Holter 24h',
-  'MAPA 24h',
-];
+const exames = examesAgendamento;
 
 const contatos = [
   { icon: MapPin, title: 'Endereço', lines: [contato.endereco, contato.bairro] },

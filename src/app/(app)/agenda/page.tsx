@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { APARELHOS, MEDICOS, EXAMES } from '@/lib/seed-data';
 import type { Agendamento, Medico, StatusAgendamento, TipoAparelho, Weekday } from '@/lib/types';
 import { hhmmToMin, minToHHMM, semanaQuinzenalAtiva, weekdayOf } from '@/lib/scheduling/time';
@@ -21,12 +21,34 @@ function nowMinJF(): number {
 }
 
 export default function AgendaPage() {
+  return (
+    <Suspense fallback={<div className="card p-8 text-center text-sm text-muted">Carregando agenda…</div>}>
+      <AgendaConteudo />
+    </Suspense>
+  );
+}
+
+function AgendaConteudo() {
   const router = useRouter();
-  const [data, setData] = useState(hojeJF());
+  const searchParams = useSearchParams();
+  const dataParam = searchParams.get('data');
+  const novoId = searchParams.get('novo');
+
+  const [data, setData] = useState(dataParam || hojeJF());
   const [ags, setAgs] = useState<Agendamento[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [acaoAg, setAcaoAg] = useState<Agendamento | null>(null);
+  const [destaqueId, setDestaqueId] = useState<string | null>(novoId);
+  const [msgSucesso, setMsgSucesso] = useState('');
   const [tick, setTick] = useState(0); // move a linha de "agora"
+
+  useEffect(() => {
+    if (dataParam) setData(dataParam);
+  }, [dataParam]);
+
+  useEffect(() => {
+    if (novoId) setDestaqueId(novoId);
+  }, [novoId]);
 
   const carregar = useCallback(async (d: string) => {
     setCarregando(true);
@@ -38,6 +60,20 @@ export default function AgendaPage() {
 
   useEffect(() => { carregar(data); }, [data, carregar]);
   useEffect(() => { const id = setInterval(() => setTick((t) => t + 1), 60_000); return () => clearInterval(id); }, []);
+
+  useEffect(() => {
+    if (!novoId || carregando) return;
+    const ag = ags.find((a) => a.id === novoId);
+    if (!ag) return;
+    const exameNome = EXAMES.find((e) => e.id === ag.exameId)?.nome ?? ag.exameId;
+    setMsgSucesso(`Agendamento criado: ${ag.pacienteNome} — ${exameNome} às ${ag.inicio.slice(11, 16)}`);
+    const t = setTimeout(() => {
+      router.replace(`/agenda?data=${data}`, { scroll: false });
+      setDestaqueId(ag.id);
+    }, 100);
+    const fade = setTimeout(() => setMsgSucesso(''), 8000);
+    return () => { clearTimeout(t); clearTimeout(fade); };
+  }, [novoId, carregando, ags, data, router]);
 
   const wd = weekdayOf(data);
   const semanaAtiva = semanaQuinzenalAtiva(data);
@@ -135,7 +171,7 @@ export default function AgendaPage() {
     <button
       type="button"
       onClick={() => setAcaoAg(ag)}
-      className={`absolute inset-x-0.5 overflow-hidden rounded-lg px-2.5 py-1.5 text-left text-white shadow-soft transition hover:brightness-110 ${statusCor[ag.status]}`}
+      className={`absolute inset-x-0.5 overflow-hidden rounded-lg px-2.5 py-1.5 text-left text-white shadow-soft transition hover:brightness-110 ${statusCor[ag.status]} ${destaqueId === ag.id ? 'ring-2 ring-cardio ring-offset-2 animate-pulse' : ''}`}
       style={{ height: `calc(${span * ROW_H}px - 4px)` }}
       title={`${ag.pacienteNome} · ${nomeExame(ag.exameId)} (${ag.status})`}
     >
@@ -163,6 +199,15 @@ export default function AgendaPage() {
           <button className="btn-ghost" onClick={() => setData(hojeJF())}>Hoje</button>
         </div>
       </header>
+
+      {msgSucesso && (
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-success/30 bg-success/10 px-4 py-3 text-sm font-medium text-success">
+          <span>✓ {msgSucesso}</span>
+          <button type="button" className="text-xs font-semibold text-success/80 hover:underline" onClick={() => setMsgSucesso('')}>
+            Fechar
+          </button>
+        </div>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted">
         <span className="flex items-center gap-1.5"><i className="slot-livre h-3.5 w-3.5 rounded ring-1 ring-inset ring-success/30" /> Livre · clique para agendar</span>

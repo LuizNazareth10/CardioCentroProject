@@ -7,24 +7,24 @@ const config: Config = {
       colors: {
         // === Paleta 2026 derivada do logo (landing) ===
         cardio: {
-          DEFAULT: '#FF3B46', // vermelho primário — CTAs, acentos
-          50: '#FFF1F2',
-          100: '#FFE0E2',
-          400: '#FF6169',
-          500: '#FF3B46',
-          600: '#E62A35',
-          700: '#C21E28',
+          DEFAULT: '#DD1724', // vermelho oficial da logo
+          50: '#FFF0F1',
+          100: '#FFD8DB',
+          400: '#E82E3A',
+          500: '#DD1724',
+          600: '#C0101C',
+          700: '#9E0D17',
         },
         navyblue: {
-          DEFAULT: '#2C3E7F', // azul profundo — confiança/autoridade
-          50: '#EEF1F9',
-          100: '#DBE1F1',
-          400: '#5A6BB0',
-          500: '#3B4E93',
-          600: '#2C3E7F',
-          700: '#233265',
-          800: '#1A2650',
-          900: '#111938',
+          DEFAULT: '#05132E', // azul-marinho oficial da logo
+          50: '#E8EBF0',
+          100: '#C5CCD9',
+          400: '#1A3A6B',
+          500: '#0F2147',
+          600: '#0A193A',
+          700: '#06142F',
+          800: '#041531',
+          900: '#020A18',
         },
         offwhite: '#FAFAF8',
         // Estados
@@ -37,20 +37,20 @@ const config: Config = {
         // (navy → navyblue, brand.red → cardio) para que a área restrita
         // herde as mesmas cores da marca sem reescrever cada tela.
         navy: {
-          DEFAULT: '#2C3E7F',
-          50: '#EEF1F9',
-          100: '#DBE1F1',
-          600: '#2C3E7F',
-          700: '#233265',
-          900: '#111938',
+          DEFAULT: '#05132E',
+          50: '#E8EBF0',
+          100: '#C5CCD9',
+          600: '#05132E',
+          700: '#06142F',
+          900: '#020A18',
         },
         brand: {
-          red: '#FF3B46',
-          'red-600': '#E62A35',
+          red: '#DD1724',
+          'red-600': '#C0101C',
         },
         cream: '#FAFAF8',
         paper: '#FFFFFF',
-        ink: '#111938',
+        ink: '#020A18',
         muted: '#6B7280',
       },
       fontFamily: {
@@ -73,9 +73,9 @@ const config: Config = {
       borderRadius: { xl2: '1.25rem', '3xl': '1.75rem', '4xl': '2.25rem' },
       backgroundImage: {
         'hero-radial':
-          'radial-gradient(120% 90% at 15% 10%, rgba(90,107,176,0.55), transparent 55%), radial-gradient(120% 90% at 95% 20%, rgba(255,59,70,0.22), transparent 50%)',
+          'radial-gradient(120% 90% at 15% 10%, rgba(15,33,71,0.55), transparent 55%), radial-gradient(120% 90% at 95% 20%, rgba(221,23,36,0.18), transparent 50%)',
         'navy-fade':
-          'linear-gradient(160deg, #233265 0%, #2C3E7F 45%, #3B4E93 100%)',
+          'linear-gradient(160deg, #020A18 0%, #05132E 45%, #0F2147 100%)',
       },
       keyframes: {
         'fade-up': {

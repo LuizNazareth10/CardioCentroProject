@@ -16,13 +16,18 @@ import { getFirestore } from 'firebase-admin/firestore';
 // initialized".
 const global_ = globalThis as unknown as { __cardiocentroFirestoreApp?: App; __cardiocentroFirestoreSettingsAplicados?: boolean };
 
+function envLimpo(nome: string): string | undefined {
+  const v = process.env[nome]?.trim();
+  return v || undefined;
+}
+
 function getApp(): App {
   if (global_.__cardiocentroFirestoreApp) return global_.__cardiocentroFirestoreApp;
   if (getApps().length) {
     global_.__cardiocentroFirestoreApp = getApps()[0]!;
     return global_.__cardiocentroFirestoreApp;
   }
-  const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_B64;
+  const b64 = envLimpo('GOOGLE_SERVICE_ACCOUNT_B64');
   if (!b64) throw new Error('GOOGLE_SERVICE_ACCOUNT_B64 não configurada');
   let serviceAccount: Record<string, unknown>;
   try {
@@ -35,9 +40,13 @@ function getApp(): App {
         'Confirme que colou o CONTEÚDO BASE64 (ex.: serviceAccount.b64.txt), e não o JSON cru da service account.',
     );
   }
+  const projectId =
+    envLimpo('GCP_PROJECT_ID') ??
+    (typeof serviceAccount.project_id === 'string' ? serviceAccount.project_id.trim() : undefined);
+  if (!projectId) throw new Error('GCP_PROJECT_ID não configurada (nem presente no JSON da service account)');
   global_.__cardiocentroFirestoreApp = initializeApp({
     credential: cert(serviceAccount as never),
-    projectId: process.env.GCP_PROJECT_ID,
+    projectId,
   });
   return global_.__cardiocentroFirestoreApp;
 }

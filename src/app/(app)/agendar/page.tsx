@@ -10,6 +10,13 @@ import { hhmmToMin, toISO } from '@/lib/scheduling/time';
 
 type Passo = 1 | 2 | 3;
 
+function hojeJF(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+}
+
+const examesMedico = EXAMES.filter((e) => e.ativo && !e.aparelho);
+const examesAparelho = EXAMES.filter((e) => e.ativo && e.aparelho);
+
 export default function AgendarPage() {
   return (
     <Suspense fallback={<div className="card p-8 text-center text-sm text-muted">Carregando…</div>}>
@@ -22,7 +29,6 @@ function AgendarConteudo() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // slot forçado (veio de um clique num horário livre na agenda)
   const medicoForcadoId = searchParams.get('medico') || '';
   const aparelhoForcado = (searchParams.get('aparelho') || '') as TipoAparelho | '';
   const dataForcada = searchParams.get('data') || '';
@@ -30,28 +36,25 @@ function AgendarConteudo() {
   const slotForcado = !!((medicoForcadoId || aparelhoForcado) && dataForcada && horaForcada);
   const medicoForcado = MEDICOS.find((m) => m.id === medicoForcadoId);
   const aparelhoCfg = aparelhoForcado ? APARELHOS[aparelhoForcado] : null;
-  // rótulo do "prestador" do slot forçado (médico OU aparelho)
   const prestadorForcado = medicoForcado?.nome ?? aparelhoCfg?.nome ?? '';
 
   const [passo, setPasso] = useState<Passo>(1);
-
-  // passo 1
   const [busca, setBusca] = useState('');
   const [resultados, setResultados] = useState<Paciente[]>([]);
   const [paciente, setPaciente] = useState<Paciente | null>(null);
-
-  // passo 2 — se veio de um aparelho, o exame já está fixado
   const [exames, setExames] = useState<string[]>(aparelhoCfg ? [aparelhoCfg.exameId] : []);
   const [convenioId, setConvenioId] = useState('particular');
   const [medicoPref, setMedicoPref] = useState(medicoForcadoId);
-
-  // passo 3
+  const [dataBusca, setDataBusca] = useState(hojeJF());
   const [slots, setSlots] = useState<SlotDisponivel[]>([]);
   const [proposta, setProposta] = useState<Proposta | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
+  const [avisoExame, setAvisoExame] = useState('');
+  const [pendente, setPendente] = useState<Array<{ exameId: string; medicoId: string; inicio: string; fim: string }> | null>(null);
 
-  // ---- busca de paciente ----
+  const modoAparelho = !!aparelhoCfg || exames.some((id) => EXAMES.find((e) => e.id === id)?.aparelho);
+
   useEffect(() => {
     if (busca.trim().length < 2) { setResultados([]); return; }
     const id = setTimeout(async () => {
@@ -61,20 +64,45 @@ function AgendarConteudo() {
     return () => clearTimeout(id);
   }, [busca]);
 
-  function addExame(id: string) { setExames((e) => [...e, id]); }
-  function removeExame(idx: number) { setExames((e) => e.filter((_, i) => i !== idx)); }
+  function addExame(id: string) {
+    setAvisoExame('');
+    const exame = EXAMES.find((e) => e.id === id);
+    if (!exame) return;
 
-  /** duração de um exame no contexto do slot forçado (médico ou aparelho) */
+    if (exame.aparelho) {
+      if (exames.some((eid) => !EXAMES.find((e) => e.id === eid)?.aparelho)) {
+        setAvisoExame('MAPA e Holter não podem ser combinados com exames de médico na mesma marcação. Remova os exames de médico primeiro.');
+        return;
+      }
+      if (exames.length >= 1) {
+        setAvisoExame('Marque apenas um exame de aparelho (MAPA ou Holter) por vez.');
+        return;
+      }
+      setExames([id]);
+      return;
+    }
+
+    if (exames.some((eid) => EXAMES.find((e) => e.id === eid)?.aparelho)) {
+      setAvisoExame('Remova o exame de aparelho (MAPA/Holter) antes de adicionar exames com médico.');
+      return;
+    }
+    setExames((e) => [...e, id]);
+  }
+
+  function removeExame(idx: number) {
+    setAvisoExame('');
+    setExames((e) => e.filter((_, i) => i !== idx));
+  }
+
   function duracaoNoSlot(exameId: string): number {
     const exame = EXAMES.find((e) => e.id === exameId)!;
     if (aparelhoCfg) return aparelhoCfg.duracaoMin;
     return medicoForcado?.duracoes?.[exameId] ?? exame.duracaoMin;
   }
 
-  /** monta a proposta direto no horário clicado na agenda, sem buscar disponibilidade */
   function montarPropostaDoSlot() {
     if (!medicoForcado && !aparelhoCfg) return;
-    const prestadorId = medicoForcado?.id ?? aparelhoForcado; // 'mapa'|'holter' se aparelho
+    const prestadorId = medicoForcado?.id ?? aparelhoForcado;
     const prestadorNome = prestadorForcado;
     let cursor = hhmmToMin(horaForcada);
     const itens: ItemProposta[] = exames.map((id) => {
@@ -96,30 +124,55 @@ function AgendarConteudo() {
     setPasso(3);
   }
 
-  async function buscarDisponibilidade() {
+  async function buscarDisponibilidade(dataOverride?: string) {
     if (slotForcado) return montarPropostaDoSlot();
-    setErro(''); setCarregando(true); setSlots([]); setProposta(null);
-    const params = new URLSearchParams({ exames: exames.join(',') });
-    if (medicoPref) params.set('medico', medicoPref);
-    const res = await fetch(`/api/disponibilidade?${params}`);
-    const json = await res.json();
-    if (exames.length === 1) setSlots(json.slots ?? []);
-    else setProposta(json.proposta ?? null);
-    setCarregando(false);
-    setPasso(3);
+    const data = dataOverride ?? dataBusca;
+    setDataBusca(data);
+    setErro('');
+    setCarregando(true);
+    setSlots([]);
+    setProposta(null);
+
+    const params = new URLSearchParams({ exames: exames.join(','), data, dias: modoAparelho ? '42' : '28' });
+    if (medicoPref && !modoAparelho) params.set('medico', medicoPref);
+
+    try {
+      const res = await fetch(`/api/disponibilidade?${params}`);
+      const json = await res.json();
+      if (!res.ok) {
+        setErro(json.erro ?? 'Não foi possível buscar horários.');
+        return;
+      }
+      if (exames.length === 1) setSlots(json.slots ?? []);
+      else setProposta(json.proposta ?? null);
+      setPasso(3);
+    } catch {
+      setErro('Falha ao conectar com o servidor.');
+    } finally {
+      setCarregando(false);
+    }
   }
 
-  async function confirmarSlot(slot: SlotDisponivel) {
-    await confirmar([{ exameId: exames[0], medicoId: slot.medicoId, inicio: slot.inicio, fim: slot.fim }]);
+  function selecionarSlot(slot: SlotDisponivel) {
+    setErro('');
+    setPendente([{ exameId: exames[0], medicoId: slot.medicoId, inicio: slot.inicio, fim: slot.fim }]);
   }
-  async function confirmarProposta() {
+
+  function solicitarConfirmacaoProposta() {
     if (!proposta) return;
-    await confirmar(proposta.itens.map((i) => ({ exameId: i.exameId, medicoId: i.medicoId, inicio: i.inicio, fim: i.fim })));
+    setErro('');
+    setPendente(proposta.itens.map((i) => ({ exameId: i.exameId, medicoId: i.medicoId, inicio: i.inicio, fim: i.fim })));
+  }
+
+  async function confirmarAgendamento() {
+    if (!pendente?.length) return;
+    await confirmar(pendente);
   }
 
   async function confirmar(itens: Array<{ exameId: string; medicoId: string; inicio: string; fim: string }>) {
     if (!paciente) return;
-    setErro(''); setCarregando(true);
+    setErro('');
+    setCarregando(true);
     const payload = itens.map((i) => ({
       pacienteId: paciente.id, pacienteNome: paciente.nome,
       medicoId: i.medicoId, exameId: i.exameId, convenioId,
@@ -130,11 +183,17 @@ function AgendarConteudo() {
       body: JSON.stringify({ itens: payload }),
     });
     setCarregando(false);
-    if (res.ok) router.push('/agenda');
-    else {
+    if (res.ok) {
+      const j = await res.json();
+      const primeiro = j.agendamentos?.[0];
+      const dataAg = primeiro?.inicio?.slice(0, 10) ?? itens[0].inicio.slice(0, 10);
+      const params = new URLSearchParams({ data: dataAg });
+      if (primeiro?.id) params.set('novo', primeiro.id);
+      setPendente(null);
+      router.push(`/agenda?${params}`);
+    } else {
       const j = await res.json();
       setErro(j.erro ?? 'Falha ao agendar.');
-      // conflito de horário no slot forçado → volta pra agenda escolher outro
       if (res.status === 409 && slotForcado) setPasso(2);
     }
   }
@@ -160,7 +219,6 @@ function AgendarConteudo() {
         </div>
       )}
 
-      {/* PASSO 1 — paciente */}
       {passo === 1 && (
         <div className="mt-4 card p-5">
           <label className="label">Buscar paciente (nome, CPF ou telefone)</label>
@@ -183,7 +241,6 @@ function AgendarConteudo() {
         </div>
       )}
 
-      {/* PASSO 2 — exames */}
       {passo === 2 && paciente && (
         <div className="mt-4 space-y-4">
           <div className="card p-4 flex items-center justify-between">
@@ -204,34 +261,53 @@ function AgendarConteudo() {
               </div>
             ) : (
               <>
-                <label className="label">Adicionar exames (clique para empilhar exames consecutivos)</label>
+                <label className="label">Exames com médico (clique para empilhar consecutivos)</label>
                 <div className="flex flex-wrap gap-2">
-                  {EXAMES.filter((e) => e.ativo && !e.aparelho && (!slotForcado || medicoForcado?.examesHabilitados.includes(e.id))).map((e) => (
-                    <button key={e.id} onClick={() => addExame(e.id)}
-                      className="rounded-xl border border-navy-100 px-3 py-1.5 text-xs font-medium text-navy-700 hover:bg-navy-50">
-                      + {e.nome} <span className="text-muted">({slotForcado ? duracaoNoSlot(e.id) : e.duracaoMin}min)</span>
+                  {examesMedico
+                    .filter((e) => !slotForcado || medicoForcado?.examesHabilitados.includes(e.id))
+                    .map((e) => (
+                      <button key={e.id} type="button" onClick={() => addExame(e.id)}
+                        className="rounded-xl border border-navy-100 px-3 py-1.5 text-xs font-medium text-navy-700 hover:bg-navy-50">
+                        + {e.nome} <span className="text-muted">({slotForcado ? duracaoNoSlot(e.id) : e.duracaoMin}min)</span>
+                      </button>
+                    ))}
+                </div>
+
+                <label className="label mt-5">Exames de aparelho 24h (horários fixos)</label>
+                <div className="flex flex-wrap gap-2">
+                  {examesAparelho.map((e) => (
+                    <button key={e.id} type="button" onClick={() => addExame(e.id)}
+                      className="rounded-xl border border-cardio/30 bg-cardio/5 px-3 py-1.5 text-xs font-medium text-navy-800 hover:bg-cardio/10">
+                      + {e.nome} <span className="text-muted">({e.duracaoMin}min · retorno 24h)</span>
                     </button>
                   ))}
                 </div>
+                <p className="mt-2 text-xs text-muted">
+                  MAPA e Holter usam horários fixos de colocação do aparelho. Não disponíveis às sextas.
+                </p>
               </>
+            )}
+
+            {avisoExame && (
+              <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">{avisoExame}</p>
             )}
 
             {exames.length > 0 && !aparelhoCfg && (
               <div className="mt-4">
-                <div className="text-xs font-semibold text-muted mb-2">Sessão ({exames.length} exame{exames.length > 1 ? 's' : ''} · {exames.reduce((s, id) => s + (slotForcado ? duracaoNoSlot(id) : EXAMES.find((e) => e.id === id)?.duracaoMin ?? 0), 0)}min)</div>
+                <div className="text-xs font-semibold text-muted mb-2">
+                  Sessão ({exames.length} exame{exames.length > 1 ? 's' : ''} ·{' '}
+                  {exames.reduce((s, id) => s + (slotForcado ? duracaoNoSlot(id) : EXAMES.find((e) => e.id === id)?.duracaoMin ?? 0), 0)}min)
+                </div>
                 <ul className="space-y-1.5">
                   {exames.map((id, i) => (
                     <li key={i} className="flex items-center justify-between rounded-lg bg-navy-50 px-3 py-2 text-sm">
                       <span className="font-medium text-ink">{i + 1}. {nomeExame(id)}</span>
-                      <button onClick={() => removeExame(i)} className="text-brand-red text-xs hover:underline">remover</button>
+                      <button type="button" onClick={() => removeExame(i)} className="text-brand-red text-xs hover:underline">remover</button>
                     </li>
                   ))}
                 </ul>
-                {exames.length > 1 && !slotForcado && (
-                  <p className="mt-2 text-xs text-navy-600">⚡ O sistema vai priorizar marcar todos com o <strong>mesmo médico</strong>, em sequência.</p>
-                )}
-                {exames.length > 1 && slotForcado && (
-                  <p className="mt-2 text-xs text-navy-600">⚡ Os exames serão encaixados em sequência a partir de {horaForcada}, com {prestadorForcado}.</p>
+                {exames.length > 1 && !slotForcado && !modoAparelho && (
+                  <p className="mt-2 text-xs text-navy-600">⚡ O sistema prioriza marcar todos com o <strong>mesmo médico</strong>, em sequência.</p>
                 )}
               </div>
             )}
@@ -244,9 +320,15 @@ function AgendarConteudo() {
                 </select>
               </div>
               <div>
-                <label className="label">{aparelhoCfg ? 'Aparelho' : `Médico de preferência ${slotForcado ? '' : '(opcional)'}`}</label>
+                <label className="label">
+                  {aparelhoCfg || modoAparelho ? 'Aparelho' : `Médico de preferência ${slotForcado ? '' : '(opcional)'}`}
+                </label>
                 {slotForcado ? (
                   <div className="input flex items-center bg-navy-50 text-navy-800">{prestadorForcado}</div>
+                ) : modoAparelho ? (
+                  <div className="input flex items-center bg-navy-50 text-navy-800">
+                    {nomeExame(exames[0])}
+                  </div>
                 ) : (
                   <select className="input" value={medicoPref} onChange={(e) => setMedicoPref(e.target.value)}>
                     <option value="">Sem preferência (sistema decide)</option>
@@ -256,27 +338,63 @@ function AgendarConteudo() {
               </div>
             </div>
 
-            <button className="btn-red mt-5 w-full" disabled={exames.length === 0} onClick={buscarDisponibilidade}>
+            {!slotForcado && (
+              <div className="mt-5">
+                <label className="label">Buscar horários a partir de</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={dataBusca}
+                  min={hojeJF()}
+                  onChange={(e) => setDataBusca(e.target.value)}
+                />
+                <p className="mt-1.5 text-xs text-muted">
+                  Você pode escolher qualquer data futura — não fica limitado às sugestões automáticas.
+                </p>
+              </div>
+            )}
+
+            <button type="button" className="btn-red mt-5 w-full" disabled={exames.length === 0 || carregando} onClick={() => buscarDisponibilidade()}>
               {slotForcado ? 'Confirmar neste horário' : 'Ver horários disponíveis'}
             </button>
           </div>
         </div>
       )}
 
-      {/* PASSO 3 — disponibilidade */}
       {passo === 3 && (
         <div className="mt-4 space-y-4">
-          <button className="btn-ghost" onClick={() => setPasso(2)}>← Ajustar exames</button>
+          <button type="button" className="btn-ghost" onClick={() => setPasso(2)}>← Ajustar exames</button>
           {erro && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-brand-red">{erro}</p>}
+
+          {!slotForcado && !proposta && (
+            <div className="card p-5">
+              <label className="label">Data de início da busca</label>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <input
+                  type="date"
+                  className="input flex-1"
+                  value={dataBusca}
+                  min={hojeJF()}
+                  onChange={(e) => setDataBusca(e.target.value)}
+                />
+                <button type="button" className="btn-primary shrink-0" disabled={carregando} onClick={() => buscarDisponibilidade(dataBusca)}>
+                  {carregando ? 'Buscando…' : 'Buscar nesta data'}
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-muted">
+                Mostrando horários a partir de <strong>{fmtData(dataBusca + 'T12:00')}</strong>
+                {modoAparelho ? ' (até 42 dias à frente)' : ' (até 28 dias à frente)'}.
+              </p>
+            </div>
+          )}
 
           {carregando && <div className="card p-8 text-center text-sm text-muted">Calculando horários…</div>}
 
-          {/* sessão (vários exames) ou horário forçado a partir da agenda */}
           {!carregando && proposta && (
             <div className="card p-5">
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-navy-900">{slotForcado ? 'Confirmar horário' : 'Proposta de horário'}</h3>
-                {!aparelhoCfg && proposta.itens.length > 1 && (
+                {!aparelhoCfg && !modoAparelho && proposta.itens.length > 1 && (
                   proposta.mesmoMedico
                     ? <span className="badge bg-green-50 text-green-700">Mesmo médico ✓</span>
                     : <span className="badge bg-amber-50 text-amber-700">Médicos diferentes</span>
@@ -296,18 +414,42 @@ function AgendarConteudo() {
                   </li>
                 ))}
               </ul>
-              <button className="btn-red mt-5 w-full" disabled={carregando} onClick={confirmarProposta}>Confirmar agendamento</button>
+              <button type="button" className="btn-red mt-5 w-full" disabled={carregando} onClick={solicitarConfirmacaoProposta}>
+                Revisar e confirmar
+              </button>
             </div>
           )}
+
           {!carregando && proposta === null && exames.length > 1 && !slotForcado && (
-            <div className="card p-8 text-center text-sm text-muted">Não foi possível encontrar horários consecutivos. Tente reduzir os exames ou outra data.</div>
+            <div className="card p-8 text-center text-sm text-muted">
+              Não foi possível encontrar horários consecutivos a partir desta data. Tente outra data ou reduza os exames.
+            </div>
           )}
 
-          {/* exame único — lista de slots (fluxo de busca livre) */}
           {!carregando && !slotForcado && exames.length === 1 && (
             slots.length === 0
-              ? <div className="card p-8 text-center text-sm text-muted">Sem horários disponíveis nos próximos dias.</div>
-              : <SlotsPorDia slots={slots} onPick={confirmarSlot} nomeMedico={nomeMedico} />
+              ? (
+                <div className="card p-8 text-center text-sm text-muted">
+                  Sem horários disponíveis a partir de {fmtData(dataBusca + 'T12:00')}.
+                  <button type="button" className="mt-3 block w-full text-brand-red font-semibold hover:underline" onClick={() => setPasso(2)}>
+                    Escolher outra data
+                  </button>
+                </div>
+              )
+              : <SlotsPorDia slots={slots} onPick={selecionarSlot} nomeMedico={nomeMedico} dataBusca={dataBusca} />
+          )}
+
+          {pendente && paciente && (
+            <ModalConfirmacao
+              paciente={paciente}
+              itens={pendente}
+              convenioNome={CONVENIOS.find((c) => c.id === convenioId)?.nome ?? convenioId}
+              nomeExame={nomeExame}
+              nomeMedico={nomeMedico}
+              carregando={carregando}
+              onConfirmar={confirmarAgendamento}
+              onCancelar={() => setPendente(null)}
+            />
           )}
         </div>
       )}
@@ -315,22 +457,81 @@ function AgendarConteudo() {
   );
 }
 
-function SlotsPorDia({ slots, onPick, nomeMedico }: {
-  slots: SlotDisponivel[]; onPick: (s: SlotDisponivel) => void; nomeMedico: (id: string) => string;
+function ModalConfirmacao({ paciente, itens, convenioNome, nomeExame, nomeMedico, carregando, onConfirmar, onCancelar }: {
+  paciente: Paciente;
+  itens: Array<{ exameId: string; medicoId: string; inicio: string; fim: string }>;
+  convenioNome: string;
+  nomeExame: (id: string) => string;
+  nomeMedico: (id: string) => string;
+  carregando: boolean;
+  onConfirmar: () => void;
+  onCancelar: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-navy-900/40 p-4" onClick={onCancelar}>
+      <div className="card w-full max-w-md p-6 shadow-lift" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-serif text-xl font-bold text-navy-900">Confirmar agendamento</h3>
+        <p className="mt-1 text-sm text-muted">Revise os dados antes de marcar na agenda.</p>
+
+        <div className="mt-5 rounded-2xl bg-navy-50/80 p-4">
+          <div className="text-sm font-bold text-ink">{paciente.nome}</div>
+          <div className="text-xs text-muted">{paciente.telefone} · {convenioNome}</div>
+        </div>
+
+        <ul className="mt-4 space-y-2">
+          {itens.map((it, i) => (
+            <li key={i} className="flex items-center justify-between rounded-xl border border-navy-100 px-4 py-3">
+              <div>
+                <div className="text-sm font-semibold text-ink">{nomeExame(it.exameId)}</div>
+                <div className="text-xs text-muted">{nomeMedico(it.medicoId)}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm font-bold text-navy-700">{fmtHora(it.inicio)}–{fmtHora(it.fim)}</div>
+                <div className="text-xs text-muted">{fmtData(it.inicio)}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="mt-6 flex gap-3">
+          <button type="button" className="btn-ghost flex-1" disabled={carregando} onClick={onCancelar}>
+            Voltar
+          </button>
+          <button type="button" className="btn-red flex-1" disabled={carregando} onClick={onConfirmar}>
+            {carregando ? 'Agendando…' : 'Confirmar agendamento'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SlotsPorDia({ slots, onPick, nomeMedico, dataBusca }: {
+  slots: SlotDisponivel[];
+  onPick: (s: SlotDisponivel) => void;
+  nomeMedico: (id: string) => string;
+  dataBusca: string;
 }) {
   const porDia = slots.reduce<Record<string, SlotDisponivel[]>>((acc, s) => {
     const d = s.inicio.slice(0, 10);
     (acc[d] ??= []).push(s);
     return acc;
   }, {});
+
+  const dias = Object.keys(porDia).sort();
+
   return (
     <div className="space-y-4">
-      {Object.entries(porDia).map(([dia, ss]) => (
+      <p className="text-sm text-muted">
+        {dias.length} dia{dias.length !== 1 ? 's' : ''} com horários a partir de{' '}
+        <strong className="text-navy-800">{fmtData(dataBusca + 'T12:00')}</strong>
+      </p>
+      {dias.map((dia) => (
         <div key={dia} className="card p-5">
           <div className="text-sm font-bold text-navy-900">{fmtData(dia + 'T00:00')}</div>
           <div className="mt-3 flex flex-wrap gap-2">
-            {ss.map((s, i) => (
-              <button key={i} onClick={() => onPick(s)}
+            {porDia[dia].map((s, i) => (
+              <button key={i} type="button" onClick={() => onPick(s)}
                 className="rounded-xl border border-navy-100 px-3 py-2 text-left hover:border-brand-red hover:bg-brand-red/5">
                 <div className="text-sm font-bold text-navy-700">{fmtHora(s.inicio)}</div>
                 <div className="text-[11px] text-muted">{nomeMedico(s.medicoId)}</div>

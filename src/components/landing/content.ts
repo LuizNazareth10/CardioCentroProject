@@ -1,70 +1,78 @@
 import {
-  HeartPulse,
   Activity,
+  Bike,
+  Clock,
+  Gauge,
+  HeartPulse,
+  ScanHeart,
+  Scissors,
+  ShieldCheck,
   Stethoscope,
   Waves,
-  ScanHeart,
-  Gauge,
-  ShieldCheck,
-  Clock,
-  Users,
-  Award,
 } from 'lucide-react';
 import { MEDICOS, CONTATO, linkWhatsapp } from '@/lib/seed-data';
 
-// Contato e helpers de WhatsApp compartilhados com a área restrita.
 export const contato = CONTATO;
 export { linkWhatsapp };
 export const whatsappLink = CONTATO.whatsappLink;
 
-const IMG = 'https://images.unsplash.com/';
-const q = (id: string, w = 1200) =>
-  `${IMG}${id}?auto=format&fit=crop&q=80&w=${w}`;
-
-export const photos = {
-  hero: q('photo-1622253692010-333f2da6031d', 1400), // médica sorrindo
-  heroSecondary: q('photo-1584982751601-97dcc096659c', 900), // cuidado/atendimento
-  about: q('photo-1631217868264-e5b90bb7e133', 1200), // equipe médica
-  aboutPortrait: q('photo-1594824476967-48c8b964273f', 900), // médica retrato
-  cta: q('photo-1579684385127-1ef15d508118', 1400), // consulta
+export const brandAssets = {
+  logo: '/img/CardiocentroLogo.jpeg',
+  examesList: '/img/ExamesList.jpeg',
 };
 
-export const stats = [
-  { value: '25+', label: 'anos cuidando de corações', icon: Award },
-  { value: '80mil', label: 'pacientes atendidos', icon: Users },
-  { value: '4', label: 'cardiologistas especialistas', icon: Stethoscope },
-  { value: '98%', label: 'satisfação dos pacientes', icon: HeartPulse },
-];
+// Imagens locais (public/img) — cardiologia, sem rostos.
+export const photos = {
+  hero: '/img/hero-cardio.jpg',
+  about: '/img/about-estetoscopio-mesa.jpg',
+  aboutSecondary: '/img/about-monitor-linha.jpg',
+  cta: '/img/hero-cardio.jpg',
+};
 
-// Exames REAIS oferecidos pela clínica (4 de médico + 2 de aparelho).
+// Catálogo completo conforme material oficial (ExamesList.jpeg).
 export const services = [
   {
-    icon: ScanHeart,
-    title: 'Ecocardiograma com Doppler',
-    desc: 'Ultrassom do coração com imagem de alta definição para avaliar estrutura e função cardíaca.',
+    icon: Stethoscope,
+    title: 'Consulta Cardiológica',
+    desc: 'Avaliação clínica completa com cardiologista, histórico e plano de cuidado personalizado.',
   },
   {
     icon: Activity,
-    title: 'Duplex de Carótidas',
+    title: 'Eletrocardiograma (ECG)',
+    desc: 'Registro da atividade elétrica do coração para investigar arritmias e outras alterações.',
+  },
+  {
+    icon: Scissors,
+    title: 'Risco Cirúrgico',
+    desc: 'Avaliação cardiovascular pré-operatória para orientar procedimentos com segurança.',
+  },
+  {
+    icon: ScanHeart,
+    title: 'Ecocardiograma com Doppler Colorido',
+    desc: 'Ultrassom do coração com imagem de alta definição para avaliar estrutura e função cardíaca.',
+  },
+  {
+    icon: Waves,
+    title: 'Duplex Scan de Carótidas e Vertebrais',
     desc: 'Ultrassom com Doppler das artérias carótidas e vertebrais para avaliar o fluxo sanguíneo.',
   },
   {
-    icon: Gauge,
-    title: 'Teste Ergométrico',
+    icon: Bike,
+    title: 'Teste Ergométrico Computadorizado',
     desc: 'Avaliação do coração sob esforço físico controlado, com acompanhamento médico integral.',
   },
   {
-    icon: Stethoscope,
+    icon: HeartPulse,
     title: 'Teste Cardiopulmonar',
     desc: 'Análise integrada do coração, pulmões e músculos durante o esforço, com precisão máxima.',
   },
   {
-    icon: Waves,
+    icon: Clock,
     title: 'Holter 24h',
-    desc: 'Monitoramento contínuo do ritmo cardíaco ao longo do dia para detectar arritmias.',
+    desc: 'Monitoramento contínuo do ritmo cardíaco ao longo de 24 horas para detectar arritmias.',
   },
   {
-    icon: HeartPulse,
+    icon: Gauge,
     title: 'MAPA 24h',
     desc: 'Medição da pressão arterial ao longo de 24 horas para diagnóstico preciso da hipertensão.',
   },
@@ -77,9 +85,9 @@ export const differentials = [
     desc: 'Equipamentos de última geração e laudos revisados por especialistas.',
   },
   {
-    icon: Clock,
-    title: 'Agilidade no atendimento',
-    desc: 'Agendamento simples e resultados entregues com rapidez e clareza.',
+    icon: ScanHeart,
+    title: 'Linha completa de exames',
+    desc: 'Todos os métodos diagnósticos em cardiologia reunidos em um só lugar.',
   },
   {
     icon: HeartPulse,
@@ -88,44 +96,37 @@ export const differentials = [
   },
 ];
 
-// Derivado da fonte única (src/lib/seed-data.ts) — médicos sincronizados
-// entre a landing e a área restrita. Fotos e CRM ficam em branco na landing
-// até a clínica enviar o material oficial (usa `m.foto`/`m.crm` quando houver).
 export const doctors = MEDICOS.filter((m) => m.ativo).map((m) => ({
   name: m.nome,
-  role: m.especialidade ?? 'Cardiologista',
-  crm: m.crm ?? '',
-  photo: m.foto ?? '',
 }));
 
 export const testimonials = [
   {
     quote:
-      'Fui acolhida do começo ao fim. O exame foi rápido e a médica explicou cada detalhe com calma. Saí tranquila e bem cuidada.',
-    name: 'Marina Costa',
+      'Fui acolhida do começo ao fim. O exame foi rápido e a equipe explicou cada detalhe com calma. Saí tranquila e bem cuidada.',
+    name: 'Marina C.',
     role: 'Paciente · Juiz de Fora',
-    avatar: q('photo-1494790108377-be9c29b29330', 200),
   },
   {
     quote:
       'Marquei pelo site em minutos e fui atendido no horário. Estrutura impecável e uma equipe que realmente se importa.',
-    name: 'Carlos Eduardo',
+    name: 'Carlos E.',
     role: 'Paciente · Juiz de Fora',
-    avatar: q('photo-1500648767791-00dcc994a43e', 200),
   },
   {
     quote:
       'Meu pai é hipertenso e o acompanhamento aqui mudou a rotina dele. Profissionalismo e carinho na medida certa.',
-    name: 'Juliana Prado',
+    name: 'Juliana P.',
     role: 'Acompanhante',
-    avatar: q('photo-1438761681033-6461ffad8d80', 200),
   },
 ];
 
 export const nav = [
-  { label: 'Especialidades', href: '#especialidades' },
+  { label: 'Exames', href: '#especialidades' },
   { label: 'A clínica', href: '#sobre' },
-  { label: 'Corpo médico', href: '#corpo-medico' },
+  { label: 'Corpo\u00A0médico', href: '#corpo-medico' },
   { label: 'Depoimentos', href: '#depoimentos' },
   { label: 'Contato', href: '#agendamento' },
 ];
+
+export const examesAgendamento = services.map((s) => s.title);

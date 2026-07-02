@@ -1,8 +1,6 @@
 'use client';
 
-import Image from 'next/image';
 import { motion, useReducedMotion } from 'framer-motion';
-import { BadgeCheck } from 'lucide-react';
 import { Reveal } from './Reveal';
 import { doctors } from './content';
 
@@ -10,62 +8,47 @@ export function CorpoMedico() {
   const reduce = useReducedMotion();
 
   return (
-    <section id="corpo-medico" className="scroll-mt-24 bg-canvas py-24 lg:py-28">
-      <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <section id="corpo-medico" className="relative scroll-mt-24 overflow-hidden bg-navyblue py-24 text-white lg:py-28">
+      <div className="pointer-events-none absolute inset-0 opacity-[0.06]">
+        <div className="dotgrid h-full w-full" />
+      </div>
+
+      <div className="relative mx-auto max-w-7xl px-5 lg:px-8">
         <Reveal className="mx-auto max-w-2xl text-center">
-          <span className="pill mx-auto">Corpo médico</span>
-          <h2 className="mt-5 font-serif text-4xl font-bold tracking-tight text-navyblue-900 sm:text-5xl">
+          <span className="pill mx-auto border-white/15 bg-white/10 text-white">
+            Corpo médico
+          </span>
+          <h2 className="mt-5 font-serif text-4xl font-bold tracking-tight sm:text-5xl">
             Especialistas em quem você pode confiar
           </h2>
-          <p className="mt-4 text-lg text-gray-600">
-            Cardiologistas dedicados, com formação sólida e escuta atenta a cada
-            paciente.
+          <p className="mt-4 text-lg text-white/70">
+            Cardiologistas dedicados, com formação sólida e escuta atenta a cada paciente.
           </p>
         </Reveal>
 
-        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {doctors.map((d, i) => {
-            const iniciais = d.name.replace(/^(Dr|Dra)\.?\s*/i, '').split(' ').slice(0, 2).map((p) => p[0]).join('');
-            return (
-              <motion.article
-                key={d.name}
-                initial={reduce ? { opacity: 0 } : { opacity: 0, y: 22 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: '-60px' }}
-                transition={{ duration: 0.6, delay: i * 0.1, ease: [0.22, 1, 0.36, 1] }}
-                className="group overflow-hidden rounded-3xl border border-navyblue-100/70 bg-white shadow-card transition-shadow hover:shadow-lift"
-              >
-                <div className="relative overflow-hidden">
-                  {d.photo ? (
-                    <Image
-                      src={d.photo}
-                      alt={`Retrato de ${d.name}, ${d.role}`}
-                      width={500}
-                      height={560}
-                      className="h-64 w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                  ) : (
-                    // placeholder até a foto oficial da médica/médico ser enviada
-                    <div className="relative flex h-64 w-full items-center justify-center bg-gradient-to-br from-navyblue-600 to-navyblue-800">
-                      <span className="font-serif text-4xl font-bold text-white/90">{iniciais}</span>
-                      <div className="dotgrid pointer-events-none absolute inset-0 opacity-[0.12]" />
-                    </div>
-                  )}
-                  <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-navyblue-900/30 to-transparent" />
-                </div>
-                <div className="p-6">
-                  <h3 className="flex items-center gap-1.5 text-lg font-bold text-navyblue-900">
+        <div className="mx-auto mt-14 max-w-3xl">
+          <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-glass backdrop-blur-sm">
+            <ul className="divide-y divide-white/10">
+              {doctors.map((d, i) => (
+                <motion.li
+                  key={d.name}
+                  initial={reduce ? false : { x: -12 }}
+                  whileInView={{ x: 0 }}
+                  viewport={{ once: true, margin: '-40px' }}
+                  transition={{ duration: 0.5, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] }}
+                  className="group flex items-center gap-5 px-6 py-5 transition-colors hover:bg-white/[0.04] sm:px-8 sm:py-6"
+                >
+                  <span
+                    className="grid h-2 w-2 flex-none rounded-full bg-cardio shadow-[0_0_12px_rgba(221,23,36,0.55)]"
+                    aria-hidden
+                  />
+                  <span className="font-serif text-xl font-semibold tracking-tight text-white sm:text-2xl">
                     {d.name}
-                    <BadgeCheck className="h-4 w-4 text-info" aria-hidden />
-                  </h3>
-                  <p className="mt-1 text-sm font-medium text-cardio">{d.role}</p>
-                  {d.crm && (
-                    <p className="mt-2 text-xs font-medium uppercase tracking-wide text-gray-500">{d.crm}</p>
-                  )}
-                </div>
-              </motion.article>
-            );
-          })}
+                  </span>
+                </motion.li>
+              ))}
+            </ul>
+          </div>
         </div>
       </div>
     </section>

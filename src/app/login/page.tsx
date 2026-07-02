@@ -1,12 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LogoLockup } from '@/components/Logo';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState('admin@cardiocentro.com');
   const [senha, setSenha] = useState('cardio123');
   const [erro, setErro] = useState('');
@@ -20,10 +18,12 @@ export default function LoginPage() {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ email, senha }),
       });
       if (res.ok) {
-        router.push('/dashboard');
+        // navegação completa garante que o cookie recém-criado seja enviado ao servidor
+        window.location.href = '/dashboard';
         return;
       }
       const corpo = await res.json().catch(() => null);
@@ -83,7 +83,7 @@ export default function LoginPage() {
                 onChange={(e) => setSenha(e.target.value)} required />
             </div>
             {erro && <p className="text-sm font-medium text-brand-red">{erro}</p>}
-            <button className="btn-primary w-full" disabled={carregando}>
+            <button type="submit" className="btn-primary w-full" disabled={carregando}>
               {carregando ? 'Entrando…' : 'Entrar'}
             </button>
           </div>

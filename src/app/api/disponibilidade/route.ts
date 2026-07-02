@@ -4,9 +4,7 @@ import { listarAgendamentos } from '@/lib/db';
 import { APARELHOS, EXAMES, MEDICOS } from '@/lib/seed-data';
 import { gerarSlots, gerarSlotsAparelho, proporSessao } from '@/lib/scheduling/engine';
 
-// GET /api/disponibilidade?exames=ecg,ecg,mapa&medico=med-1&data=2026-07-06
-// - 1 exame  -> retorna { slots: [...] }
-// - N exames -> retorna { proposta: {...} } (sessão consecutiva, mesmo médico)
+// GET /api/disponibilidade?exames=eco-doppler,mapa&medico=med-1&data=2026-07-06&dias=28
 export async function GET(req: NextRequest) {
   if (!(await lerSessao())) return NextResponse.json({ erro: 'não autorizado' }, { status: 401 });
 
@@ -15,6 +13,7 @@ export async function GET(req: NextRequest) {
   const ids = idsParam.split(',').filter(Boolean);
   const medicoPreferidoId = searchParams.get('medico') || undefined;
   const dataInicio = searchParams.get('data') || hojeJF();
+  const diasParam = parseInt(searchParams.get('dias') ?? '', 10);
 
   if (ids.length === 0) return NextResponse.json({ erro: 'informe ao menos um exame' }, { status: 400 });
 
@@ -24,36 +23,39 @@ export async function GET(req: NextRequest) {
   }
 
   const agendamentos = await listarAgendamentos();
+  const temAparelho = examesSeq.some((e) => e.aparelho);
+  const dias = Number.isFinite(diasParam) && diasParam > 0
+    ? Math.min(diasParam, 90)
+    : temAparelho ? 42 : 28;
 
   if (examesSeq.length === 1) {
     const exame = examesSeq[0];
-    // exame de aparelho (Mapa/Holter) → slots fixos, sem médico
     if (exame.aparelho) {
       const slots = gerarSlotsAparelho(APARELHOS[exame.aparelho], agendamentos, {
         dataInicio,
-        dias: 21,
+        dias,
         naoAntesDe: agoraJF(),
-        limite: 80,
+        limite: 120,
       });
-      return NextResponse.json({ slots });
+      return NextResponse.json({ slots, dataInicio, dias });
     }
     const slots = gerarSlots(exame, MEDICOS, agendamentos, {
       dataInicio,
-      dias: 14,
+      dias,
       medicoPreferidoId,
       naoAntesDe: agoraJF(),
-      limite: 80,
+      limite: 120,
     });
-    return NextResponse.json({ slots });
+    return NextResponse.json({ slots, dataInicio, dias });
   }
 
   const proposta = proporSessao(examesSeq, MEDICOS, agendamentos, {
     dataInicio,
-    dias: 14,
+    dias,
     medicoPreferidoId,
     naoAntesDe: agoraJF(),
   });
-  return NextResponse.json({ proposta });
+  return NextResponse.json({ proposta, dataInicio, dias });
 }
 
 function hojeJF(): string {
