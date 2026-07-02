@@ -243,6 +243,22 @@ body {
   }
 }
 
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #ficha-identidade-print,
+  #ficha-identidade-print * {
+    visibility: visible;
+  }
+  #ficha-identidade-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
+
 html {
   scroll-behavior: smooth;
 }

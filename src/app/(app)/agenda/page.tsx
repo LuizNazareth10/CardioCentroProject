@@ -8,7 +8,21 @@ import { hhmmToMin, minToHHMM, semanaQuinzenalAtiva, weekdayOf } from '@/lib/sch
 import { fmtDataExtenso, hojeJF } from '@/lib/format';
 
 const GRID = 15;
-const ROW_H = 40; // px por linha de 15min
+const ROW_H = 54; // px por linha de 15min — mais espaço para ler o bloco
+const COL_HORA = 72;
+const COL_LARGURA = 158;
+
+function gridCols(n: number) {
+  return `${COL_HORA}px repeat(${n}, ${COL_LARGURA}px)`;
+}
+function gridLargura(n: number) {
+  return COL_HORA + n * COL_LARGURA;
+}
+
+/** Exibe o registro do paciente de forma compacta na agenda. */
+function rotuloPaciente(pacienteId: string): string {
+  return pacienteId.replace(/^pac_/, 'P-').toUpperCase();
+}
 
 type Coluna =
   | { key: string; tipo: 'medico'; nome: string; sub: string; medico: Medico; atende: boolean }
@@ -171,12 +185,13 @@ function AgendaConteudo() {
     <button
       type="button"
       onClick={() => setAcaoAg(ag)}
-      className={`absolute inset-x-0.5 overflow-hidden rounded-lg px-2.5 py-1.5 text-left text-white shadow-soft transition hover:brightness-110 ${statusCor[ag.status]} ${destaqueId === ag.id ? 'ring-2 ring-cardio ring-offset-2 animate-pulse' : ''}`}
+      className={`absolute inset-x-0.5 overflow-hidden rounded-lg px-2 py-2 text-left text-white shadow-soft transition hover:brightness-110 ${statusCor[ag.status]} ${destaqueId === ag.id ? 'ring-2 ring-cardio ring-offset-2 animate-pulse' : ''}`}
       style={{ height: `calc(${span * ROW_H}px - 4px)` }}
-      title={`${ag.pacienteNome} · ${nomeExame(ag.exameId)} (${ag.status})`}
+      title={`${rotuloPaciente(ag.pacienteId)} · ${ag.pacienteNome} · ${nomeExame(ag.exameId)} (${ag.status})`}
     >
-      <div className="truncate text-[11px] font-bold">{ag.pacienteNome}</div>
-      <div className="truncate text-[10px] text-white/75">{nomeExame(ag.exameId)}</div>
+      <div className="truncate text-[11px] font-bold leading-snug">{ag.pacienteNome}</div>
+      <div className="truncate text-[9px] font-semibold uppercase tracking-wide text-white/80">{rotuloPaciente(ag.pacienteId)}</div>
+      <div className={`text-[10px] leading-snug text-white/75 ${span >= 2 ? 'line-clamp-2' : 'truncate'}`}>{nomeExame(ag.exameId)}</div>
     </button>
   );
 
@@ -216,13 +231,15 @@ function AgendaConteudo() {
         <span className="flex items-center gap-1.5"><i className="h-3.5 w-3.5 rounded bg-cardio" /> Agora</span>
       </div>
 
-      <div className="mt-4 card overflow-hidden">
-        <div className="overflow-x-auto">
-          <div style={{ minWidth: 90 + colunas.length * 138 }}>
+      <div className="mt-4 max-w-full overflow-x-auto">
+        <div
+          className="card overflow-hidden"
+          style={{ width: gridLargura(colunas.length) }}
+        >
             {/* cabeçalho */}
             <div
               className="sticky top-0 z-20 grid border-b border-navy-200 bg-white/95 backdrop-blur-sm"
-              style={{ gridTemplateColumns: `72px repeat(${colunas.length}, 1fr)` }}
+              style={{ gridTemplateColumns: gridCols(colunas.length) }}
             >
               <div className="px-2 py-3" />
               {colunas.map((c) => {
@@ -230,7 +247,7 @@ function AgendaConteudo() {
                 return (
                   <div
                     key={c.key}
-                    className={`border-l px-3 py-2.5 ${c.tipo === 'aparelho' ? 'border-navy-200 bg-cardio/5' : 'border-navy-100'} ${!c.atende ? 'bg-navy-50/40' : ''}`}
+                    className={`min-w-0 border-l px-2 py-2.5 ${c.tipo === 'aparelho' ? 'border-navy-200 bg-cardio/5' : 'border-navy-100'} ${!c.atende ? 'bg-navy-50/40' : ''}`}
                   >
                     <div className={`flex items-center gap-1.5`}>
                       <span className={`h-1.5 w-1.5 flex-none rounded-full ${!c.atende ? 'bg-navy-200' : c.tipo === 'aparelho' ? 'bg-cardio' : 'bg-success'}`} />
@@ -253,8 +270,11 @@ function AgendaConteudo() {
 
               {/* linha do horário atual */}
               {mostraAgora && (
-                <div className="pointer-events-none absolute inset-x-0 z-20 flex items-center" style={{ top: topoAgora }}>
-                  <span className="ml-[60px] h-2 w-2 flex-none rounded-full bg-cardio" />
+                <div
+                  className="pointer-events-none absolute z-20 flex items-center"
+                  style={{ top: topoAgora, left: COL_HORA, width: gridLargura(colunas.length) - COL_HORA }}
+                >
+                  <span className="h-2 w-2 flex-none rounded-full bg-cardio" />
                   <span className="h-px flex-1 bg-cardio/70" />
                 </div>
               )}
@@ -266,35 +286,32 @@ function AgendaConteudo() {
                   <div
                     key={t}
                     className={`grid ${hora ? 'border-t-2 border-navy-200' : meia ? 'border-t border-navy-100' : 'border-t border-navy-100/40'}`}
-                    style={{ gridTemplateColumns: `72px repeat(${colunas.length}, 1fr)`, height: ROW_H }}
+                    style={{ gridTemplateColumns: gridCols(colunas.length), height: ROW_H }}
                   >
-                    <div className={`px-2 py-1 text-right text-[11px] ${hora ? 'font-bold text-navy-800' : 'text-muted'}`}>
+                    <div className={`min-w-0 px-2 py-1 text-right text-[11px] ${hora ? 'font-bold text-navy-800' : 'text-muted'}`}>
                       {hora || meia ? minToHHMM(t) : ''}
                     </div>
 
                     {colunas.map((c) => {
+                      const cellCls = `min-w-0 border-l border-navy-100/60`;
                       if (c.tipo === 'medico') {
-                        // médico não atende hoje → coluna inteira bloqueada
-                        if (!c.atende) return <div key={c.key} className="slot-off-dia border-l border-navy-100/60" />;
+                        if (!c.atende) return <div key={c.key} className={`slot-off-dia ${cellCls}`} />;
                         const { ag, dentro } = celulaMedico(c.medico, t);
-                        if (ag && !ehInicio(ag, t)) return <div key={c.key} className="border-l border-navy-100/60" />;
-                        if (ag) return <div key={c.key} className="relative border-l border-navy-100/60 p-0.5">{blocoOcupado(ag, spanDe(ag))}</div>;
-                        // dentro da janela → LIVRE (verde, clicável); fora → BLOQUEADO (hachura)
+                        if (ag && !ehInicio(ag, t)) return <div key={c.key} className={cellCls} />;
+                        if (ag) return <div key={c.key} className={`relative ${cellCls} p-0.5`}>{blocoOcupado(ag, spanDe(ag))}</div>;
                         return dentro
                           ? <CelulaLivre key={c.key} onClick={() => abrir({ medico: c.medico.id }, t)} titulo={`Agendar com ${c.medico.nome} às ${minToHHMM(t)}`} />
-                          : <div key={c.key} className="slot-bloqueado border-l border-navy-100/60" title="Fora do horário de atendimento" />;
+                          : <div key={c.key} className={`slot-bloqueado ${cellCls}`} title="Fora do horário de atendimento" />;
                       }
-                      // aparelho: horário fixo válido → LIVRE; senão → BLOQUEADO
-                      if (!c.slots.has(t)) return <div key={c.key} className="slot-bloqueado border-l border-navy-100/60" title="Sem coleta neste horário" />;
+                      if (!c.slots.has(t)) return <div key={c.key} className={`slot-bloqueado ${cellCls}`} title="Sem coleta neste horário" />;
                       const ag = apptAparelho(c.aparelho, t);
-                      if (ag) return <div key={c.key} className="relative border-l border-navy-100/60 p-0.5">{blocoOcupado(ag, 1)}</div>;
+                      if (ag) return <div key={c.key} className={`relative ${cellCls} p-0.5`}>{blocoOcupado(ag, 1)}</div>;
                       return <CelulaLivre key={c.key} onClick={() => abrir({ aparelho: c.aparelho }, t)} titulo={`Agendar ${c.nome} às ${minToHHMM(t)}`} />;
                     })}
                   </div>
                 );
               })}
             </div>
-          </div>
         </div>
       </div>
 
@@ -310,7 +327,7 @@ function CelulaLivre({ onClick, titulo }: { onClick: () => void; titulo: string 
       type="button"
       onClick={onClick}
       title={titulo}
-      className="slot-livre group relative border-l border-navy-100/60 transition-colors"
+      className="slot-livre group relative min-w-0 border-l border-navy-100/60 transition-colors"
     >
       <span className="pointer-events-none absolute inset-1 rounded-md opacity-0 ring-1 ring-inset ring-success/50 transition-opacity group-hover:opacity-100" />
       <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-bold text-success opacity-0 transition-opacity group-hover:opacity-100">+</span>
@@ -332,6 +349,7 @@ function PopoverAcao({ ag, nomeExame, onFechar, onStatus, onFicha }: {
     <div className="fixed inset-0 z-50 grid place-items-center bg-navy-900/40 p-4" onClick={onFechar}>
       <div className="card w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
         <div className="text-sm font-bold text-navy-900">{ag.pacienteNome}</div>
+        <div className="text-xs font-semibold text-navy-700">{rotuloPaciente(ag.pacienteId)}</div>
         <div className="text-xs text-muted">
           {nomeExame(ag.exameId)} · {ag.inicio.slice(11, 16)}–{ag.fim.slice(11, 16)}
         </div>
@@ -339,7 +357,7 @@ function PopoverAcao({ ag, nomeExame, onFechar, onStatus, onFicha }: {
 
         <div className="mt-4 space-y-1.5">
           <button onClick={onFicha} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-700 hover:bg-navy-50">
-            Ver ficha do paciente →
+            Ver ficha de identidade →
           </button>
           {acoes.map((a) => (
             <button

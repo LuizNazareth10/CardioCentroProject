@@ -59,7 +59,6 @@ const num = (v: unknown, faixa: readonly [number, number]): number | undefined =
 
 const bool = (v: unknown): boolean => v === true;
 
-/** normaliza a ficha médica garantindo os booleanos obrigatórios */
 export function sanitizarFicha(raw: Record<string, unknown> = {}): FichaMedica {
   return {
     pesoKg: num(raw.pesoKg, LIMITES.pesoKg),
@@ -132,4 +131,31 @@ export function sanitizarPaciente(raw: Record<string, unknown>): PacienteEntrada
     carteirinha: str(raw.carteirinha, 60),
     fichaMedica: sanitizarFicha((raw.fichaMedica ?? {}) as Record<string, unknown>),
   };
+}
+
+/** Atualização parcial de cadastro / antropometria na ficha de identidade. */
+export function sanitizarPacientePatch(raw: Record<string, unknown>): Partial<PacienteEntrada> {
+  const patch: Partial<PacienteEntrada> = {};
+  if ('cpf' in raw) patch.cpf = str(raw.cpf, 20);
+  if ('dataNascimento' in raw) patch.dataNascimento = str(raw.dataNascimento, 10);
+  if ('sexo' in raw) {
+    patch.sexo = raw.sexo === 'M' || raw.sexo === 'F' || raw.sexo === 'O' ? (raw.sexo as Sexo) : undefined;
+  }
+  if ('telefone' in raw) {
+    const telefone = str(raw.telefone, 30);
+    if (telefone) patch.telefone = telefone;
+  }
+  if ('email' in raw) patch.email = str(raw.email, 120);
+  if ('endereco' in raw) patch.endereco = str(raw.endereco, 200);
+  if ('carteirinha' in raw) patch.carteirinha = str(raw.carteirinha, 60);
+  if ('convenioId' in raw) patch.convenioId = str(raw.convenioId, 60);
+  if (raw.fichaMedica && typeof raw.fichaMedica === 'object') {
+    const fm = raw.fichaMedica as Record<string, unknown>;
+    patch.fichaMedica = {
+      ...sanitizarFicha({}),
+      pesoKg: num(fm.pesoKg, LIMITES.pesoKg),
+      alturaCm: num(fm.alturaCm, LIMITES.alturaCm),
+    };
+  }
+  return patch;
 }
