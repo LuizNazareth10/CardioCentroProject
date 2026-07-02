@@ -16,14 +16,23 @@ export default function LoginPage() {
     e.preventDefault();
     setErro('');
     setCarregando(true);
-    const res = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, senha }),
-    });
-    setCarregando(false);
-    if (res.ok) router.push('/dashboard');
-    else setErro((await res.json()).erro ?? 'Falha ao entrar.');
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, senha }),
+      });
+      if (res.ok) {
+        router.push('/dashboard');
+        return;
+      }
+      const corpo = await res.json().catch(() => null);
+      setErro(corpo?.erro ?? 'Falha ao entrar. Tente novamente.');
+    } catch {
+      setErro('Não foi possível conectar ao servidor. Tente novamente.');
+    } finally {
+      setCarregando(false);
+    }
   }
 
   return (

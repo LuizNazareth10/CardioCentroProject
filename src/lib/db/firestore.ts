@@ -8,24 +8,57 @@ import { getFirestore } from 'firebase-admin/firestore';
 // Coleções: pacientes, agendamentos, triagens, usuarios.
 // =============================================================
 
-let app: App | undefined;
+// Guardado em `globalThis` (não numa variável de módulo) porque o Fast
+// Refresh do Next.js recarrega este arquivo em dev, o que reiniciaria o
+// controle de estado a cada edição enquanto o Firestore em si (mantido
+// internamente pelo SDK) continua vivo — chamar `.settings()` de novo
+// nessa instância já configurada lança "Firestore has already been
+// initialized".
+const global_ = globalThis as unknown as { __cardiocentroFirestoreApp?: App; __cardiocentroFirestoreSettingsAplicados?: boolean };
 
 function getApp(): App {
-  if (app) return app;
+  if (global_.__cardiocentroFirestoreApp) return global_.__cardiocentroFirestoreApp;
   if (getApps().length) {
-    app = getApps()[0]!;
-    return app;
+    global_.__cardiocentroFirestoreApp = getApps()[0]!;
+    return global_.__cardiocentroFirestoreApp;
   }
   const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_B64;
   if (!b64) throw new Error('GOOGLE_SERVICE_ACCOUNT_B64 não configurada');
-  const serviceAccount = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
-  app = initializeApp({
-    credential: cert(serviceAccount),
+  let serviceAccount: Record<string, unknown>;
+  try {
+    serviceAccount = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+  } catch {
+    // erro comum: colaram o conteúdo de serviceAccount.json (JSON cru) em vez
+    // do arquivo já convertido para base64 (serviceAccount.b64.txt).
+    throw new Error(
+      'GOOGLE_SERVICE_ACCOUNT_B64 inválida — não decodifica para JSON. ' +
+        'Confirme que colou o CONTEÚDO BASE64 (ex.: serviceAccount.b64.txt), e não o JSON cru da service account.',
+    );
+  }
+  global_.__cardiocentroFirestoreApp = initializeApp({
+    credential: cert(serviceAccount as never),
     projectId: process.env.GCP_PROJECT_ID,
   });
-  return app;
+  return global_.__cardiocentroFirestoreApp;
 }
 
 export function db() {
-  return getFirestore(getApp());
+  const firestore = getFirestore(getApp());
+  if (!global_.__cardiocentroFirestoreSettingsAplicados) {
+    global_.__cardiocentroFirestoreSettingsAplicados = true;
+    try {
+      // Nossos tipos usam campos opcionais como `undefined` (ex.: cpf, e-mail,
+      // sinais vitais da triagem). Sem isso, o SDK rejeita o documento inteiro
+      // com "Cannot use undefined as a Firestore value". Precisa ser chamado
+      // uma única vez, antes do primeiro uso.
+      firestore.settings({ ignoreUndefinedProperties: true });
+    } catch (e) {
+      // Em dev, o Fast Refresh pode reavaliar este módulo depois que o
+      // próprio SDK (que vive fora do nosso controle de módulo) já aplicou
+      // as settings numa recarga anterior. Nesse caso o erro é esperado e
+      // inofensivo — a configuração já está valendo na instância.
+      if (!(e instanceof Error) || !e.message.includes('already been initialized')) throw e;
+    }
+  }
+  return firestore;
 }

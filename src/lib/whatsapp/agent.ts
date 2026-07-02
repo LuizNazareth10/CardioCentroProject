@@ -1,7 +1,7 @@
 import { APARELHOS, CONVENIOS, CONTATO, EXAMES, MEDICOS } from '../seed-data';
 import { criarAgendamentos, criarPaciente, listarAgendamentos, listarPacientes, registrarMensagem } from '../db';
 import { gerarSlots, gerarSlotsAparelho, proporSessao } from '../scheduling/engine';
-import { fmtData, fmtHora } from '../format';
+import { fmtData, fmtDiaCurto, fmtHora } from '../format';
 import { baixarMidia, enviarBotoes, enviarLista, enviarTexto } from './client';
 import { getSessao, limparSessao, salvarSessao } from './session';
 import { interpretar, lerPedidoMedico } from './ai';
@@ -56,7 +56,8 @@ export async function processarMensagem(from: string, e: Entrada): Promise<void>
 
   // comandos globais
   if (['menu', 'oi', 'olá', 'ola', 'início', 'inicio', 'começar', 'comecar'].includes(vlow)) {
-    s.etapa = 'menu'; s.examesSelecionados = []; s.medicoPreferidoId = undefined; s.opcoes = undefined;
+    s.etapa = 'menu'; s.examesSelecionados = []; s.medicoPreferidoId = undefined;
+    s.opcoes = undefined; s.propostas = undefined; s.aguardandoConvenio = undefined;
   }
 
   switch (s.etapa) {
@@ -115,17 +116,26 @@ async function menuPrincipal(from: string, s: ReturnType<typeof getSessao>) {
 }
 
 // -------- EXAMES --------
-async function enviarListaExames(from: string) {
+// Um exame agendado na mesma sessão não pode se repetir (ex.: dois
+// ecocardiogramas no mesmo dia não fazem sentido clínico) — por isso a lista
+// de exames já esconde o que o paciente já escolheu.
+async function enviarListaExames(from: string, jaSelecionados: string[] = []) {
+  const disponiveis = EXAMES.filter((e) => e.ativo && !jaSelecionados.includes(e.id));
   await enviarLista(from, 'Quais exames você quer marcar? Selecione um por vez.', 'Ver exames', [
-    { titulo: 'Exames', itens: EXAMES.filter((e) => e.ativo).map((e) => ({ id: `ex:${e.id}`, titulo: e.nome, descricao: `${e.duracaoMin} min` })) },
+    { titulo: 'Exames', itens: disponiveis.map((e) => ({ id: `ex:${e.id}`, titulo: e.nome, descricao: `${e.duracaoMin} min` })) },
   ]);
 }
 
 async function tratarExames(from: string, s: ReturnType<typeof getSessao>, e: Entrada) {
-  if (e.valor === 'agendar' || e.valor === 'add_exame') return enviarListaExames(from);
+  if (e.valor === 'agendar' || e.valor === 'add_exame') return enviarListaExames(from, s.examesSelecionados);
 
   if (e.valor.startsWith('ex:')) {
     const id = e.valor.slice(3);
+    if (s.examesSelecionados.includes(id)) {
+      // já escolhido nesta sessão — não faz sentido duplicar o mesmo exame no mesmo dia
+      return enviarTexto(from, `Você já selecionou *${nomeExame(id)}*. Escolha outro exame ou toque em "Ver horários".`)
+        .then(() => enviarListaExames(from, s.examesSelecionados));
+    }
     if (EXAMES.some((x) => x.id === id)) {
       s.examesSelecionados.push(id);
       salvarSessao(from, s);
@@ -179,41 +189,51 @@ async function tratarMedico(from: string, s: ReturnType<typeof getSessao>, e: En
 }
 
 // -------- HORÁRIO --------
+// Estratégia de sugestão (mais humana): em vez de despejar 3 horários seguidos
+// do mesmo dia, calculamos TODAS as vagas dos próximos ~28 dias e oferecemos
+// UM horário por dia, em dias espaçados. Se nenhum agradar, o paciente escolhe
+// um dia específico e aí mostramos os horários daquele dia.
+
+type Proposta = NonNullable<ReturnType<typeof getSessao>['propostas']>[number];
+
 async function calcularEoferecer(from: string, s: ReturnType<typeof getSessao>) {
   const examesSeq = s.examesSelecionados.map((id) => EXAMES.find((x) => x.id === id)!).filter(Boolean);
   const agendamentos = await listarAgendamentos();
-  const opcoes: NonNullable<typeof s.opcoes> = [];
+  const propostas: Proposta[] = [];
 
   if (examesSeq.length === 1 && examesSeq[0].aparelho) {
     // exame de aparelho (Mapa/Holter): slots fixos, sexta bloqueada
     const cfg = APARELHOS[examesSeq[0].aparelho];
     const slots = gerarSlotsAparelho(cfg, agendamentos, {
-      dataInicio: hojeJF(), dias: 21, naoAntesDe: agoraJF(), limite: 3,
+      dataInicio: hojeJF(), dias: 28, naoAntesDe: agoraJF(), limite: 400,
     });
-    slots.forEach((sl) => opcoes.push({
+    slots.forEach((sl) => propostas.push({
+      data: sl.inicio.slice(0, 10), inicio: sl.inicio, subtitulo: cfg.nome,
       rotulo: `${fmtData(sl.inicio)} ${fmtHora(sl.inicio)} — ${cfg.nome}`,
       itens: [{ exameId: examesSeq[0].id, medicoId: sl.medicoId, inicio: sl.inicio, fim: sl.fim }],
     }));
   } else if (examesSeq.length === 1) {
     const slots = gerarSlots(examesSeq[0], MEDICOS, agendamentos, {
-      dataInicio: hojeJF(), dias: 14, medicoPreferidoId: s.medicoPreferidoId, naoAntesDe: agoraJF(), limite: 3,
+      dataInicio: hojeJF(), dias: 28, medicoPreferidoId: s.medicoPreferidoId, naoAntesDe: agoraJF(), limite: 400,
     });
-    slots.forEach((sl) => opcoes.push({
+    slots.forEach((sl) => propostas.push({
+      data: sl.inicio.slice(0, 10), inicio: sl.inicio, subtitulo: sl.medicoNome,
       rotulo: `${fmtData(sl.inicio)} ${fmtHora(sl.inicio)} — ${sl.medicoNome}`,
       itens: [{ exameId: examesSeq[0].id, medicoId: sl.medicoId, inicio: sl.inicio, fim: sl.fim }],
     }));
   } else {
-    // tenta 3 dias com proposta de sessão consecutiva (mesmo médico de preferência)
+    // multi-exame: uma proposta de sessão consecutiva por dia, em vários dias
     let dataBusca = hojeJF();
-    for (let tentativa = 0; tentativa < 3; tentativa++) {
+    for (let tentativa = 0; tentativa < 14; tentativa++) {
       const p = proporSessao(examesSeq, MEDICOS, agendamentos, {
-        dataInicio: dataBusca, dias: 14, medicoPreferidoId: s.medicoPreferidoId, naoAntesDe: agoraJF(),
+        dataInicio: dataBusca, dias: 28, medicoPreferidoId: s.medicoPreferidoId, naoAntesDe: agoraJF(),
       });
       if (!p) break;
       const ini = p.itens[0].inicio;
-      const flag = p.mesmoMedico ? ` (mesmo médico: ${nomeMedico(p.itens[0].medicoId)})` : ' (médicos diferentes)';
-      opcoes.push({
-        rotulo: `${fmtData(ini)} ${fmtHora(ini)}${flag}`,
+      const sub = p.mesmoMedico ? `${examesSeq.length} exames · ${nomeMedico(p.itens[0].medicoId)}` : `${examesSeq.length} exames · médicos diferentes`;
+      propostas.push({
+        data: ini.slice(0, 10), inicio: ini, subtitulo: sub,
+        rotulo: `${fmtData(ini)} ${fmtHora(ini)} — ${sub}`,
         itens: p.itens.map((i) => ({ exameId: i.exameId, medicoId: i.medicoId, inicio: i.inicio, fim: i.fim })),
       });
       // próxima busca começa no dia seguinte ao encontrado
@@ -222,22 +242,73 @@ async function calcularEoferecer(from: string, s: ReturnType<typeof getSessao>) 
     }
   }
 
-  if (opcoes.length === 0) {
+  if (propostas.length === 0) {
     await enviarTexto(from, 'No momento não encontrei horários livres para essa combinação nos próximos dias. 😕\nPosso te transferir para um atendente? Responda *atendente*.');
     return;
   }
 
-  s.opcoes = opcoes; s.etapa = 'escolhendo_horario'; salvarSessao(from, s);
-  await enviarLista(from, 'Encontrei estes horários. Qual prefere?', 'Ver horários', [
-    { titulo: 'Horários disponíveis', itens: opcoes.map((o, i) => ({ id: `slot:${i}`, titulo: o.rotulo.slice(0, 24), descricao: o.rotulo })) },
+  s.propostas = propostas; s.etapa = 'escolhendo_horario'; salvarSessao(from, s);
+  return mostrarDiasSugeridos(from, s);
+}
+
+/** oferece UM horário por dia, em dias espaçados (+ opção de escolher outro dia) */
+async function mostrarDiasSugeridos(from: string, s: ReturnType<typeof getSessao>) {
+  const props = s.propostas ?? [];
+  const vistos = new Set<string>();
+  const itens: Array<{ id: string; titulo: string; descricao?: string }> = [];
+  for (let i = 0; i < props.length; i++) {
+    if (vistos.has(props[i].data)) continue; // um por dia (o primeiro é o mais cedo)
+    vistos.add(props[i].data);
+    itens.push({ id: `slot:${i}`, titulo: `${fmtDiaCurto(props[i].inicio)} · ${fmtHora(props[i].inicio)}`, descricao: props[i].subtitulo });
+    if (itens.length >= 6) break;
+  }
+  const totalDias = new Set(props.map((p) => p.data)).size;
+  if (totalDias > itens.length) {
+    itens.push({ id: 'mais_datas', titulo: '📅 Escolher outro dia', descricao: 'Ver todas as datas disponíveis' });
+  }
+  await enviarLista(from, 'Encontrei estes horários. Qual fica melhor pra você?', 'Ver horários', [
+    { titulo: 'Sugestões', itens },
+  ]);
+}
+
+/** lista os dias que têm vaga, para o paciente escolher um específico */
+async function mostrarDatasDisponiveis(from: string, s: ReturnType<typeof getSessao>) {
+  const props = s.propostas ?? [];
+  const porDia = new Map<string, number>();
+  for (const p of props) porDia.set(p.data, (porDia.get(p.data) ?? 0) + 1);
+  const itens = [...porDia.entries()].slice(0, 10).map(([data, n]) => ({
+    id: `data:${data}`,
+    titulo: fmtDiaCurto(data),
+    descricao: `${n} horário${n > 1 ? 's' : ''} disponíve${n > 1 ? 'is' : 'l'}`,
+  }));
+  await enviarLista(from, 'Certo! Em qual dia você prefere? 📅', 'Ver dias', [
+    { titulo: 'Dias disponíveis', itens },
+  ]);
+}
+
+/** mostra os horários de um dia específico escolhido pelo paciente */
+async function mostrarHorariosDoDia(from: string, s: ReturnType<typeof getSessao>, data: string) {
+  const props = s.propostas ?? [];
+  const itens: Array<{ id: string; titulo: string; descricao?: string }> = [];
+  for (let i = 0; i < props.length && itens.length < 9; i++) {
+    if (props[i].data !== data) continue;
+    itens.push({ id: `slot:${i}`, titulo: fmtHora(props[i].inicio), descricao: props[i].subtitulo });
+  }
+  if (itens.length === 0) return mostrarDatasDisponiveis(from, s);
+  itens.push({ id: 'mais_datas', titulo: '📅 Ver outros dias', descricao: 'Voltar para a lista de datas' });
+  await enviarLista(from, `Horários de *${fmtDiaCurto(data)}*. Qual prefere?`, 'Ver horários', [
+    { titulo: 'Horários', itens },
   ]);
 }
 
 async function tratarHorario(from: string, s: ReturnType<typeof getSessao>, e: Entrada) {
+  if (e.valor === 'mais_datas') return mostrarDatasDisponiveis(from, s);
+  if (e.valor.startsWith('data:')) return mostrarHorariosDoDia(from, s, e.valor.slice(5));
   if (e.valor.startsWith('slot:')) {
     const idx = Number(e.valor.slice(5));
-    if (s.opcoes?.[idx]) {
-      s.opcoes = [s.opcoes[idx]]; // mantém apenas a opção escolhida
+    const escolhida = s.propostas?.[idx];
+    if (escolhida) {
+      s.opcoes = [{ rotulo: escolhida.rotulo, itens: escolhida.itens }]; // mantém apenas a escolhida
       s.etapa = 'identificacao'; salvarSessao(from, s);
       // tenta achar paciente pelo telefone
       const pac = await acharPacientePorTelefone(from);
@@ -252,23 +323,62 @@ async function tratarHorario(from: string, s: ReturnType<typeof getSessao>, e: E
 }
 
 // -------- IDENTIFICAÇÃO --------
+// Convênios de maior porte/volume em Juiz de Fora — exibidos primeiro
+// (não em ordem alfabética). Os demais ficam acessíveis por "Outro
+// convênio" (o paciente digita e casamos com a lista completa).
+const CONVENIOS_POPULARES = ['Particular', 'Unimed', 'Sabin Sinai', 'PLASC', 'Bradesco', 'Sul América', 'CASSI', 'IPSEMG', 'CEMIG Saúde'];
+
+function normalizarTexto(t: string): string {
+  return t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+}
+
+/** casa um texto livre com um convênio da lista completa (acento/pontuação-insensível) */
+function acharConvenio(texto: string) {
+  const n = normalizarTexto(texto);
+  if (!n) return null;
+  const exato = CONVENIOS.find((c) => normalizarTexto(c.nome) === n);
+  if (exato) return exato;
+  return CONVENIOS.find((c) => {
+    const cn = normalizarTexto(c.nome);
+    return cn.includes(n) || n.includes(cn);
+  }) ?? null;
+}
+
 async function tratarIdentificacao(from: string, s: ReturnType<typeof getSessao>, e: Entrada) {
   if (!s.nome) {
-    s.nome = e.valor; salvarSessao(from, s);
+    s.nome = e.valor.trim(); salvarSessao(from, s);
     return pedirConvenioOuConfirmar(from, s);
   }
+  if (e.valor === 'conv_outro') {
+    s.aguardandoConvenio = true; salvarSessao(from, s);
+    return enviarTexto(from, 'Sem problema! Qual é o nome do seu convênio? Pode digitar. 🙂\n(se não tiver, responda *particular*)');
+  }
   if (e.valor.startsWith('conv:')) {
-    s.convenioId = e.valor.slice(5); salvarSessao(from, s);
+    s.convenioId = e.valor.slice(5); s.aguardandoConvenio = false; salvarSessao(from, s);
     return mostrarConfirmacao(from, s);
   }
+  // texto livre: tenta casar com um convênio da lista completa
+  const c = acharConvenio(e.valor);
+  if (c) {
+    s.convenioId = c.id; s.aguardandoConvenio = false; salvarSessao(from, s);
+    return mostrarConfirmacao(from, s);
+  }
+  if (s.aguardandoConvenio) {
+    return enviarTexto(from, `Não encontrei "${e.valor.trim()}" na nossa lista. 🤔\nTente escrever de outro jeito, ou responda *particular* se não usar convênio.`);
+  }
+  // não estava esperando texto de convênio → reapresenta a lista
   return pedirConvenioOuConfirmar(from, s);
 }
 
 async function pedirConvenioOuConfirmar(from: string, s: ReturnType<typeof getSessao>) {
   if (s.convenioId) return mostrarConfirmacao(from, s);
-  const principais = ['particular', ...CONVENIOS.filter((c) => c.nome !== 'Particular').slice(0, 9).map((c) => c.id)];
+  const populares = CONVENIOS_POPULARES
+    .map((nome) => CONVENIOS.find((c) => c.nome === nome))
+    .filter((c): c is NonNullable<typeof c> => Boolean(c));
+  const itens: Array<{ id: string; titulo: string; descricao?: string }> = populares.map((c) => ({ id: `conv:${c.id}`, titulo: c.nome }));
+  itens.push({ id: 'conv_outro', titulo: 'Outro convênio', descricao: 'Não está na lista? Digite o nome' });
   return enviarLista(from, `Obrigada, ${s.nome?.split(' ')[0]}! Qual o seu convênio?`, 'Ver convênios', [
-    { titulo: 'Convênios', itens: principais.map((id) => ({ id: `conv:${id}`, titulo: CONVENIOS.find((c) => c.id === id)?.nome ?? id })) },
+    { titulo: 'Convênios', itens },
   ]);
 }
 
@@ -276,7 +386,11 @@ async function pedirConvenioOuConfirmar(from: string, s: ReturnType<typeof getSe
 async function mostrarConfirmacao(from: string, s: ReturnType<typeof getSessao>) {
   s.etapa = 'confirmando'; salvarSessao(from, s);
   const escolhida = s.opcoes![0]; // já reduzida à opção escolhida
-  const linhas = escolhida.itens.map((i) => `• ${nomeExame(i.exameId)} — ${fmtData(i.inicio)} ${fmtHora(i.inicio)} (${nomeMedico(i.medicoId)})`).join('\n');
+  const linhas = escolhida.itens.map((i) => {
+    const med = MEDICOS.find((m) => m.id === i.medicoId); // aparelhos (mapa/holter) não são médicos
+    const quem = med ? ` (${med.nome})` : '';
+    return `• ${nomeExame(i.exameId)} — ${fmtData(i.inicio)} ${fmtHora(i.inicio)}${quem}`;
+  }).join('\n');
   const conv = CONVENIOS.find((c) => c.id === s.convenioId)?.nome ?? 'Particular';
   await enviarBotoes(
     from,
@@ -335,9 +449,10 @@ async function rotearIA(from: string, s: ReturnType<typeof getSessao>, texto: st
     await enviarTexto(from, intent.resposta ?? 'Posso te ajudar a agendar um exame. Quer ver as opções?');
     return menuPrincipal(from, s);
   }
-  // agendar: já traz exames
+  // agendar: já traz exames (ignora repetidos — não faz sentido o mesmo exame 2x na sessão)
   if (intent.exames.length) {
-    s.examesSelecionados.push(...intent.exames);
+    const novos = intent.exames.filter((id) => !s.examesSelecionados.includes(id));
+    s.examesSelecionados.push(...new Set(novos));
     s.etapa = 'escolhendo_medico'; salvarSessao(from, s);
     const lista = s.examesSelecionados.map((x, i) => `${i + 1}. ${nomeExame(x)}`).join('\n');
     await enviarTexto(from, `Perfeito! Entendi que você quer:\n${lista}`);

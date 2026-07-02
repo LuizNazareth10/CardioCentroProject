@@ -161,6 +161,44 @@ body {
   @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold;
 }
 
+/* ============================================================
+   AGENDA — estados visuais das células (clareza de disponibilidade)
+   ============================================================ */
+
+/* horário BLOQUEADO / indisponível: hachura diagonal (linguagem universal
+   de "não disponível"), sobre cinza definido. Não clicável. */
+.slot-bloqueado {
+  background-color: #e7eaf2;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(44, 62, 127, 0.16) 0,
+    rgba(44, 62, 127, 0.16) 2px,
+    transparent 2px,
+    transparent 8px
+  );
+}
+
+/* coluna do médico que NÃO atende no dia — hachura um pouco mais leve */
+.slot-off-dia {
+  background-color: #edeff5;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(44, 62, 127, 0.12) 0,
+    rgba(44, 62, 127, 0.12) 2px,
+    transparent 2px,
+    transparent 8px
+  );
+}
+
+/* horário LIVRE (dentro da janela do médico/aparelho): faixa verde suave,
+   sempre visível — deixa claro onde é possível marcar. */
+.slot-livre {
+  background-color: rgba(16, 185, 129, 0.05);
+}
+.slot-livre:hover {
+  background-color: rgba(16, 185, 129, 0.14);
+}
+
 /* scrollbar discreta */
 ::-webkit-scrollbar {
   width: 10px;

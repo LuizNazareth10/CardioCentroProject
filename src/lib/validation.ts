@@ -1,5 +1,12 @@
 import type { FichaMedica, Paciente, Sexo } from './types';
 
+/**
+ * Erro de validação de ENTRADA DO USUÁRIO — seguro para exibir ao cliente.
+ * Qualquer outro erro (Firestore, credenciais, etc.) deve ser logado no
+ * servidor e retornar uma mensagem genérica, nunca `.message` bruto.
+ */
+export class ValidationError extends Error {}
+
 // =============================================================
 // Validação e sanitização de entradas (defesa antes de gravar).
 // Faixas clínicas plausíveis — rejeita valores absurdos digitados
@@ -86,7 +93,7 @@ export type PacienteEntrada = Omit<Paciente, 'id' | 'criadoEm' | 'atualizadoEm'>
 export function sanitizarPaciente(raw: Record<string, unknown>): PacienteEntrada {
   const nome = str(raw.nome, 120);
   const telefone = str(raw.telefone, 30);
-  if (!nome || !telefone) throw new Error('nome e telefone são obrigatórios');
+  if (!nome || !telefone) throw new ValidationError('Nome e telefone são obrigatórios.');
   const sexo = raw.sexo === 'M' || raw.sexo === 'F' || raw.sexo === 'O' ? (raw.sexo as Sexo) : undefined;
   return {
     nome,

@@ -48,6 +48,17 @@ export default function AgendaPage() {
     [wd, semanaAtiva],
   );
 
+  // resumo do horário de atendimento do médico no dia (ex.: "08:00–12:00")
+  const resumoJanelas = useCallback(
+    (m: Medico) =>
+      janelasDia(m)
+        .slice()
+        .sort((a, b) => hhmmToMin(a.inicio) - hhmmToMin(b.inicio))
+        .map((j) => `${j.inicio}–${j.fim}`)
+        .join(' · '),
+    [janelasDia],
+  );
+
   const slotsAparelho = (tipo: TipoAparelho): string[] =>
     (wd === 5 || wd === 0 || wd === 6 ? [] : APARELHOS[tipo].slots[wd as Weekday] ?? []);
   const mapaSlots = slotsAparelho('mapa');
@@ -153,11 +164,11 @@ export default function AgendaPage() {
         </div>
       </header>
 
-      <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-muted">
-        <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-white border border-navy-100" /> Livre · clique para agendar</span>
-        <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-navyblue" /> Ocupado</span>
-        <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-navy-50 border border-navy-100" /> Indisponível</span>
-        <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded bg-cardio" /> Agora</span>
+      <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted">
+        <span className="flex items-center gap-1.5"><i className="slot-livre h-3.5 w-3.5 rounded ring-1 ring-inset ring-success/30" /> Livre · clique para agendar</span>
+        <span className="flex items-center gap-1.5"><i className="h-3.5 w-3.5 rounded bg-navyblue" /> Ocupado (clique p/ gerenciar)</span>
+        <span className="flex items-center gap-1.5"><i className="slot-bloqueado h-3.5 w-3.5 rounded ring-1 ring-inset ring-navy-100" /> Bloqueado · fora do horário</span>
+        <span className="flex items-center gap-1.5"><i className="h-3.5 w-3.5 rounded bg-cardio" /> Agora</span>
       </div>
 
       <div className="mt-4 card overflow-hidden">
@@ -169,15 +180,26 @@ export default function AgendaPage() {
               style={{ gridTemplateColumns: `72px repeat(${colunas.length}, 1fr)` }}
             >
               <div className="px-2 py-3" />
-              {colunas.map((c) => (
-                <div
-                  key={c.key}
-                  className={`border-l px-3 py-3 ${c.tipo === 'aparelho' ? 'border-navy-200 bg-cardio/5' : 'border-navy-100'} ${!c.atende ? 'opacity-45' : ''}`}
-                >
-                  <div className={`truncate text-sm font-bold ${c.tipo === 'aparelho' ? 'text-cardio-700' : 'text-navy-900'}`}>{c.nome}</div>
-                  <div className="truncate text-[11px] text-muted">{c.atende ? c.sub : 'Sem atendimento hoje'}</div>
-                </div>
-              ))}
+              {colunas.map((c) => {
+                const horario = c.tipo === 'medico' && c.atende ? resumoJanelas(c.medico) : '';
+                return (
+                  <div
+                    key={c.key}
+                    className={`border-l px-3 py-2.5 ${c.tipo === 'aparelho' ? 'border-navy-200 bg-cardio/5' : 'border-navy-100'} ${!c.atende ? 'bg-navy-50/40' : ''}`}
+                  >
+                    <div className={`flex items-center gap-1.5`}>
+                      <span className={`h-1.5 w-1.5 flex-none rounded-full ${!c.atende ? 'bg-navy-200' : c.tipo === 'aparelho' ? 'bg-cardio' : 'bg-success'}`} />
+                      <span className={`truncate text-sm font-bold ${!c.atende ? 'text-muted' : c.tipo === 'aparelho' ? 'text-cardio-700' : 'text-navy-900'}`}>{c.nome}</span>
+                    </div>
+                    <div className="truncate text-[11px] text-muted">{c.atende ? c.sub : 'Sem atendimento hoje'}</div>
+                    {c.atende && (
+                      <div className={`mt-1 truncate text-[10px] font-semibold ${c.tipo === 'aparelho' ? 'text-cardio-700/80' : 'text-success'}`}>
+                        {c.tipo === 'medico' ? `🕐 ${horario}` : `${c.slots.size} horários fixos`}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {/* linhas */}
@@ -207,29 +229,21 @@ export default function AgendaPage() {
 
                     {colunas.map((c) => {
                       if (c.tipo === 'medico') {
-                        if (!c.atende) return <div key={c.key} className="border-l border-navy-100/60 bg-navy-50/50" />;
+                        // médico não atende hoje → coluna inteira bloqueada
+                        if (!c.atende) return <div key={c.key} className="slot-off-dia border-l border-navy-100/60" />;
                         const { ag, dentro } = celulaMedico(c.medico, t);
                         if (ag && !ehInicio(ag, t)) return <div key={c.key} className="border-l border-navy-100/60" />;
                         if (ag) return <div key={c.key} className="relative border-l border-navy-100/60 p-0.5">{blocoOcupado(ag, spanDe(ag))}</div>;
-                        return dentro ? (
-                          <button key={c.key} type="button" onClick={() => abrir({ medico: c.medico.id }, t)}
-                            title={`Agendar com ${c.medico.nome} às ${minToHHMM(t)}`}
-                            className="group relative border-l border-navy-100/60 bg-white transition-colors hover:bg-cardio/10">
-                            <span className="pointer-events-none absolute inset-1 rounded-md opacity-0 ring-1 ring-inset ring-cardio/40 transition-opacity group-hover:opacity-100" />
-                          </button>
-                        ) : <div key={c.key} className="border-l border-navy-100/60 bg-navy-50/60" />;
+                        // dentro da janela → LIVRE (verde, clicável); fora → BLOQUEADO (hachura)
+                        return dentro
+                          ? <CelulaLivre key={c.key} onClick={() => abrir({ medico: c.medico.id }, t)} titulo={`Agendar com ${c.medico.nome} às ${minToHHMM(t)}`} />
+                          : <div key={c.key} className="slot-bloqueado border-l border-navy-100/60" title="Fora do horário de atendimento" />;
                       }
-                      // aparelho
-                      if (!c.slots.has(t)) return <div key={c.key} className="border-l border-navy-100/60 bg-navy-50/60" />;
+                      // aparelho: horário fixo válido → LIVRE; senão → BLOQUEADO
+                      if (!c.slots.has(t)) return <div key={c.key} className="slot-bloqueado border-l border-navy-100/60" title="Sem coleta neste horário" />;
                       const ag = apptAparelho(c.aparelho, t);
                       if (ag) return <div key={c.key} className="relative border-l border-navy-100/60 p-0.5">{blocoOcupado(ag, 1)}</div>;
-                      return (
-                        <button key={c.key} type="button" onClick={() => abrir({ aparelho: c.aparelho }, t)}
-                          title={`Agendar ${c.nome} às ${minToHHMM(t)}`}
-                          className="group relative border-l border-navy-100/60 bg-white transition-colors hover:bg-cardio/10">
-                          <span className="pointer-events-none absolute inset-1 rounded-md ring-1 ring-inset ring-cardio/30 transition-opacity group-hover:ring-cardio/60" />
-                        </button>
-                      );
+                      return <CelulaLivre key={c.key} onClick={() => abrir({ aparelho: c.aparelho }, t)} titulo={`Agendar ${c.nome} às ${minToHHMM(t)}`} />;
                     })}
                   </div>
                 );
@@ -241,6 +255,21 @@ export default function AgendaPage() {
 
       {acaoAg && <PopoverAcao ag={acaoAg} nomeExame={nomeExame} onFechar={() => setAcaoAg(null)} onStatus={mudarStatus} onFicha={() => router.push(`/pacientes/${acaoAg.pacienteId}`)} />}
     </div>
+  );
+}
+
+// célula de horário LIVRE: faixa verde sempre visível + "+" ao passar o mouse
+function CelulaLivre({ onClick, titulo }: { onClick: () => void; titulo: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={titulo}
+      className="slot-livre group relative border-l border-navy-100/60 transition-colors"
+    >
+      <span className="pointer-events-none absolute inset-1 rounded-md opacity-0 ring-1 ring-inset ring-success/50 transition-opacity group-hover:opacity-100" />
+      <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-bold text-success opacity-0 transition-opacity group-hover:opacity-100">+</span>
+    </button>
   );
 }
 

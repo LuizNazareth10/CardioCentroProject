@@ -11,16 +11,28 @@ export type EtapaConversa =
   | 'confirmando'
   | 'humano'; // handoff: o agente para de processar, a recepção assume
 
+interface ItemProposto {
+  exameId: string;
+  medicoId: string;
+  inicio: string;
+  fim: string;
+}
+
 export interface ConversaState {
   etapa: EtapaConversa;
   examesSelecionados: string[];
   medicoPreferidoId?: string;
-  // proposta corrente (índice -> dados) para confirmação
-  opcoes?: Array<{ rotulo: string; itens: Array<{ exameId: string; medicoId: string; inicio: string; fim: string }> }>;
+  // TODAS as sugestões calculadas (vários dias/horários) — base para
+  // navegar por dia e por horário na etapa "escolhendo_horario".
+  propostas?: Array<{ rotulo: string; subtitulo: string; data: string; inicio: string; itens: ItemProposto[] }>;
+  // proposta escolhida (reduzida a 1) para confirmação
+  opcoes?: Array<{ rotulo: string; itens: ItemProposto[] }>;
   // dados de identificação coletados
   nome?: string;
   convenioId?: string;
   pacienteId?: string;
+  // true enquanto esperamos o paciente digitar o nome de um convênio fora da lista
+  aguardandoConvenio?: boolean;
   atualizadoEm: number;
 }
 

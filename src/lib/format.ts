@@ -7,6 +7,16 @@ export function fmtData(iso: string): string {
   return `${d}/${m}/${a}`;
 }
 
+const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+/** rótulo curto e humano de um dia: "qua 02/07" */
+export function fmtDiaCurto(iso: string): string {
+  const dateStr = iso.slice(0, 10);
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  const [, m, day] = dateStr.split('-');
+  return `${DIAS_CURTOS[d.getUTCDay()]} ${day}/${m}`;
+}
+
 export function fmtDataExtenso(dateStr: string): string {
   const d = new Date(`${dateStr}T12:00:00Z`);
   return d.toLocaleDateString('pt-BR', {

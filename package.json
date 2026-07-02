@@ -9,6 +9,8 @@
     "start": "next start",
     "lint": "next lint",
     "test:engine": "tsx scripts/test-engine.ts",
+    "test:agent": "tsx scripts/test-agent.ts",
+    "chat-agent": "tsx scripts/chat-agent.ts",
     "seed": "tsx scripts/seed-firestore.ts"
   },
   "dependencies": {
