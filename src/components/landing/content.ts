@@ -96,9 +96,10 @@ export const differentials = [
   },
 ];
 
-export const doctors = MEDICOS.filter((m) => m.ativo).map((m) => ({
-  name: m.nome,
-}));
+export const doctors = [
+  ...MEDICOS.filter((m) => m.ativo).map((m) => ({ name: m.nome })),
+  { name: 'Dr. Pedro Paulo' },
+];
 
 export const testimonials = [
   {

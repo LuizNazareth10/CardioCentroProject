@@ -123,8 +123,8 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }:
     email: paciente.email ?? '',
     endereco: paciente.endereco ?? '',
     carteirinha: paciente.carteirinha ?? '',
-    pesoKg: paciente.fichaMedica.pesoKg?.toString() ?? '',
-    alturaCm: paciente.fichaMedica.alturaCm?.toString() ?? '',
+    pesoKg: paciente.fichaMedica?.pesoKg?.toString() ?? '',
+    alturaCm: paciente.fichaMedica?.alturaCm?.toString() ?? '',
   });
 
   useEffect(() => {
@@ -136,38 +136,44 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }:
       email: paciente.email ?? '',
       endereco: paciente.endereco ?? '',
       carteirinha: paciente.carteirinha ?? '',
-      pesoKg: paciente.fichaMedica.pesoKg?.toString() ?? '',
-      alturaCm: paciente.fichaMedica.alturaCm?.toString() ?? '',
+      pesoKg: paciente.fichaMedica?.pesoKg?.toString() ?? '',
+      alturaCm: paciente.fichaMedica?.alturaCm?.toString() ?? '',
     });
   }, [paciente]);
 
   async function salvar() {
     setSalvando(true);
     setErro('');
-    const res = await fetch(`/api/pacientes/${paciente.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        cpf: dados.cpf,
-        dataNascimento: dados.dataNascimento,
-        sexo: dados.sexo || undefined,
-        telefone: dados.telefone,
-        email: dados.email,
-        endereco: dados.endereco,
-        carteirinha: dados.carteirinha,
-        fichaMedica: {
-          pesoKg: dados.pesoKg ? Number(dados.pesoKg) : undefined,
-          alturaCm: dados.alturaCm ? Number(dados.alturaCm) : undefined,
-        },
-      }),
-    });
-    setSalvando(false);
-    if (!res.ok) {
-      setErro((await res.json()).erro ?? 'Erro ao salvar.');
-      return;
+    try {
+      const res = await fetch(`/api/pacientes/${paciente.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cpf: dados.cpf,
+          dataNascimento: dados.dataNascimento,
+          sexo: dados.sexo || undefined,
+          telefone: dados.telefone,
+          email: dados.email,
+          endereco: dados.endereco,
+          carteirinha: dados.carteirinha,
+          fichaMedica: {
+            pesoKg: dados.pesoKg ? Number(dados.pesoKg) : undefined,
+            alturaCm: dados.alturaCm ? Number(dados.alturaCm) : undefined,
+          },
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErro(typeof json.erro === 'string' ? json.erro : 'Erro ao salvar a ficha.');
+        return;
+      }
+      setEditando(false);
+      onAtualizado();
+    } catch {
+      setErro('Falha ao conectar com o servidor.');
+    } finally {
+      setSalvando(false);
     }
-    setEditando(false);
-    onAtualizado();
   }
 
   const sexoLabel = paciente.sexo === 'F' ? 'Feminino' : paciente.sexo === 'M' ? 'Masculino' : paciente.sexo === 'O' ? 'Outro' : '—';
@@ -245,8 +251,8 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }:
               <Bloco titulo="Convênio" texto={convenio} />
               <Bloco titulo="Carteirinha" texto={paciente.carteirinha} />
               <Bloco titulo="Médico responsável (última consulta)" texto={medicoResponsavel} />
-              <Bloco titulo="Peso" texto={paciente.fichaMedica.pesoKg ? `${paciente.fichaMedica.pesoKg} kg` : undefined} />
-              <Bloco titulo="Altura" texto={paciente.fichaMedica.alturaCm ? `${paciente.fichaMedica.alturaCm} cm` : undefined} />
+              <Bloco titulo="Peso" texto={paciente.fichaMedica?.pesoKg ? `${paciente.fichaMedica.pesoKg} kg` : undefined} />
+              <Bloco titulo="Altura" texto={paciente.fichaMedica?.alturaCm ? `${paciente.fichaMedica.alturaCm} cm` : undefined} />
               <Bloco titulo="Registro nº" texto={paciente.id} />
             </>
           )}

@@ -1,4 +1,5 @@
 import { EXAMES } from '../seed-data';
+import { mensagemDuvidaFallback } from './messages';
 
 // =============================================================
 // Camada de IA (modo híbrido). Só é acionada quando o paciente
@@ -21,8 +22,10 @@ export async function interpretar(texto: string): Promise<Intencao> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return fallbackPorPalavras(texto);
 
-  const system = `Você é a atendente virtual da clínica CardioCentro (cardiologia, Juiz de Fora).
-Seja educada, acolhedora e incentive a marcação de exames.
+  const system = `Você é a atendente virtual da clínica Cardiocentro (cardiologia, Juiz de Fora).
+Seja educada, acolhedora, calorosa e use emojis com moderação. Incentive a marcação de exames.
+Lembre sempre que o paciente deve trazer o pedido médico no dia do exame.
+Para cancelar ou remarcar, oriente a ligar para o telefone fixo (32) 3215-8744.
 Exames disponíveis (id: nome):
 ${listaExames}
 
@@ -31,7 +34,7 @@ Responda SOMENTE com um JSON válido, sem texto fora dele, no formato:
 - "agendar": paciente quer marcar um ou mais exames (preencha "exames").
 - "menu": paciente quer ver as opções/voltar ao início.
 - "humano": paciente quer falar com uma pessoa.
-- "duvida": pergunta geral (responda em "resposta", de forma curta e gentil, e convide a agendar).`;
+- "duvida": pergunta geral (responda em "resposta", de forma curta, gentil e acolhedora, e convide a agendar).`;
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -119,5 +122,5 @@ function fallbackPorPalavras(texto: string): Intencao {
   }).map((e) => e.id);
   if (exames.length) return { acao: 'agendar', exames };
   if (/(marca|agend|hor[áa]rio|consulta|exame)/.test(t)) return { acao: 'menu', exames: [] };
-  return { acao: 'duvida', exames: [], resposta: 'Posso te ajudar a agendar um exame ou consulta. Quer ver as opções?' };
+  return { acao: 'duvida', exames: [], resposta: mensagemDuvidaFallback() };
 }

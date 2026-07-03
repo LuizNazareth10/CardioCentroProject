@@ -26,18 +26,18 @@ export const EXAMES: Exame[] = [
     id: 'ergometrico',
     nome: 'Teste Ergométrico Computadorizado',
     duracaoMin: 25,
-    preparo: 'Trazer roupa e tênis para esforço. Verificar medicações com o médico.',
+    preparo: 'Roupas confortáveis para esforço, sutiã/top esportivo (mulheres). Sem hidratante/cremes. Refeição leve 2h antes. Manter medicações conforme médico.',
     ativo: true,
   },
   {
     id: 'cardiopulmonar',
     nome: 'Teste Cardiopulmonar',
     duracaoMin: 30,
-    preparo: 'Trazer roupa e tênis para esforço.',
+    preparo: 'Roupas confortáveis para esforço, sutiã/top esportivo (mulheres). Sem hidratante/cremes. Refeição leve 2h antes. Manter medicações conforme médico.',
     ativo: true,
   },
-  { id: 'holter', nome: 'Holter 24h', duracaoMin: 15, preparo: 'Retorno em 24h para retirada. Não disponível às sextas.', aparelho: 'holter', ativo: true },
-  { id: 'mapa', nome: 'MAPA 24h', duracaoMin: 15, preparo: 'Retorno em 24h para retirada. Não disponível às sextas.', aparelho: 'mapa', ativo: true },
+  { id: 'holter', nome: 'Holter 24h', duracaoMin: 15, preparo: 'Banho tomado (não molhar aparelho). Retorno em 24h. Reserve tempo extra para instalação.', aparelho: 'holter', ativo: true },
+  { id: 'mapa', nome: 'MAPA 24h', duracaoMin: 15, preparo: 'Banho tomado. Traga lista/medicamentos. Retorno em 24h. Reserve tempo extra.', aparelho: 'mapa', ativo: true },
 ];
 
 // =============================================================

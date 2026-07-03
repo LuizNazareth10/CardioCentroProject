@@ -136,8 +136,14 @@ export function sanitizarPaciente(raw: Record<string, unknown>): PacienteEntrada
 /** Atualização parcial de cadastro / antropometria na ficha de identidade. */
 export function sanitizarPacientePatch(raw: Record<string, unknown>): Partial<PacienteEntrada> {
   const patch: Partial<PacienteEntrada> = {};
-  if ('cpf' in raw) patch.cpf = str(raw.cpf, 20);
-  if ('dataNascimento' in raw) patch.dataNascimento = str(raw.dataNascimento, 10);
+  if ('cpf' in raw) {
+    const cpf = str(raw.cpf, 20);
+    if (cpf !== undefined) patch.cpf = cpf;
+  }
+  if ('dataNascimento' in raw) {
+    const dataNascimento = str(raw.dataNascimento, 10);
+    if (dataNascimento !== undefined) patch.dataNascimento = dataNascimento;
+  }
   if ('sexo' in raw) {
     patch.sexo = raw.sexo === 'M' || raw.sexo === 'F' || raw.sexo === 'O' ? (raw.sexo as Sexo) : undefined;
   }
@@ -145,17 +151,30 @@ export function sanitizarPacientePatch(raw: Record<string, unknown>): Partial<Pa
     const telefone = str(raw.telefone, 30);
     if (telefone) patch.telefone = telefone;
   }
-  if ('email' in raw) patch.email = str(raw.email, 120);
-  if ('endereco' in raw) patch.endereco = str(raw.endereco, 200);
-  if ('carteirinha' in raw) patch.carteirinha = str(raw.carteirinha, 60);
-  if ('convenioId' in raw) patch.convenioId = str(raw.convenioId, 60);
+  if ('email' in raw) {
+    const email = str(raw.email, 120);
+    if (email !== undefined) patch.email = email;
+  }
+  if ('endereco' in raw) {
+    const endereco = str(raw.endereco, 200);
+    if (endereco !== undefined) patch.endereco = endereco;
+  }
+  if ('carteirinha' in raw) {
+    const carteirinha = str(raw.carteirinha, 60);
+    if (carteirinha !== undefined) patch.carteirinha = carteirinha;
+  }
+  if ('convenioId' in raw) {
+    const convenioId = str(raw.convenioId, 60);
+    if (convenioId !== undefined) patch.convenioId = convenioId;
+  }
   if (raw.fichaMedica && typeof raw.fichaMedica === 'object') {
     const fm = raw.fichaMedica as Record<string, unknown>;
-    patch.fichaMedica = {
-      ...sanitizarFicha({}),
-      pesoKg: num(fm.pesoKg, LIMITES.pesoKg),
-      alturaCm: num(fm.alturaCm, LIMITES.alturaCm),
-    };
+    const pesoKg = num(fm.pesoKg, LIMITES.pesoKg);
+    const alturaCm = num(fm.alturaCm, LIMITES.alturaCm);
+    const antro: Partial<FichaMedica> = {};
+    if (pesoKg !== undefined) antro.pesoKg = pesoKg;
+    if (alturaCm !== undefined) antro.alturaCm = alturaCm;
+    if (Object.keys(antro).length > 0) patch.fichaMedica = antro as FichaMedica;
   }
   return patch;
 }

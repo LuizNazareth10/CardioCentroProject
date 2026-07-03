@@ -1,4 +1,5 @@
 import type { Agendamento, Conversa, MensagemConversa, Paciente, StatusAtendimento, Triagem, Usuario } from '../types';
+import { sanitizarFicha } from '../validation';
 import { memoria, novoId } from './store';
 
 // =============================================================
@@ -62,12 +63,21 @@ export async function criarPaciente(
 export async function atualizarPaciente(id: string, patch: Partial<Paciente>): Promise<Paciente | null> {
   const atual = await obterPaciente(id);
   if (!atual) return null;
-  const novo = { ...atual, ...patch, atualizadoEm: new Date().toISOString() };
+  const limpo = Object.fromEntries(
+    Object.entries(patch).filter(([, v]) => v !== undefined),
+  ) as Partial<Paciente>;
+  const fichaBase = atual.fichaMedica ?? sanitizarFicha({});
+  const novo: Paciente = {
+    ...atual,
+    ...limpo,
+    fichaMedica: limpo.fichaMedica ? { ...fichaBase, ...limpo.fichaMedica } : fichaBase,
+    atualizadoEm: new Date().toISOString(),
+  };
   if (isFirestore) {
     await (await fs()).collection('pacientes').doc(id).set(novo, { merge: true });
   } else {
     const i = memoria.pacientes.findIndex((p) => p.id === id);
-    memoria.pacientes[i] = novo;
+    if (i >= 0) memoria.pacientes[i] = novo;
   }
   return novo;
 }

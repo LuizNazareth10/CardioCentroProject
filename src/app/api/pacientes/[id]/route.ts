@@ -26,18 +26,23 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 // Atualiza ficha de identidade / dados cadastrais
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   if (!(await lerSessao())) return NextResponse.json({ erro: 'não autorizado' }, { status: 401 });
-  const raw = await req.json();
-  const atual = await obterPaciente(params.id);
-  if (!atual) return NextResponse.json({ erro: 'não encontrado' }, { status: 404 });
 
-  const parcial = sanitizarPacientePatch(raw as Record<string, unknown>);
-  const patch: Record<string, unknown> = { ...parcial };
-  if (parcial.fichaMedica) {
-    patch.fichaMedica = { ...atual.fichaMedica, ...parcial.fichaMedica };
+  try {
+    const raw = await req.json();
+    const atual = await obterPaciente(params.id);
+    if (!atual) return NextResponse.json({ erro: 'não encontrado' }, { status: 404 });
+
+    const parcial = sanitizarPacientePatch(raw as Record<string, unknown>);
+    const atualizado = await atualizarPaciente(params.id, parcial);
+    if (!atualizado) return NextResponse.json({ erro: 'não encontrado' }, { status: 404 });
+    return NextResponse.json({ paciente: atualizado });
+  } catch (e) {
+    console.error('[api/pacientes/PATCH] erro ao atualizar:', e);
+    return NextResponse.json(
+      { erro: 'Não foi possível salvar a ficha. Tente novamente em instantes.' },
+      { status: 500 },
+    );
   }
-  const atualizado = await atualizarPaciente(params.id, patch);
-  if (!atualizado) return NextResponse.json({ erro: 'não encontrado' }, { status: 404 });
-  return NextResponse.json({ paciente: atualizado });
 }
 
 // Cria uma triagem para este paciente
