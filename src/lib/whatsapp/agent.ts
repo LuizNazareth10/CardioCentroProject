@@ -36,6 +36,7 @@ import {
 } from './messages';
 import { carregarSessao, limparSessao, salvarSessao, type ConversaState } from './session';
 import { interpretar, lerPedidoMedico } from './ai';
+import { nomeExameDisplay, nomeExameLista, descricaoExameLista } from '../exames-display';
 
 // entrada normalizada do webhook
 export interface Entrada {
@@ -53,7 +54,7 @@ function agoraJF(): string {
   const time = d.toLocaleTimeString('en-GB', { timeZone: 'America/Sao_Paulo' });
   return `${date}T${time}-03:00`;
 }
-const nomeExame = (id: string) => EXAMES.find((e) => e.id === id)?.nome ?? id;
+const nomeExame = (id: string) => nomeExameDisplay(id);
 const nomeMedico = (id: string) => MEDICOS.find((m) => m.id === id)?.nome ?? id;
 
 export async function processarMensagem(from: string, e: Entrada): Promise<void> {
@@ -153,7 +154,11 @@ async function menuPrincipal(from: string, s: ConversaState) {
 async function enviarListaExames(from: string, jaSelecionados: string[] = []) {
   const disponiveis = EXAMES.filter((e) => e.ativo && !jaSelecionados.includes(e.id));
   await enviarLista(from, mensagemListaExames(), 'Ver exames', [
-    { titulo: 'Exames', itens: disponiveis.map((e) => ({ id: `ex:${e.id}`, titulo: e.nome, descricao: `${e.duracaoMin} min` })) },
+    { titulo: 'Exames', itens: disponiveis.map((e) => ({
+      id: `ex:${e.id}`,
+      titulo: nomeExameLista(e.id),
+      descricao: descricaoExameLista(e.id, e.duracaoMin),
+    })) },
   ]);
 }
 

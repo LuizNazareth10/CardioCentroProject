@@ -54,7 +54,7 @@ function AgendarConteudo() {
   const [pendente, setPendente] = useState<Array<{ exameId: string; medicoId: string; inicio: string; fim: string }> | null>(null);
   const [modoPaciente, setModoPaciente] = useState<'buscar' | 'cadastrar'>('buscar');
   const [novoPaciente, setNovoPaciente] = useState({
-    nome: '', telefone: '', dataNascimento: '', convenioId: 'particular', cpf: '', sexo: '',
+    nome: '', telefone: '', convenioId: 'particular',
   });
   const [erroCadastro, setErroCadastro] = useState('');
 
@@ -79,10 +79,7 @@ function AgendarConteudo() {
         body: JSON.stringify({
           nome: novoPaciente.nome,
           telefone: novoPaciente.telefone,
-          dataNascimento: novoPaciente.dataNascimento,
           convenioId: novoPaciente.convenioId,
-          cpf: novoPaciente.cpf || undefined,
-          sexo: novoPaciente.sexo || undefined,
         }),
       });
       const json = await res.json();
@@ -306,41 +303,20 @@ function AgendarConteudo() {
                 <label className="label">Nome completo *</label>
                 <input className="input" value={novoPaciente.nome} onChange={(e) => setNovoPaciente((v) => ({ ...v, nome: e.target.value }))} />
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="label">Telefone *</label>
-                  <input className="input" type="tel" value={novoPaciente.telefone} onChange={(e) => setNovoPaciente((v) => ({ ...v, telefone: e.target.value }))} placeholder="(32) 99999-0000" />
-                </div>
-                <div>
-                  <label className="label">Data de nascimento *</label>
-                  <input className="input" type="date" value={novoPaciente.dataNascimento} onChange={(e) => setNovoPaciente((v) => ({ ...v, dataNascimento: e.target.value }))} />
-                </div>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="label">Convênio *</label>
-                  <select className="input" value={novoPaciente.convenioId} onChange={(e) => setNovoPaciente((v) => ({ ...v, convenioId: e.target.value }))}>
-                    {CONVENIOS.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Sexo (opcional)</label>
-                  <select className="input" value={novoPaciente.sexo} onChange={(e) => setNovoPaciente((v) => ({ ...v, sexo: e.target.value }))}>
-                    <option value="">Não informado</option>
-                    <option value="F">Feminino</option>
-                    <option value="M">Masculino</option>
-                    <option value="O">Outro</option>
-                  </select>
-                </div>
+              <div>
+                <label className="label">Telefone *</label>
+                <input className="input" type="tel" value={novoPaciente.telefone} onChange={(e) => setNovoPaciente((v) => ({ ...v, telefone: e.target.value }))} placeholder="(32) 99999-0000" />
               </div>
               <div>
-                <label className="label">CPF (opcional)</label>
-                <input className="input" value={novoPaciente.cpf} onChange={(e) => setNovoPaciente((v) => ({ ...v, cpf: e.target.value }))} />
+                <label className="label">Convênio *</label>
+                <select className="input" value={novoPaciente.convenioId} onChange={(e) => setNovoPaciente((v) => ({ ...v, convenioId: e.target.value }))}>
+                  {CONVENIOS.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                </select>
               </div>
               <button
                 type="button"
                 className="btn-red w-full"
-                disabled={carregando || !novoPaciente.nome.trim() || !novoPaciente.telefone.trim() || !novoPaciente.dataNascimento}
+                disabled={carregando || !novoPaciente.nome.trim() || !novoPaciente.telefone.trim()}
                 onClick={cadastrarPacienteRapido}
               >
                 {carregando ? 'Cadastrando…' : 'Cadastrar e continuar'}

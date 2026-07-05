@@ -18,8 +18,6 @@ export default function robots(): MetadataRoute.Robots {
           '/atendimentos',
           '/simulador',
           '/configuracoes',
-          '/leads',
-          '/metricas',
           '/api/',
         ],
       },

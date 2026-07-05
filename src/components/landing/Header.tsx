@@ -28,7 +28,7 @@ export function Header() {
     >
       <div className="mx-auto flex max-w-[90rem] items-center gap-3 px-4 py-3.5 sm:px-5 lg:gap-4 lg:px-6 lg:py-4 xl:gap-6 xl:px-8">
         <Link href="/" className="shrink-0" aria-label="Cardiocentro — início">
-          <BrandLogo tone="light" size={54} emphasis="header" />
+          <BrandLogo tone="light" size={68} emphasis="header" />
         </Link>
 
         <nav

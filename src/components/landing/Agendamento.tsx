@@ -154,25 +154,6 @@ export function Agendamento() {
               <MessageCircle className="h-5 w-5" aria-hidden />
               Marcar exame pelo WhatsApp
             </a>
-
-            <div className="mt-6 overflow-hidden rounded-3xl border border-navyblue-100 shadow-card">
-              <iframe
-                title="Mapa da Cardiocentro — Rua Delfim Moreira, 165, Centro, Juiz de Fora — MG"
-                src={mapaSrc}
-                className="h-56 w-full"
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-              />
-              <a
-                href={rotaHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 bg-white px-4 py-3 text-sm font-semibold text-navyblue-700 transition-colors hover:bg-navyblue-50"
-              >
-                <Navigation className="h-4 w-4" aria-hidden />
-                Como chegar — abrir no Google Maps
-              </a>
-            </div>
           </Reveal>
 
           {/* formulário */}
@@ -373,6 +354,25 @@ export function Agendamento() {
             </div>
           </Reveal>
         </div>
+      </div>
+
+      <div className="mt-12 w-full overflow-hidden border-y border-navyblue-100 shadow-card">
+        <iframe
+          title="Mapa da Cardiocentro — Rua Delfim Moreira, 165, Centro, Juiz de Fora — MG"
+          src={mapaSrc}
+          className="h-[28rem] w-full sm:h-[32rem] lg:h-[36rem]"
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+        />
+        <a
+          href={rotaHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 bg-white px-4 py-4 text-sm font-semibold text-navyblue-700 transition-colors hover:bg-navyblue-50"
+        >
+          <Navigation className="h-4 w-4" aria-hidden />
+          Como chegar — abrir no Google Maps
+        </a>
       </div>
     </section>
   );

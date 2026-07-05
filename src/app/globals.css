@@ -257,6 +257,9 @@ body {
     top: 0;
     width: 100%;
   }
+  #ficha-identidade-print img {
+    filter: grayscale(100%) contrast(1.15);
+  }
 }
 
 html {

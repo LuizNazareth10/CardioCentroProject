@@ -46,7 +46,5 @@ export const config = {
     '/atendimentos/:path*',
     '/simulador/:path*',
     '/configuracoes/:path*',
-    '/leads/:path*',
-    '/metricas/:path*',
   ],
 };

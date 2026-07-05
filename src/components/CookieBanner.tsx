@@ -14,7 +14,7 @@ import { usePathname } from 'next/navigation';
 const CHAVE = 'cc-consent'; // 'accepted' | 'rejected'
 const ROTAS_INTERNAS = [
   '/dashboard', '/agenda', '/agendar', '/pacientes', '/atendimentos',
-  '/simulador', '/configuracoes', '/leads', '/metricas', '/login',
+  '/simulador', '/configuracoes', '/login',
 ];
 
 function carregarAnalytics() {

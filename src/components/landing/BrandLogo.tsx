@@ -19,7 +19,7 @@ export function BrandLogo({
   const title = tone === 'dark' ? 'text-white' : 'text-navyblue-900';
   const sub = tone === 'dark' ? 'text-white/65' : 'text-gray-500';
   const isHeader = emphasis === 'header';
-  const markSize = isHeader ? Math.max(size, 52) : size;
+  const markSize = isHeader ? Math.max(size, 64) : size;
 
   return (
     <div className={`flex items-center ${isHeader ? 'gap-3.5' : 'gap-3'}`}>
@@ -40,7 +40,7 @@ export function BrandLogo({
         <div className="min-w-0 leading-tight">
           <div
             className={`whitespace-nowrap font-brand font-extrabold tracking-tight ${title} ${
-              isHeader ? 'text-[1.65rem] leading-none xl:text-[1.85rem]' : 'text-[20px]'
+              isHeader ? 'text-[2rem] leading-none xl:text-[2.25rem]' : 'text-[20px]'
             }`}
           >
             Cardio<span className="text-cardio">centro</span>
@@ -48,7 +48,7 @@ export function BrandLogo({
           <div
             className={`whitespace-nowrap font-semibold uppercase ${sub} ${
               isHeader
-                ? 'mt-1 text-[9px] tracking-[0.14em] xl:text-[10px]'
+                ? 'mt-1 text-[10px] tracking-[0.14em] xl:text-[11px]'
                 : 'text-[9px] tracking-[0.16em]'
             }`}
           >

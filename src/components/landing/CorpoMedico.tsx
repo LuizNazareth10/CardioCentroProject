@@ -8,18 +8,15 @@ export function CorpoMedico() {
   const reduce = useReducedMotion();
 
   return (
-    <section id="corpo-medico" className="relative scroll-mt-24 overflow-hidden bg-navyblue py-24 text-white lg:py-28">
+    <section id="corpo-clinico" className="relative scroll-mt-24 overflow-hidden bg-navyblue py-24 text-white lg:py-28">
       <div className="pointer-events-none absolute inset-0 opacity-[0.06]">
         <div className="dotgrid h-full w-full" />
       </div>
 
       <div className="relative mx-auto max-w-7xl px-5 lg:px-8">
         <Reveal className="mx-auto max-w-2xl text-center">
-          <span className="pill mx-auto border-white/15 bg-white/10 text-white">
-            Corpo médico
-          </span>
-          <h2 className="mt-5 font-serif text-4xl font-bold tracking-tight sm:text-5xl">
-            Especialistas em quem você pode confiar
+          <h2 className="font-serif text-4xl font-bold tracking-tight sm:text-5xl">
+            Corpo Clínico
           </h2>
           <p className="mt-4 text-lg text-white/70">
             Cardiologistas dedicados, com formação sólida e escuta atenta a cada paciente.

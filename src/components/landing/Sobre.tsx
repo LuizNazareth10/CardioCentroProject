@@ -1,14 +1,8 @@
 'use client';
 
 import Image from 'next/image';
-import { Check } from 'lucide-react';
 import { Reveal } from './Reveal';
 import { photos } from './content';
-
-const pillars = [
-  'Mais de 45 anos de experiência em cardiologia',
-  'Laudos assinados por médicos cardiologistas',
-];
 
 export function Sobre() {
   return (
@@ -55,20 +49,9 @@ export function Sobre() {
             qualidade de vida e bem-estar aos seus pacientes.
           </p>
 
-          <ul className="mt-8 space-y-4">
-            {pillars.map((p) => (
-              <li key={p} className="flex items-start gap-3">
-                <span className="mt-0.5 grid h-6 w-6 flex-none place-items-center rounded-full bg-cardio/10 text-cardio">
-                  <Check className="h-4 w-4" aria-hidden />
-                </span>
-                <span className="text-[15px] text-gray-700">{p}</span>
-              </li>
-            ))}
-          </ul>
-
           <div className="mt-9">
-            <a href="#corpo-medico" className="cta-navy">
-              Conheça nosso corpo médico
+            <a href="#corpo-clinico" className="cta-navy">
+              Conheça nosso corpo clínico
             </a>
           </div>
         </Reveal>

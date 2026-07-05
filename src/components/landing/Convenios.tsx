@@ -1,6 +1,6 @@
 import { BadgeCheck } from 'lucide-react';
 import { Reveal } from './Reveal';
-import { conveniosAceitos, whatsappLink } from './content';
+import { conveniosAceitos } from './content';
 
 export function Convenios() {
   return (
@@ -29,11 +29,6 @@ export function Convenios() {
               </li>
             ))}
           </ul>
-          <p className="mt-8 text-center">
-            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="cta-ghost">
-              Confirmar meu convênio pelo WhatsApp
-            </a>
-          </p>
         </Reveal>
       </div>
     </section>

@@ -5,7 +5,6 @@ import { Sobre } from '@/components/landing/Sobre';
 import { CorpoMedico } from '@/components/landing/CorpoMedico';
 import { Convenios } from '@/components/landing/Convenios';
 import { Preparo } from '@/components/landing/Preparo';
-import { Faq } from '@/components/landing/Faq';
 import { Agendamento } from '@/components/landing/Agendamento';
 import { Footer } from '@/components/landing/Footer';
 import { FloatingWhatsApp } from '@/components/landing/FloatingWhatsApp';
@@ -64,7 +63,6 @@ export default function LandingPage() {
         <CorpoMedico />
         <Convenios />
         <Preparo />
-        <Faq />
         <Agendamento />
       </main>
       <Footer />

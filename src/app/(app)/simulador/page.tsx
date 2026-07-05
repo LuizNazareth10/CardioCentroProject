@@ -214,8 +214,8 @@ function BolhaAgente({ msg, onEscolha, carregando }: { msg: MsgAgente; onEscolha
                   {sec.itens.map((it) => (
                     <button key={it.id} disabled={carregando} onClick={() => onEscolha(it.id, it.titulo)}
                       className="rounded-lg px-2.5 py-2 text-left text-sm text-navyblue-800 hover:bg-navyblue-50 disabled:opacity-50">
-                      <div className="font-semibold">{it.titulo}</div>
-                      {it.descricao && <div className="text-xs text-muted">{it.descricao}</div>}
+                      <div className={`break-words font-semibold leading-snug ${it.titulo.includes('/') ? 'text-xs' : 'text-sm'}`}>{it.titulo}</div>
+                      {it.descricao && <div className="mt-0.5 break-words text-xs text-muted">{it.descricao}</div>}
                     </button>
                   ))}
                 </div>

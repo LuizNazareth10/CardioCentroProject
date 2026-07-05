@@ -93,23 +93,14 @@ export type PacienteEntrada = Omit<Paciente, 'id' | 'criadoEm' | 'atualizadoEm'>
 export function sanitizarPacienteAgendamento(raw: Record<string, unknown>): PacienteEntrada {
   const nome = str(raw.nome, 120);
   const telefone = str(raw.telefone, 30);
-  const dataNascimento = str(raw.dataNascimento, 10);
   const convenioId = str(raw.convenioId, 60);
   if (!nome) throw new ValidationError('Nome é obrigatório.');
   if (!telefone) throw new ValidationError('Telefone é obrigatório.');
-  if (!dataNascimento) throw new ValidationError('Data de nascimento é obrigatória.');
   if (!convenioId) throw new ValidationError('Convênio é obrigatório.');
-  const sexo = raw.sexo === 'M' || raw.sexo === 'F' || raw.sexo === 'O' ? (raw.sexo as Sexo) : undefined;
   return {
     nome,
     telefone,
-    dataNascimento,
     convenioId,
-    cpf: str(raw.cpf, 20),
-    sexo,
-    email: str(raw.email, 120),
-    endereco: str(raw.endereco, 200),
-    carteirinha: str(raw.carteirinha, 60),
     fichaMedica: sanitizarFicha({}),
   };
 }
@@ -212,9 +203,11 @@ export function sanitizarPacientePatch(raw: Record<string, unknown>): Partial<Pa
     const fm = raw.fichaMedica as Record<string, unknown>;
     const pesoKg = num(fm.pesoKg, LIMITES.pesoKg);
     const alturaCm = num(fm.alturaCm, LIMITES.alturaCm);
+    const observacoesGerais = str(fm.observacoesGerais, 2000);
     const antro: Partial<FichaMedica> = {};
     if (pesoKg !== undefined) antro.pesoKg = pesoKg;
     if (alturaCm !== undefined) antro.alturaCm = alturaCm;
+    if (observacoesGerais !== undefined) antro.observacoesGerais = observacoesGerais;
     if (Object.keys(antro).length > 0) patch.fichaMedica = antro as FichaMedica;
   }
   return patch;

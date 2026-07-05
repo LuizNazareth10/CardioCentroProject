@@ -11,7 +11,7 @@ import type { AparelhoConfig, Convenio, Exame, Medico } from './types';
 export const EXAMES: Exame[] = [
   {
     id: 'eco-doppler',
-    nome: 'Ecocardiograma com Doppler Colorido',
+    nome: 'Ecocardiograma com Doppler Colorido/Ecocardiograma Transtorácico',
     duracaoMin: 15,
     preparo: 'Não há preparo específico.',
     ativo: true,

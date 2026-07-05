@@ -3,6 +3,7 @@ import { lerSessao } from '@/lib/auth';
 import { processarMensagem, type Entrada } from '@/lib/whatsapp/agent';
 import { capturarEnvios, type EnvioCapturado } from '@/lib/whatsapp/client';
 import { carregarSessao } from '@/lib/whatsapp/session';
+import { resolverTituloLista } from '@/lib/exames-display';
 
 // =============================================================
 // SIMULADOR do agente de WhatsApp (sem depender da Meta).
@@ -49,7 +50,11 @@ function normalizar(p: EnvioCapturado) {
       botaoLista: inter.action?.button ?? 'Ver opções',
       secoes: (inter.action?.sections ?? []).map((s: any) => ({
         titulo: s.title,
-        itens: (s.rows ?? []).map((r: any) => ({ id: r.id, titulo: r.title, descricao: r.description })),
+        itens: (s.rows ?? []).map((r: any) => ({
+          id: r.id,
+          titulo: resolverTituloLista(r.id, r.title),
+          descricao: r.description,
+        })),
       })),
     };
   }

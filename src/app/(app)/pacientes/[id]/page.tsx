@@ -125,6 +125,7 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }:
     carteirinha: paciente.carteirinha ?? '',
     pesoKg: paciente.fichaMedica?.pesoKg?.toString() ?? '',
     alturaCm: paciente.fichaMedica?.alturaCm?.toString() ?? '',
+    observacoesGerais: paciente.fichaMedica?.observacoesGerais ?? '',
   });
 
   useEffect(() => {
@@ -138,6 +139,7 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }:
       carteirinha: paciente.carteirinha ?? '',
       pesoKg: paciente.fichaMedica?.pesoKg?.toString() ?? '',
       alturaCm: paciente.fichaMedica?.alturaCm?.toString() ?? '',
+      observacoesGerais: paciente.fichaMedica?.observacoesGerais ?? '',
     });
   }, [paciente]);
 
@@ -159,6 +161,7 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }:
           fichaMedica: {
             pesoKg: dados.pesoKg ? Number(dados.pesoKg) : undefined,
             alturaCm: dados.alturaCm ? Number(dados.alturaCm) : undefined,
+            observacoesGerais: dados.observacoesGerais || undefined,
           },
         }),
       });
@@ -176,7 +179,7 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }:
     }
   }
 
-  const sexoLabel = paciente.sexo === 'F' ? 'Feminino' : paciente.sexo === 'M' ? 'Masculino' : paciente.sexo === 'O' ? 'Outro' : '—';
+  const sexoLabel = paciente.sexo === 'F' ? 'Feminino' : paciente.sexo === 'M' ? 'Masculino' : '—';
 
   return (
     <div>
@@ -206,18 +209,15 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }:
           <h3 className="font-bold text-navy-900">Dados pessoais</h3>
           {editando ? (
             <>
+              <CampoInput label="Data de nascimento" type="date" value={dados.dataNascimento} onChange={(v) => setDados({ ...dados, dataNascimento: v })} />
               <CampoInput label="Identidade / CPF" value={dados.cpf} onChange={(v) => setDados({ ...dados, cpf: v })} />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <CampoInput label="Data de nascimento" type="date" value={dados.dataNascimento} onChange={(v) => setDados({ ...dados, dataNascimento: v })} />
-                <div>
-                  <label className="label">Sexo</label>
-                  <select className="input" value={dados.sexo} onChange={(e) => setDados({ ...dados, sexo: e.target.value })}>
-                    <option value="">Não informado</option>
-                    <option value="F">Feminino</option>
-                    <option value="M">Masculino</option>
-                    <option value="O">Outro</option>
-                  </select>
-                </div>
+              <div>
+                <label className="label">Sexo</label>
+                <select className="input" value={dados.sexo} onChange={(e) => setDados({ ...dados, sexo: e.target.value })}>
+                  <option value="">Não informado</option>
+                  <option value="F">Feminino</option>
+                  <option value="M">Masculino</option>
+                </select>
               </div>
               <CampoInput label="Telefone" value={dados.telefone} onChange={(v) => setDados({ ...dados, telefone: v })} />
               <CampoInput label="E-mail" value={dados.email} onChange={(v) => setDados({ ...dados, email: v })} />
@@ -225,8 +225,8 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }:
             </>
           ) : (
             <>
-              <Bloco titulo="Identidade / CPF" texto={paciente.cpf} />
               <Bloco titulo="Data de nascimento" texto={paciente.dataNascimento ? fmtData(paciente.dataNascimento + 'T12:00') : undefined} />
+              <Bloco titulo="Identidade / CPF" texto={paciente.cpf} />
               <Bloco titulo="Idade / Sexo" texto={`${idade(paciente.dataNascimento)} · ${sexoLabel}`} />
               <Bloco titulo="Telefone" texto={paciente.telefone} />
               <Bloco titulo="E-mail" texto={paciente.email} />
@@ -244,16 +244,31 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }:
                 <CampoInput label="Peso (kg)" type="number" value={dados.pesoKg} onChange={(v) => setDados({ ...dados, pesoKg: v })} />
                 <CampoInput label="Altura (cm)" type="number" value={dados.alturaCm} onChange={(v) => setDados({ ...dados, alturaCm: v })} />
               </div>
+              <div>
+                <label className="label">Observação</label>
+                <textarea
+                  className="input min-h-[100px] resize-y"
+                  value={dados.observacoesGerais}
+                  onChange={(e) => setDados({ ...dados, observacoesGerais: e.target.value })}
+                  placeholder="Informações relevantes para a equipe…"
+                />
+              </div>
             </>
           ) : (
             <>
               <Bloco titulo="Data de cadastro" texto={fmtData(paciente.criadoEm)} />
               <Bloco titulo="Convênio" texto={convenio} />
               <Bloco titulo="Carteirinha" texto={paciente.carteirinha} />
-              <Bloco titulo="Médico responsável (última consulta)" texto={medicoResponsavel} />
+              <Bloco titulo="Médico solicitante" texto={medicoResponsavel} />
               <Bloco titulo="Peso" texto={paciente.fichaMedica?.pesoKg ? `${paciente.fichaMedica.pesoKg} kg` : undefined} />
               <Bloco titulo="Altura" texto={paciente.fichaMedica?.alturaCm ? `${paciente.fichaMedica.alturaCm} cm` : undefined} />
               <Bloco titulo="Registro nº" texto={paciente.id} />
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted">Observação</div>
+                <div className="whitespace-pre-wrap text-sm text-ink/85">
+                  {paciente.fichaMedica?.observacoesGerais || '—'}
+                </div>
+              </div>
             </>
           )}
         </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Logo } from './Logo';
 
@@ -9,9 +10,7 @@ const links = [
   { href: '/agenda', label: 'Agenda', icon: 'calendar' },
   { href: '/agendar', label: 'Novo agendamento', icon: 'plus' },
   { href: '/pacientes', label: 'Pacientes', icon: 'user' },
-  { href: '/leads', label: 'Leads', icon: 'target' },
   { href: '/atendimentos', label: 'Atendimentos', icon: 'chat' },
-  { href: '/metricas', label: 'Métricas', icon: 'chart' },
   { href: '/simulador', label: 'Simulador WhatsApp', icon: 'phone' },
   { href: '/configuracoes', label: 'Configurações', icon: 'gear' },
 ];
@@ -35,6 +34,22 @@ function Icon({ name }: { name: string }) {
 export function Sidebar({ nome }: { nome: string }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [pendentes, setPendentes] = useState(0);
+
+  useEffect(() => {
+    async function carregarPendentes() {
+      const res = await fetch('/api/atendimentos');
+      if (!res.ok) return;
+      const json = await res.json();
+      const total = (json.conversas ?? []).filter(
+        (c: { status: string }) => c.status !== 'resolvido',
+      ).length;
+      setPendentes(total);
+    }
+    carregarPendentes();
+    const id = setInterval(carregarPendentes, 15000);
+    return () => clearInterval(id);
+  }, []);
 
   async function sair() {
     await fetch('/api/auth', { method: 'DELETE' });
@@ -63,7 +78,17 @@ export function Sidebar({ nome }: { nome: string }) {
                   ? 'bg-navyblue text-white shadow-soft'
                   : 'text-ink/70 hover:-translate-y-0.5 hover:bg-navy-50 hover:text-navy-900'}`}>
               <Icon name={l.icon} />
-              {l.label}
+              <span className="flex-1">{l.label}</span>
+              {l.href === '/atendimentos' && pendentes > 0 && (
+                <span
+                  className={`grid min-w-[1.25rem] place-items-center rounded-full px-1.5 py-0.5 text-[11px] font-bold leading-none ${
+                    ativo ? 'bg-white text-navyblue' : 'bg-brand-red text-white'
+                  }`}
+                  aria-label={`${pendentes} atendimento${pendentes !== 1 ? 's' : ''} pendente${pendentes !== 1 ? 's' : ''}`}
+                >
+                  {pendentes > 99 ? '99+' : pendentes}
+                </span>
+              )}
             </Link>
           );
         })}

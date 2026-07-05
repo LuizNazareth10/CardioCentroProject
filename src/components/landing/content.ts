@@ -9,7 +9,7 @@ import {
   Stethoscope,
   Waves,
 } from 'lucide-react';
-import { CONVENIOS, MEDICOS, CONTATO, linkWhatsapp } from '@/lib/seed-data';
+import { CONVENIOS, CONTATO, linkWhatsapp } from '@/lib/seed-data';
 
 export const contato = CONTATO;
 export { linkWhatsapp };
@@ -47,7 +47,7 @@ export const services = [
   },
   {
     icon: ScanHeart,
-    title: 'Ecocardiograma com Doppler Colorido',
+    title: 'Ecocardiograma com Doppler Colorido/Ecocardiograma Transtorácico',
     desc: 'Ultrassom do coração com imagem de alta definição para avaliar estrutura e função cardíaca.',
   },
   {
@@ -78,8 +78,13 @@ export const services = [
 ];
 
 export const doctors = [
-  ...MEDICOS.filter((m) => m.ativo).map((m) => ({ name: m.nome })),
-  { name: 'Dr. Pedro Paulo' },
+  { name: 'Dr. Ricardo Daher' },
+  { name: 'Dr. Paulo Zorzo' },
+  { name: 'Dr. Júlio Lovisi' },
+  { name: 'Dra. Fernanda Lanzoni' },
+  { name: 'Dra. Sonielle Albertino' },
+  { name: 'Dr. Pedro Paulo de Oliveira' },
+  { name: 'Dr. Vagner Campos' },
 ];
 
 export const testimonials = [
@@ -106,9 +111,8 @@ export const testimonials = [
 export const nav = [
   { label: 'Exames', href: '#especialidades' },
   { label: 'A clínica', href: '#sobre' },
-  { label: 'Corpo\u00A0médico', href: '#corpo-medico' },
+  { label: 'Corpo\u00A0Clínico', href: '#corpo-clinico' },
   { label: 'Preparo', href: '#preparo' },
-  { label: 'Dúvidas', href: '#faq' },
   { label: 'Contato', href: '#agendamento' },
 ];
 
