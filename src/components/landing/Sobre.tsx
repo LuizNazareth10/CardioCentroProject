@@ -6,9 +6,8 @@ import { Reveal } from './Reveal';
 import { photos } from './content';
 
 const pillars = [
-  'Equipamentos de última geração e ambiente acolhedor',
-  'Laudos assinados por cardiologistas experientes',
-  'Atendimento humanizado, do agendamento ao acompanhamento',
+  'Mais de 45 anos de experiência em cardiologia',
+  'Laudos assinados por médicos cardiologistas',
 ];
 
 export function Sobre() {
@@ -43,15 +42,17 @@ export function Sobre() {
         <Reveal direction="left">
           <span className="pill">A clínica</span>
           <h2 className="mt-5 font-serif text-4xl font-bold tracking-tight text-navyblue-900 sm:text-5xl">
-            Referência em diagnóstico cardiológico
+            Tradição em diagnóstico cardiológico
           </h2>
           <p className="mt-5 text-lg leading-relaxed text-gray-600">
-            No Centro de Juiz de Fora, a Cardiocentro reúne a linha completa de
-            métodos diagnósticos em cardiologia — do eletrocardiograma ao teste
-            cardiopulmonar — com médicos especialistas e atendimento a particular
-            e a mais de 20 convênios. Cada exame é conduzido com atenção aos
-            detalhes e respeito à sua história — porque por trás de cada coração
-            existe uma vida inteira.
+            Fundada em 1979 pelo cardiologista{' '}
+            <span className="font-semibold text-cardio">Dr. Cyro Augusto Espíndola</span>,
+            a Cardiocentro nasceu com o compromisso de oferecer um atendimento
+            cardiológico de excelência, baseado na ética e na confiança. Ao longo
+            de sua trajetória, a clínica consolidou-se como referência em saúde
+            cardiovascular, unindo tradição e experiência para proporcionar um
+            diagnóstico preciso, sempre com o propósito de promover mais
+            qualidade de vida e bem-estar aos seus pacientes.
           </p>
 
           <ul className="mt-8 space-y-4">

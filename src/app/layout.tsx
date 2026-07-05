@@ -48,7 +48,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Cardiocentro — Métodos Diagnósticos em Cardiologia em Juiz de Fora',
     description:
-      'Ecocardiograma, Holter 24h, MAPA, teste ergométrico e mais. Corpo médico especializado e agendamento pelo WhatsApp em menos de 1 minuto.',
+      'Centro especializado em diagnóstico cardiológico em Juiz de Fora há mais de 45 anos: ecocardiograma, Holter 24h, MAPA, teste ergométrico e mais, com corpo médico especializado.',
     url: '/',
     siteName: 'Cardiocentro',
     locale: 'pt_BR',
@@ -64,7 +64,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Cardiocentro — Cardiologia em Juiz de Fora',
     description:
-      'Exames cardiológicos completos com agendamento pelo WhatsApp em menos de 1 minuto.',
+      'Centro especializado em diagnóstico cardiológico em Juiz de Fora, com mais de 45 anos de tradição.',
     images: ['/img/hero-cardio.jpg'],
   },
   robots: { index: true, follow: true },

@@ -178,6 +178,11 @@ export function Agendamento() {
           {/* formulário */}
           <Reveal direction="left">
             <div className="glass rounded-[2rem] p-7 shadow-glass sm:p-9">
+              {status !== 'success' && (
+                <h3 className="mb-6 font-serif text-2xl font-bold tracking-tight text-navyblue-900">
+                  Agende aqui
+                </h3>
+              )}
               {status === 'success' ? (
                 <div className="flex min-h-[420px] flex-col items-center justify-center text-center">
                   <span className="grid h-16 w-16 place-items-center rounded-full bg-success/15 text-success">

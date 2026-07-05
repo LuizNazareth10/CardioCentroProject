@@ -28,8 +28,8 @@ export function Faq() {
             Tire suas dúvidas antes de agendar
           </h2>
           <p className="mt-4 text-lg text-gray-600">
-            Não encontrou sua resposta? Fale com a equipe pelo WhatsApp{' '}
-            {contato.whatsapp} ou ligue {contato.telefoneFixo}.
+            Não encontrou sua resposta? Ligue para {contato.telefoneFixo} e
+            fale com a nossa equipe.
           </p>
         </Reveal>
 

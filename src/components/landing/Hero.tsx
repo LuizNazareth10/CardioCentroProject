@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { motion, useReducedMotion } from 'framer-motion';
-import { CalendarCheck, HeartPulse, ShieldCheck, MessageCircle } from 'lucide-react';
+import { CalendarCheck, HeartPulse, MessageCircle } from 'lucide-react';
 import { photos, whatsappLink } from './content';
 
 export function Hero() {
@@ -29,7 +29,7 @@ export function Hero() {
           <motion.div {...rise(0)}>
             <span className="pill">
               <HeartPulse className="h-3.5 w-3.5 text-cardio" aria-hidden />
-              Diagnóstico cardiológico completo no Centro de Juiz de Fora
+              Tradição em cardiologia · Juiz de Fora — MG
             </span>
           </motion.div>
 
@@ -37,17 +37,16 @@ export function Hero() {
             {...rise(0.08)}
             className="mt-6 font-serif text-[2.6rem] font-bold leading-[1.05] tracking-tight text-navyblue-900 sm:text-5xl lg:text-display"
           >
-            O cuidado que seu <span className="text-gradient">coração</span> merece,
-            com a precisão que ele precisa.
+            Centro especializado em{' '}
+            <span className="text-gradient">diagnóstico cardiológico</span>.
           </motion.h1>
 
           <motion.p
             {...rise(0.16)}
             className="mt-6 max-w-xl text-lg leading-relaxed text-gray-600"
           >
-            Ecocardiograma, Holter 24h, MAPA, teste ergométrico e cardiopulmonar —
-            corpo médico especializado e agendamento pelo WhatsApp em menos de
-            1 minuto.
+            Há mais de 45 anos oferecendo exames com qualidade e precisão em
+            Juiz de Fora.
           </motion.p>
 
           <motion.div {...rise(0.24)} className="mt-9 flex flex-wrap items-center gap-3">
@@ -88,43 +87,6 @@ export function Hero() {
             />
             <div className="absolute inset-0 bg-gradient-to-t from-navyblue-900/50 via-navyblue-900/5 to-transparent" />
           </div>
-
-          <motion.div
-            {...(reduce
-              ? {}
-              : {
-                  initial: { y: 24 },
-                  animate: { y: 0 },
-                  transition: { duration: 0.8, delay: 0.5 },
-                })}
-            className="glass absolute -bottom-6 -left-4 flex items-center gap-3 rounded-2xl p-4 shadow-glass sm:-left-8"
-          >
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-cardio/10 text-cardio">
-              <HeartPulse className="h-5 w-5" aria-hidden />
-            </span>
-            <div>
-              <div className="text-sm font-bold text-navyblue-900">9 exames disponíveis</div>
-              <div className="text-xs text-gray-500">linha completa em cardiologia</div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            {...(reduce
-              ? {}
-              : {
-                  initial: { y: -18 },
-                  animate: { y: 0 },
-                  transition: { duration: 0.8, delay: 0.65 },
-                })}
-            className="glass absolute -right-3 top-8 flex items-center gap-2 rounded-2xl px-4 py-3 shadow-glass sm:-right-6"
-          >
-            <ShieldCheck className="h-5 w-5 text-success" aria-hidden />
-            <span className="text-xs font-semibold text-navyblue-900">
-              Corpo clínico
-              <br />
-              especializado
-            </span>
-          </motion.div>
         </motion.div>
       </div>
     </section>

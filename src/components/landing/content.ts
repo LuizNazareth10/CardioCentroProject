@@ -6,7 +6,6 @@ import {
   HeartPulse,
   ScanHeart,
   Scissors,
-  ShieldCheck,
   Stethoscope,
   Waves,
 } from 'lucide-react';
@@ -78,24 +77,6 @@ export const services = [
   },
 ];
 
-export const differentials = [
-  {
-    icon: ShieldCheck,
-    title: 'Precisão diagnóstica',
-    desc: 'Equipamentos de última geração e laudos revisados por especialistas.',
-  },
-  {
-    icon: ScanHeart,
-    title: 'Linha completa de exames',
-    desc: 'Todos os métodos diagnósticos em cardiologia reunidos em um só lugar.',
-  },
-  {
-    icon: HeartPulse,
-    title: 'Cuidado humano',
-    desc: 'Cada paciente é acolhido com empatia, do primeiro contato ao acompanhamento.',
-  },
-];
-
 export const doctors = [
   ...MEDICOS.filter((m) => m.ativo).map((m) => ({ name: m.nome })),
   { name: 'Dr. Pedro Paulo' },
@@ -126,6 +107,7 @@ export const nav = [
   { label: 'Exames', href: '#especialidades' },
   { label: 'A clínica', href: '#sobre' },
   { label: 'Corpo\u00A0médico', href: '#corpo-medico' },
+  { label: 'Preparo', href: '#preparo' },
   { label: 'Dúvidas', href: '#faq' },
   { label: 'Contato', href: '#agendamento' },
 ];
@@ -138,15 +120,6 @@ export const examesAgendamento = services.map((s) => s.title);
 export const conveniosAceitos = CONVENIOS.filter((c) => c.ativo && c.nome !== 'Particular').map(
   (c) => c.nome,
 );
-
-// Números REAIS derivados dos dados da clínica (nada inventado —
-// exigência das normas de publicidade médica do CFM).
-export const metricas = [
-  { valor: services.length, sufixo: '', rotulo: 'exames e serviços em cardiologia' },
-  { valor: doctors.length, sufixo: '', rotulo: 'médicos especialistas' },
-  { valor: conveniosAceitos.length, sufixo: '', rotulo: 'convênios atendidos' },
-  { valor: 1, sufixo: ' min', rotulo: 'para agendar pelo WhatsApp' },
-];
 
 // Perguntas frequentes — respostas alinhadas às regras reais da clínica
 // (pedido médico obrigatório, cancelamento pelo telefone fixo etc.).
@@ -164,7 +137,7 @@ export const faq = [
   {
     pergunta: 'Como faço para agendar pelo WhatsApp?',
     resposta:
-      'Clique em qualquer botão de WhatsApp desta página e envie a mensagem. Nossa assistente virtual apresenta os exames, mostra os horários disponíveis e confirma o agendamento em cerca de 1 minuto. Você também pode enviar a foto do seu pedido médico, que ela identifica os exames automaticamente. Se preferir falar com uma pessoa, é só pedir "atendente".',
+      'Clique em qualquer botão de WhatsApp desta página e envie a mensagem. Nossa assistente apresenta os exames e mostra os horários disponíveis para você escolher. Você também pode enviar a foto do seu pedido médico, que ela identifica os exames automaticamente. Se preferir falar com uma pessoa, é só pedir "atendente".',
   },
   {
     pergunta: 'O que devo levar no dia do exame?',

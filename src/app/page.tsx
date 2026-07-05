@@ -1,11 +1,10 @@
 import { Header } from '@/components/landing/Header';
 import { Hero } from '@/components/landing/Hero';
-import { Numeros } from '@/components/landing/Numeros';
 import { Especialidades } from '@/components/landing/Especialidades';
 import { Sobre } from '@/components/landing/Sobre';
 import { CorpoMedico } from '@/components/landing/CorpoMedico';
-import { Diferenciais } from '@/components/landing/Diferenciais';
 import { Convenios } from '@/components/landing/Convenios';
+import { Preparo } from '@/components/landing/Preparo';
 import { Faq } from '@/components/landing/Faq';
 import { Agendamento } from '@/components/landing/Agendamento';
 import { Footer } from '@/components/landing/Footer';
@@ -60,12 +59,11 @@ export default function LandingPage() {
       <Header />
       <main id="conteudo" className="bg-canvas">
         <Hero />
-        <Numeros />
         <Especialidades />
         <Sobre />
         <CorpoMedico />
-        <Diferenciais />
         <Convenios />
+        <Preparo />
         <Faq />
         <Agendamento />
       </main>

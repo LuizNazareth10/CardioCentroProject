@@ -22,8 +22,8 @@ export function Footer() {
           <div className="lg:col-span-1">
             <BrandLogo tone="dark" size={40} />
             <p className="mt-5 max-w-xs text-sm leading-relaxed text-white/60">
-              Métodos diagnósticos em cardiologia com precisão e cuidado humano,
-              no coração de Juiz de Fora.
+              Centro especializado em diagnóstico cardiológico em Juiz de Fora,
+              com mais de 45 anos de tradição.
             </p>
             <div className="mt-6 flex gap-3">
               <a
