@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { LogoLockup } from '@/components/Logo';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('admin@cardiocentro.com');
-  const [senha, setSenha] = useState('cardio123');
+  const [email, setEmail] = useState('');
+  const [senha, setSenha] = useState('');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
 
@@ -89,7 +89,7 @@ export default function LoginPage() {
           </div>
 
           <p className="mt-6 text-center text-xs text-muted">
-            Acesso demo: <strong>admin@cardiocentro.com</strong> / <strong>cardio123</strong>
+            Não tem acesso? Fale com a administração da clínica.
           </p>
         </form>
       </div>

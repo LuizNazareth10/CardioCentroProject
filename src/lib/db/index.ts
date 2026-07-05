@@ -1,4 +1,4 @@
-import type { Agendamento, Conversa, MensagemConversa, Paciente, StatusAtendimento, Triagem, Usuario } from '../types';
+import type { Agendamento, Conversa, Lead, MensagemConversa, Paciente, StatusAtendimento, Triagem, Usuario } from '../types';
 import { sanitizarFicha } from '../validation';
 import { memoria, novoId } from './store';
 
@@ -212,6 +212,79 @@ export async function definirStatusConversa(telefone: string, status: StatusAten
     const i = memoria.conversas.findIndex((c) => c.telefone === telefone);
     if (i >= 0) memoria.conversas[i] = nova;
   }
+}
+
+// ============== LEADS (CRM básico) ==============
+export async function listarLeads(): Promise<Lead[]> {
+  let arr: Lead[];
+  if (isFirestore) {
+    const snap = await (await fs()).collection('leads').get();
+    arr = snap.docs.map((d) => d.data() as Lead);
+  } else {
+    arr = [...memoria.leads];
+  }
+  // mais recentes primeiro
+  return arr.sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+}
+
+export async function criarLead(
+  dados: Omit<Lead, 'id' | 'criadoEm' | 'atualizadoEm'>,
+): Promise<Lead> {
+  const agora = new Date().toISOString();
+  const lead: Lead = { ...dados, id: novoId('lead'), criadoEm: agora, atualizadoEm: agora };
+  if (isFirestore) {
+    await (await fs()).collection('leads').doc(lead.id).set(lead);
+  } else {
+    memoria.leads.push(lead);
+  }
+  return lead;
+}
+
+export async function atualizarLead(id: string, patch: Partial<Lead>): Promise<void> {
+  const limpo = Object.fromEntries(
+    Object.entries({ ...patch, atualizadoEm: new Date().toISOString() }).filter(([, v]) => v !== undefined),
+  );
+  if (isFirestore) {
+    await (await fs()).collection('leads').doc(id).set(limpo, { merge: true });
+  } else {
+    const i = memoria.leads.findIndex((l) => l.id === id);
+    if (i >= 0) memoria.leads[i] = { ...memoria.leads[i], ...limpo } as Lead;
+  }
+}
+
+/**
+ * Cria ou atualiza um lead a partir do WhatsApp, deduplicando pelo telefone
+ * (últimos 8 dígitos). Usado pelo agente para registrar temperatura sem
+ * gerar um lead novo a cada interação do mesmo número.
+ */
+export async function registrarLeadWhatsapp(
+  telefone: string,
+  dados: Partial<Pick<Lead, 'nome' | 'exameInteresse' | 'status' | 'temperatura' | 'mensagem'>>,
+): Promise<void> {
+  const sufixo = telefone.replace(/\D/g, '').slice(-8);
+  const todos = await listarLeads();
+  const existente = todos.find(
+    (l) => l.origem === 'whatsapp' && l.status !== 'arquivado' && l.telefone.replace(/\D/g, '').endsWith(sufixo),
+  );
+  if (existente) {
+    // nunca rebaixa: lead que já agendou permanece quente/agendado
+    const patch: Partial<Lead> = { ...dados };
+    if (existente.status === 'agendado' && dados.status !== 'agendado') {
+      delete patch.status;
+      delete patch.temperatura;
+    }
+    await atualizarLead(existente.id, patch);
+    return;
+  }
+  await criarLead({
+    nome: dados.nome ?? 'Contato WhatsApp',
+    telefone,
+    exameInteresse: dados.exameInteresse,
+    mensagem: dados.mensagem,
+    origem: 'whatsapp',
+    status: dados.status ?? 'novo',
+    temperatura: dados.temperatura ?? 'morno',
+  });
 }
 
 // ============== USUÁRIOS ==============

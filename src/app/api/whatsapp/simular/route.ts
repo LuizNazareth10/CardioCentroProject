@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { lerSessao } from '@/lib/auth';
 import { processarMensagem, type Entrada } from '@/lib/whatsapp/agent';
 import { capturarEnvios, type EnvioCapturado } from '@/lib/whatsapp/client';
-import { getSessao } from '@/lib/whatsapp/session';
+import { carregarSessao } from '@/lib/whatsapp/session';
 
 // =============================================================
 // SIMULADOR do agente de WhatsApp (sem depender da Meta).
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
 
   const capturados = await capturarEnvios(() => processarMensagem(telefone, entrada));
   const mensagens = capturados.map(normalizar);
-  const etapa = getSessao(telefone).etapa;
+  const etapa = (await carregarSessao(telefone)).etapa;
 
   return NextResponse.json({ mensagens, etapa });
 }

@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import type { Agendamento, Conversa, FichaMedica, Paciente, TipoAparelho, Triagem, Usuario } from '../types';
+import type { Agendamento, Conversa, FichaMedica, Lead, Paciente, TipoAparelho, Triagem, Usuario } from '../types';
 import { APARELHOS, CONVENIOS, EXAMES, MEDICOS } from '../seed-data';
 import { hhmmToMin, semanaQuinzenalAtiva } from '../scheduling/time';
 
@@ -177,6 +177,22 @@ for (const tipo of ['mapa', 'holter'] as TipoAparelho[]) {
   });
 }
 
+// ---- leads fictícios (prévia visual do painel /leads) ----
+const leads: Lead[] = [
+  {
+    id: 'lead_demo1', nome: 'Fernanda Oliveira', telefone: '(32) 98811-2233',
+    email: 'fernanda.o@email.com', exameInteresse: 'Ecocardiograma com Doppler Colorido',
+    mensagem: 'Tenho pedido médico, prefiro de manhã.', turnoPreferencial: 'manha',
+    origem: 'formulario', status: 'novo', temperatura: 'morno',
+    criadoEm: agora, atualizadoEm: agora,
+  },
+  {
+    id: 'lead_demo2', nome: 'Roberto Cunha', telefone: '(32) 98822-3344',
+    exameInteresse: 'Holter 24h', origem: 'whatsapp', status: 'agendado',
+    temperatura: 'quente', criadoEm: agora, atualizadoEm: agora,
+  },
+];
+
 export const memoria = {
   usuarios: [
     {
@@ -193,6 +209,7 @@ export const memoria = {
   agendamentos,
   triagens: [] as Triagem[],
   conversas: [] as Conversa[],
+  leads,
 };
 
 export const novoId = uid;

@@ -58,7 +58,7 @@ export function Header() {
           </a>
           <a href="#agendamento" className="header-cta-primary">
             <CalendarCheck className="h-4 w-4 shrink-0" aria-hidden />
-            Agendar consulta
+            Agendar agora
           </a>
         </div>
 
@@ -113,7 +113,7 @@ export function Header() {
                 onClick={() => setOpen(false)}
               >
                 <CalendarCheck className="h-4 w-4 shrink-0" aria-hidden />
-                Agendar consulta
+                Agendar agora
               </a>
             </div>
           </div>

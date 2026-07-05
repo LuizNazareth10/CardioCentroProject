@@ -1,5 +1,5 @@
 import { APARELHOS, CONVENIOS, EXAMES, MEDICOS } from '../seed-data';
-import { criarAgendamentos, criarPaciente, listarAgendamentos, listarPacientes, registrarMensagem } from '../db';
+import { criarAgendamentos, criarPaciente, listarAgendamentos, listarPacientes, registrarLeadWhatsapp, registrarMensagem } from '../db';
 import { gerarSlots, gerarSlotsAparelho, proporSessao } from '../scheduling/engine';
 import { fmtData, fmtDiaCurto, fmtHora } from '../format';
 import { baixarMidia, enviarBotoes, enviarLista, enviarTexto } from './client';
@@ -31,9 +31,10 @@ import {
   mensagemSemHorarios,
   mensagemSemMedicoUnico,
   mensagemTransferenciaHumana,
+  mensagemUrgencia,
   montarOrientacoesExames,
 } from './messages';
-import { getSessao, limparSessao, salvarSessao } from './session';
+import { carregarSessao, limparSessao, salvarSessao, type ConversaState } from './session';
 import { interpretar, lerPedidoMedico } from './ai';
 
 // entrada normalizada do webhook
@@ -56,7 +57,7 @@ const nomeExame = (id: string) => EXAMES.find((e) => e.id === id)?.nome ?? id;
 const nomeMedico = (id: string) => MEDICOS.find((m) => m.id === id)?.nome ?? id;
 
 export async function processarMensagem(from: string, e: Entrada): Promise<void> {
-  const s = getSessao(from);
+  const s = await carregarSessao(from);
 
   // (0) imagem de pedido médico — tratada em qualquer etapa
   if (e.tipo === 'imagem') return tratarImagem(from, s, e);
@@ -79,7 +80,7 @@ export async function processarMensagem(from: string, e: Entrada): Promise<void>
     /gostaria de agendar|quero agendar|agendar (um )?exame|marcar (um )?exame/.test(vlow) &&
     (s.etapa === 'inicio' || s.etapa === 'menu')
   ) {
-    s.etapa = 'escolhendo_exames'; s.examesSelecionados = []; salvarSessao(from, s);
+    s.etapa = 'escolhendo_exames'; s.examesSelecionados = []; await salvarSessao(from, s);
     await enviarTexto(from, mensagemBoasVindasAgendamento());
     return enviarListaExames(from);
   }
@@ -94,13 +95,13 @@ export async function processarMensagem(from: string, e: Entrada): Promise<void>
     case 'inicio':
     case 'menu':
       if (e.valor === 'agendar') {
-        s.etapa = 'escolhendo_exames'; salvarSessao(from, s);
+        s.etapa = 'escolhendo_exames'; await salvarSessao(from, s);
         return enviarListaExames(from);
       }
       if (e.valor === 'falar_humano') return falarComHumano(from);
       // confirmação dos exames lidos de um pedido médico (imagem)
       if (e.valor === 'img_sim' && s.examesSelecionados.length) {
-        s.etapa = 'escolhendo_medico'; salvarSessao(from, s);
+        s.etapa = 'escolhendo_medico'; await salvarSessao(from, s);
         return enviarBotoes(from, mensagemConfirmarPedidoMedico(), [
           { id: 'med_qualquer', titulo: 'Sem preferência' },
           { id: 'med_escolher', titulo: 'Escolher médico' },
@@ -133,8 +134,8 @@ export async function processarMensagem(from: string, e: Entrada): Promise<void>
 }
 
 // -------- MENU --------
-async function menuPrincipal(from: string, s: ReturnType<typeof getSessao>) {
-  s.etapa = 'menu'; salvarSessao(from, s);
+async function menuPrincipal(from: string, s: ConversaState) {
+  s.etapa = 'menu'; await salvarSessao(from, s);
   await enviarBotoes(
     from,
     mensagemMenuPrincipal(),
@@ -156,7 +157,7 @@ async function enviarListaExames(from: string, jaSelecionados: string[] = []) {
   ]);
 }
 
-async function tratarExames(from: string, s: ReturnType<typeof getSessao>, e: Entrada) {
+async function tratarExames(from: string, s: ConversaState, e: Entrada) {
   if (e.valor === 'agendar' || e.valor === 'add_exame') return enviarListaExames(from, s.examesSelecionados);
 
   if (e.valor.startsWith('ex:')) {
@@ -168,7 +169,7 @@ async function tratarExames(from: string, s: ReturnType<typeof getSessao>, e: En
     }
     if (EXAMES.some((x) => x.id === id)) {
       s.examesSelecionados.push(id);
-      salvarSessao(from, s);
+      await salvarSessao(from, s);
       const lista = s.examesSelecionados.map((x, i) => `${i + 1}. ${nomeExame(x)}`).join('\n');
       return enviarBotoes(from, mensagemExameAdicionado(lista), [
         { id: 'add_exame', titulo: 'Adicionar exame' },
@@ -182,7 +183,7 @@ async function tratarExames(from: string, s: ReturnType<typeof getSessao>, e: En
     // exame de aparelho (Mapa/Holter) não escolhe médico — vai direto p/ horário
     const temAparelho = s.examesSelecionados.some((id) => EXAMES.find((x) => x.id === id)?.aparelho);
     if (temAparelho) { s.medicoPreferidoId = undefined; return calcularEoferecer(from, s); }
-    s.etapa = 'escolhendo_medico'; salvarSessao(from, s);
+    s.etapa = 'escolhendo_medico'; await salvarSessao(from, s);
     return enviarBotoes(from, mensagemPreferenciaMedico(), [
       { id: 'med_qualquer', titulo: 'Sem preferência' },
       { id: 'med_escolher', titulo: 'Escolher médico' },
@@ -194,7 +195,7 @@ async function tratarExames(from: string, s: ReturnType<typeof getSessao>, e: En
 }
 
 // -------- MÉDICO --------
-async function tratarMedico(from: string, s: ReturnType<typeof getSessao>, e: Entrada) {
+async function tratarMedico(from: string, s: ConversaState, e: Entrada) {
   if (e.valor === 'med_qualquer') {
     s.medicoPreferidoId = undefined;
     return calcularEoferecer(from, s);
@@ -224,9 +225,9 @@ async function tratarMedico(from: string, s: ReturnType<typeof getSessao>, e: En
 // UM horário por dia, em dias espaçados. Se nenhum agradar, o paciente escolhe
 // um dia específico e aí mostramos os horários daquele dia.
 
-type Proposta = NonNullable<ReturnType<typeof getSessao>['propostas']>[number];
+type Proposta = NonNullable<ConversaState['propostas']>[number];
 
-async function calcularEoferecer(from: string, s: ReturnType<typeof getSessao>) {
+async function calcularEoferecer(from: string, s: ConversaState) {
   const examesSeq = s.examesSelecionados.map((id) => EXAMES.find((x) => x.id === id)!).filter(Boolean);
   const agendamentos = await listarAgendamentos();
   const propostas: Proposta[] = [];
@@ -277,12 +278,12 @@ async function calcularEoferecer(from: string, s: ReturnType<typeof getSessao>) 
     return;
   }
 
-  s.propostas = propostas; s.etapa = 'escolhendo_horario'; salvarSessao(from, s);
+  s.propostas = propostas; s.etapa = 'escolhendo_horario'; await salvarSessao(from, s);
   return mostrarDiasSugeridos(from, s);
 }
 
 /** oferece UM horário por dia, em dias espaçados (+ opção de escolher outro dia) */
-async function mostrarDiasSugeridos(from: string, s: ReturnType<typeof getSessao>) {
+async function mostrarDiasSugeridos(from: string, s: ConversaState) {
   const props = s.propostas ?? [];
   const vistos = new Set<string>();
   const itens: Array<{ id: string; titulo: string; descricao?: string }> = [];
@@ -302,7 +303,7 @@ async function mostrarDiasSugeridos(from: string, s: ReturnType<typeof getSessao
 }
 
 /** lista os dias que têm vaga, para o paciente escolher um específico */
-async function mostrarDatasDisponiveis(from: string, s: ReturnType<typeof getSessao>) {
+async function mostrarDatasDisponiveis(from: string, s: ConversaState) {
   const props = s.propostas ?? [];
   const porDia = new Map<string, number>();
   for (const p of props) porDia.set(p.data, (porDia.get(p.data) ?? 0) + 1);
@@ -317,7 +318,7 @@ async function mostrarDatasDisponiveis(from: string, s: ReturnType<typeof getSes
 }
 
 /** mostra os horários de um dia específico escolhido pelo paciente */
-async function mostrarHorariosDoDia(from: string, s: ReturnType<typeof getSessao>, data: string) {
+async function mostrarHorariosDoDia(from: string, s: ConversaState, data: string) {
   const props = s.propostas ?? [];
   const itens: Array<{ id: string; titulo: string; descricao?: string }> = [];
   for (let i = 0; i < props.length && itens.length < 9; i++) {
@@ -331,7 +332,7 @@ async function mostrarHorariosDoDia(from: string, s: ReturnType<typeof getSessao
   ]);
 }
 
-async function tratarHorario(from: string, s: ReturnType<typeof getSessao>, e: Entrada) {
+async function tratarHorario(from: string, s: ConversaState, e: Entrada) {
   if (e.valor === 'mais_datas') return mostrarDatasDisponiveis(from, s);
   if (e.valor.startsWith('data:')) return mostrarHorariosDoDia(from, s, e.valor.slice(5));
   if (e.valor.startsWith('slot:')) {
@@ -339,11 +340,11 @@ async function tratarHorario(from: string, s: ReturnType<typeof getSessao>, e: E
     const escolhida = s.propostas?.[idx];
     if (escolhida) {
       s.opcoes = [{ rotulo: escolhida.rotulo, itens: escolhida.itens }]; // mantém apenas a escolhida
-      s.etapa = 'identificacao'; salvarSessao(from, s);
+      s.etapa = 'identificacao'; await salvarSessao(from, s);
       // tenta achar paciente pelo telefone
       const pac = await acharPacientePorTelefone(from);
       if (pac) {
-        s.nome = pac.nome; s.pacienteId = pac.id; s.convenioId = pac.convenioId; salvarSessao(from, s);
+        s.nome = pac.nome; s.pacienteId = pac.id; s.convenioId = pac.convenioId; await salvarSessao(from, s);
         return pedirConvenioOuConfirmar(from, s);
       }
       return enviarTexto(from, mensagemPedirNome());
@@ -374,23 +375,23 @@ function acharConvenio(texto: string) {
   }) ?? null;
 }
 
-async function tratarIdentificacao(from: string, s: ReturnType<typeof getSessao>, e: Entrada) {
+async function tratarIdentificacao(from: string, s: ConversaState, e: Entrada) {
   if (!s.nome) {
-    s.nome = e.valor.trim(); salvarSessao(from, s);
+    s.nome = e.valor.trim(); await salvarSessao(from, s);
     return pedirConvenioOuConfirmar(from, s);
   }
   if (e.valor === 'conv_outro') {
-    s.aguardandoConvenio = true; salvarSessao(from, s);
+    s.aguardandoConvenio = true; await salvarSessao(from, s);
     return enviarTexto(from, mensagemConvenioOutro());
   }
   if (e.valor.startsWith('conv:')) {
-    s.convenioId = e.valor.slice(5); s.aguardandoConvenio = false; salvarSessao(from, s);
+    s.convenioId = e.valor.slice(5); s.aguardandoConvenio = false; await salvarSessao(from, s);
     return mostrarConfirmacao(from, s);
   }
   // texto livre: tenta casar com um convênio da lista completa
   const c = acharConvenio(e.valor);
   if (c) {
-    s.convenioId = c.id; s.aguardandoConvenio = false; salvarSessao(from, s);
+    s.convenioId = c.id; s.aguardandoConvenio = false; await salvarSessao(from, s);
     return mostrarConfirmacao(from, s);
   }
   if (s.aguardandoConvenio) {
@@ -400,7 +401,7 @@ async function tratarIdentificacao(from: string, s: ReturnType<typeof getSessao>
   return pedirConvenioOuConfirmar(from, s);
 }
 
-async function pedirConvenioOuConfirmar(from: string, s: ReturnType<typeof getSessao>) {
+async function pedirConvenioOuConfirmar(from: string, s: ConversaState) {
   if (s.convenioId) return mostrarConfirmacao(from, s);
   const populares = CONVENIOS_POPULARES
     .map((nome) => CONVENIOS.find((c) => c.nome === nome))
@@ -426,8 +427,8 @@ async function enviarPosConfirmacao(
   }
 }
 
-async function mostrarConfirmacao(from: string, s: ReturnType<typeof getSessao>) {
-  s.etapa = 'confirmando'; salvarSessao(from, s);
+async function mostrarConfirmacao(from: string, s: ConversaState) {
+  s.etapa = 'confirmando'; await salvarSessao(from, s);
   const escolhida = s.opcoes![0]; // já reduzida à opção escolhida
   const linhas = escolhida.itens.map((i) => {
     const med = MEDICOS.find((m) => m.id === i.medicoId); // aparelhos (mapa/holter) não são médicos
@@ -442,9 +443,9 @@ async function mostrarConfirmacao(from: string, s: ReturnType<typeof getSessao>)
   );
 }
 
-async function tratarConfirmacao(from: string, s: ReturnType<typeof getSessao>, e: Entrada) {
+async function tratarConfirmacao(from: string, s: ConversaState, e: Entrada) {
   if (e.valor === 'confirmar_nao' || /n[ãa]o|cancel/i.test(e.valor)) {
-    limparSessao(from);
+    await limparSessao(from);
     return enviarTexto(from, mensagemAgendamentoCancelado());
   }
   if (e.valor === 'confirmar_sim' || /sim|confirm/i.test(e.valor)) {
@@ -464,7 +465,7 @@ async function tratarConfirmacao(from: string, s: ReturnType<typeof getSessao>, 
       (x) => x.medicoId === novo.medicoId && x.status !== 'cancelado' && novo.inicio < x.fim && x.inicio < novo.fim,
     ));
     if (conflito) {
-      s.etapa = 'escolhendo_medico'; salvarSessao(from, s);
+      s.etapa = 'escolhendo_medico'; await salvarSessao(from, s);
       await enviarTexto(from, mensagemHorarioOcupado());
       return calcularEoferecer(from, s);
     }
@@ -475,7 +476,18 @@ async function tratarConfirmacao(from: string, s: ReturnType<typeof getSessao>, 
     })));
     const primeiro = escolhida.itens[0];
     const exameIds = escolhida.itens.map((i) => i.exameId);
-    limparSessao(from);
+    await limparSessao(from);
+    // registra/atualiza o lead como QUENTE (agendou) — não pode quebrar o fluxo
+    try {
+      await registrarLeadWhatsapp(from, {
+        nome: s.nome,
+        exameInteresse: exameIds.map(nomeExame).join(', '),
+        status: 'agendado',
+        temperatura: 'quente',
+      });
+    } catch (err) {
+      console.error('[agente] falha ao registrar lead quente:', err);
+    }
     await enviarPosConfirmacao(from, s.nome?.split(' ')[0] ?? 'Paciente', primeiro.inicio, exameIds);
     return;
   }
@@ -483,8 +495,13 @@ async function tratarConfirmacao(from: string, s: ReturnType<typeof getSessao>, 
 }
 
 // -------- IA / utilidades --------
-async function rotearIA(from: string, s: ReturnType<typeof getSessao>, texto: string) {
+async function rotearIA(from: string, s: ConversaState, texto: string) {
   const intent = await interpretar(texto);
+  // urgência médica: orienta a procurar emergência AGORA e transfere p/ humano
+  if (intent.acao === 'urgencia') {
+    await enviarTexto(from, mensagemUrgencia());
+    return falarComHumano(from);
+  }
   if (intent.acao === 'humano') return falarComHumano(from);
   if (intent.acao === 'menu') { s.etapa = 'menu'; return menuPrincipal(from, s); }
   if (intent.acao === 'duvida') {
@@ -495,7 +512,7 @@ async function rotearIA(from: string, s: ReturnType<typeof getSessao>, texto: st
   if (intent.exames.length) {
     const novos = intent.exames.filter((id) => !s.examesSelecionados.includes(id));
     s.examesSelecionados.push(...new Set(novos));
-    s.etapa = 'escolhendo_medico'; salvarSessao(from, s);
+    s.etapa = 'escolhendo_medico'; await salvarSessao(from, s);
     const lista = s.examesSelecionados.map((x, i) => `${i + 1}. ${nomeExame(x)}`).join('\n');
     await enviarTexto(from, mensagemExamesEntendidos(lista));
     return enviarBotoes(from, mensagemPreferenciaMedico(), [
@@ -503,24 +520,30 @@ async function rotearIA(from: string, s: ReturnType<typeof getSessao>, texto: st
       { id: 'med_escolher', titulo: 'Escolher médico' },
     ]);
   }
-  s.etapa = 'escolhendo_exames'; salvarSessao(from, s);
+  s.etapa = 'escolhendo_exames'; await salvarSessao(from, s);
   return enviarListaExames(from);
 }
 
 async function falarComHumano(from: string) {
-  const s = getSessao(from);
-  s.etapa = 'humano'; salvarSessao(from, s);
+  const s = await carregarSessao(from);
+  s.etapa = 'humano'; await salvarSessao(from, s);
   // coloca a conversa na fila de atendimento humano (painel /atendimentos)
   await registrarMensagem(
     from,
     { de: 'agente', texto: 'Paciente solicitou falar com um atendente.', ts: new Date().toISOString() },
     { nome: s.nome, status: 'aguardando' },
   );
+  // lead MORNO: demonstrou interesse mas foi para atendimento humano
+  try {
+    await registrarLeadWhatsapp(from, { nome: s.nome, temperatura: 'morno' });
+  } catch (err) {
+    console.error('[agente] falha ao registrar lead morno:', err);
+  }
   await enviarTexto(from, mensagemTransferenciaHumana());
 }
 
 // -------- IMAGEM (pedido médico) --------
-async function tratarImagem(from: string, s: ReturnType<typeof getSessao>, e: Entrada) {
+async function tratarImagem(from: string, s: ConversaState, e: Entrada) {
   // durante handoff, a foto também é só registrada para a recepção
   if (s.etapa === 'humano') {
     await registrarMensagem(
@@ -540,7 +563,7 @@ async function tratarImagem(from: string, s: ReturnType<typeof getSessao>, e: En
   if (ids.length === 0) {
     return enviarTexto(from, mensagemPedidoNaoIdentificado());
   }
-  s.examesSelecionados = ids; s.etapa = 'menu'; salvarSessao(from, s);
+  s.examesSelecionados = ids; s.etapa = 'menu'; await salvarSessao(from, s);
   const lista = ids.map((id, i) => `${i + 1}. ${nomeExame(id)}`).join('\n');
   return enviarBotoes(from, mensagemPedidoIdentificado(lista), [
     { id: 'img_sim', titulo: 'Sim, agendar' },

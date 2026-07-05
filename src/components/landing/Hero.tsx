@@ -29,7 +29,7 @@ export function Hero() {
           <motion.div {...rise(0)}>
             <span className="pill">
               <HeartPulse className="h-3.5 w-3.5 text-cardio" aria-hidden />
-              Cardiologia de referência em Juiz de Fora
+              Diagnóstico cardiológico completo no Centro de Juiz de Fora
             </span>
           </motion.div>
 
@@ -37,22 +37,23 @@ export function Hero() {
             {...rise(0.08)}
             className="mt-6 font-serif text-[2.6rem] font-bold leading-[1.05] tracking-tight text-navyblue-900 sm:text-5xl lg:text-display"
           >
-            Métodos diagnósticos em{' '}
-            <span className="text-gradient">cardiologia</span> com precisão e acolhimento.
+            O cuidado que seu <span className="text-gradient">coração</span> merece,
+            com a precisão que ele precisa.
           </motion.h1>
 
           <motion.p
             {...rise(0.16)}
             className="mt-6 max-w-xl text-lg leading-relaxed text-gray-600"
           >
-            Exames cardiológicos completos, equipamentos de última geração e um corpo
-            clínico especializado — tudo em um ambiente pensado para o seu bem-estar.
+            Ecocardiograma, Holter 24h, MAPA, teste ergométrico e cardiopulmonar —
+            corpo médico especializado e agendamento pelo WhatsApp em menos de
+            1 minuto.
           </motion.p>
 
           <motion.div {...rise(0.24)} className="mt-9 flex flex-wrap items-center gap-3">
             <a href="#agendamento" className="cta-primary text-base">
               <CalendarCheck className="h-5 w-5" aria-hidden />
-              Agendar consulta
+              Quero agendar meu exame
             </a>
             <a
               href={whatsappLink}

@@ -4,7 +4,19 @@ import { cookies } from 'next/headers';
 import { obterUsuarioPorEmail } from './db';
 
 const COOKIE = 'cc_session';
-const secret = () => new TextEncoder().encode(process.env.AUTH_SECRET || 'dev-secret-trocar');
+
+// Em produção a ausência de AUTH_SECRET é um erro fatal (fail-closed):
+// sem segredo forte, qualquer um poderia forjar o cookie de sessão.
+function secret() {
+  const s = process.env.AUTH_SECRET;
+  if (!s) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('AUTH_SECRET não configurada — obrigatória em produção (gere com "openssl rand -base64 32").');
+    }
+    return new TextEncoder().encode('dev-secret-trocar');
+  }
+  return new TextEncoder().encode(s);
+}
 
 export interface Sessao {
   userId: string;

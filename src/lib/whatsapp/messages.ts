@@ -273,6 +273,20 @@ export function mensagemConfirmarPedidoMedico(): string {
   return 'Perfeito! Tem preferência de médico? 👨‍⚕️';
 }
 
+// ─── Urgência médica ────────────────────────────────────────────
+
+export function mensagemUrgencia(): string {
+  return [
+    '🚨 *Atenção*',
+    '',
+    'Pelo que você descreveu, o ideal é buscar atendimento médico *agora* — não espere um agendamento.',
+    '',
+    '➡️ Procure imediatamente um *pronto-socorro* ou ligue *192 (SAMU)*.',
+    '',
+    'Vou avisar nossa equipe sobre a sua mensagem. Cuide-se! 💙',
+  ].join('\n');
+}
+
 // ─── Atendimento humano ─────────────────────────────────────────
 
 export function mensagemTransferenciaHumana(): string {

@@ -44,6 +44,7 @@ export default function ConfiguracoesPage() {
         exames,
         convenios: config.convenios,
         contato: config.contato,
+        agente: config.agente,
       }),
     });
     const j = await res.json();
@@ -90,6 +91,50 @@ export default function ConfiguracoesPage() {
       {erro && <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-brand-red">{erro}</p>}
 
       <section className="mt-6">
+        <h2 className="mb-3 font-bold text-navy-900">Agente de WhatsApp</h2>
+        <div className="card p-5">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4"
+              checked={config.agente.ativo}
+              disabled={!config.editavel}
+              onChange={(e) => setConfig({ ...config, agente: { ...config.agente, ativo: e.target.checked } })}
+            />
+            <span>
+              <span className="block text-sm font-semibold text-ink">
+                Agente automático {config.agente.ativo ? 'ligado' : 'desligado'}
+              </span>
+              <span className="block text-xs text-muted">
+                Desligado = modo manual: todas as mensagens do WhatsApp vão direto para a fila de{' '}
+                <strong>Atendimentos</strong> e o paciente recebe a resposta automática abaixo.
+              </span>
+            </span>
+          </label>
+          {!config.agente.ativo && (
+            <div className="mt-4">
+              <div className="label">Resposta automática (agente desligado)</div>
+              {config.editavel ? (
+                <textarea
+                  className="input min-h-[70px] text-sm"
+                  value={config.agente.mensagemForaDoAr}
+                  onChange={(e) =>
+                    setConfig({ ...config, agente: { ...config.agente, mensagemForaDoAr: e.target.value } })
+                  }
+                />
+              ) : (
+                <p className="text-sm text-ink">{config.agente.mensagemForaDoAr}</p>
+              )}
+            </div>
+          )}
+          <p className="mt-3 text-xs text-muted">
+            Para testar o comportamento do agente sem WhatsApp real, use o{' '}
+            <a href="/simulador" className="font-semibold text-navy-700 underline">Simulador</a>.
+          </p>
+        </div>
+      </section>
+
+      <section className="mt-7">
         <h2 className="mb-3 font-bold text-navy-900">Médicos</h2>
         <p className="mb-3 text-xs text-muted">Horários de atendimento — alteração sob demanda com suporte técnico.</p>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

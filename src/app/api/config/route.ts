@@ -17,6 +17,7 @@ export async function PUT(req: NextRequest) {
       exames: body.exames,
       convenios: body.convenios,
       contato: body.contato,
+      agente: body.agente,
     });
     const config = await carregarClinicConfig();
     return NextResponse.json({ config, ok: true });

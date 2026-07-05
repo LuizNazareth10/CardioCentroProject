@@ -25,10 +25,25 @@ export type ContatoConfig = {
 
 export type ExameOverride = Partial<Pick<Exame, 'nome' | 'duracaoMin' | 'preparo' | 'ativo'>>;
 
+/** Configuração do agente de WhatsApp (liga/desliga sem deploy). */
+export interface AgenteConfig {
+  /** false = modo manual: toda mensagem vai direto para a fila humana (/atendimentos) */
+  ativo: boolean;
+  /** resposta automática enviada quando o agente está desligado */
+  mensagemForaDoAr: string;
+}
+
+export const AGENTE_PADRAO: AgenteConfig = {
+  ativo: true,
+  mensagemForaDoAr:
+    'Olá! 👋 Recebemos sua mensagem. Nossa equipe vai te responder em breve, dentro do horário comercial. 💙',
+};
+
 export interface ClinicConfigOverrides {
   exames?: Record<string, ExameOverride>;
   convenios?: Convenio[];
   contato?: Partial<ContatoConfig>;
+  agente?: Partial<AgenteConfig>;
   atualizadoEm?: string;
 }
 
@@ -37,6 +52,7 @@ export interface ClinicConfig {
   exames: Exame[];
   convenios: Convenio[];
   contato: ContatoConfig;
+  agente: AgenteConfig;
   editavel: boolean;
   atualizadoEm?: string;
 }
@@ -59,12 +75,17 @@ function mergeContato(overrides?: Partial<ContatoConfig>): ContatoConfig {
   return { ...base, ...overrides, horarios: overrides.horarios ?? base.horarios };
 }
 
+function mergeAgente(overrides?: Partial<AgenteConfig>): AgenteConfig {
+  return { ...AGENTE_PADRAO, ...overrides };
+}
+
 export async function carregarClinicConfig(): Promise<ClinicConfig> {
   const base: ClinicConfig = {
     medicos: [...MEDICOS],
     exames: mergeExames(),
     convenios: [...CONVENIOS],
     contato: mergeContato(),
+    agente: mergeAgente(),
     editavel: isFirestore,
   };
 
@@ -79,6 +100,7 @@ export async function carregarClinicConfig(): Promise<ClinicConfig> {
       exames: mergeExames(data.exames),
       convenios: data.convenios?.length ? data.convenios : [...CONVENIOS],
       contato: mergeContato(data.contato),
+      agente: mergeAgente(data.agente),
       editavel: true,
       atualizadoEm: data.atualizadoEm,
     };

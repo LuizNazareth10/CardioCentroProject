@@ -1,5 +1,14 @@
-// Estado de conversa por telefone. Em produção, mover para Firestore
-// (coleção "wa_sessions") com TTL — aqui é em memória para simplicidade.
+// =============================================================
+// Estado de conversa por telefone.
+//
+// Em produção (DATA_BACKEND=firestore) o estado vive na coleção
+// "wa_sessions" — OBRIGATÓRIO em serverless (Vercel): cada invocação
+// pode cair numa instância diferente e cold starts zeram a memória.
+// Sem persistência, o paciente perderia o fluxo no meio da conversa.
+//
+// No modo memory (dev/demo), usa um Map em memória como antes.
+// TTL de 30 min: sessão mais antiga é descartada e recomeça do zero.
+// =============================================================
 
 export type EtapaConversa =
   | 'inicio'
@@ -36,22 +45,66 @@ export interface ConversaState {
   atualizadoEm: number;
 }
 
-const sessoes = new Map<string, ConversaState>();
 const TTL = 30 * 60 * 1000; // 30 min
+const isFirestore = process.env.DATA_BACKEND === 'firestore';
+const sessoes = new Map<string, ConversaState>(); // fallback memory
 
-export function getSessao(telefone: string): ConversaState {
-  const atual = sessoes.get(telefone);
-  if (atual && Date.now() - atual.atualizadoEm < TTL) return atual;
-  const nova: ConversaState = { etapa: 'inicio', examesSelecionados: [], atualizadoEm: Date.now() };
+function novaSessao(): ConversaState {
+  return { etapa: 'inicio', examesSelecionados: [], atualizadoEm: Date.now() };
+}
+
+function valida(s: ConversaState | undefined | null): ConversaState | null {
+  if (!s) return null;
+  if (Date.now() - s.atualizadoEm >= TTL) return null;
+  return s;
+}
+
+async function fs() {
+  const { db } = await import('../db/firestore');
+  return db();
+}
+
+export async function carregarSessao(telefone: string): Promise<ConversaState> {
+  if (isFirestore) {
+    try {
+      const doc = await (await fs()).collection('wa_sessions').doc(telefone).get();
+      const atual = valida(doc.exists ? (doc.data() as ConversaState) : null);
+      if (atual) return atual;
+    } catch (e) {
+      console.error('[wa_sessions] erro ao carregar, usando sessão nova:', e);
+    }
+    return novaSessao();
+  }
+  const atual = valida(sessoes.get(telefone));
+  if (atual) return atual;
+  const nova = novaSessao();
   sessoes.set(telefone, nova);
   return nova;
 }
 
-export function salvarSessao(telefone: string, state: ConversaState) {
+export async function salvarSessao(telefone: string, state: ConversaState): Promise<void> {
   state.atualizadoEm = Date.now();
+  if (isFirestore) {
+    try {
+      // JSON round-trip remove `undefined` (Firestore rejeita) e garante objeto puro
+      const puro = JSON.parse(JSON.stringify(state)) as ConversaState;
+      await (await fs()).collection('wa_sessions').doc(telefone).set(puro);
+    } catch (e) {
+      console.error('[wa_sessions] erro ao salvar sessão:', e);
+    }
+    return;
+  }
   sessoes.set(telefone, state);
 }
 
-export function limparSessao(telefone: string) {
+export async function limparSessao(telefone: string): Promise<void> {
+  if (isFirestore) {
+    try {
+      await (await fs()).collection('wa_sessions').doc(telefone).delete();
+    } catch (e) {
+      console.error('[wa_sessions] erro ao limpar sessão:', e);
+    }
+    return;
+  }
   sessoes.delete(telefone);
 }

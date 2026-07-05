@@ -24,6 +24,8 @@ pnpm-debug.log*
 
 # Firebase / GCP
 serviceAccount.json
+serviceAccount*.txt
+*.b64.txt
 *-firebase-adminsdk-*.json
 .firebase/
 firebase-debug.log

@@ -198,6 +198,33 @@ export interface SlotDisponivel {
   fim: string; // ISO
 }
 
+// ---------- Leads (CRM básico) ----------
+export type OrigemLead = 'formulario' | 'whatsapp' | 'telefone';
+export type StatusLead = 'novo' | 'contatado' | 'agendado' | 'arquivado';
+/** quente = agendou/quase agendando · morno = interesse sem confirmação · frio = contato sem interesse claro */
+export type TemperaturaLead = 'quente' | 'morno' | 'frio';
+
+/** Contato captado pela landing page, WhatsApp ou telefone. */
+export interface Lead {
+  id: string;
+  nome: string;
+  telefone: string;
+  email?: string;
+  /** exame de interesse (nome livre, ex.: "Ecocardiograma com Doppler Colorido") */
+  exameInteresse?: string;
+  mensagem?: string;
+  /** preferências informadas no formulário da landing */
+  dataPreferencial?: string; // ISO date
+  turnoPreferencial?: 'manha' | 'tarde' | 'indiferente';
+  origem: OrigemLead;
+  status: StatusLead;
+  temperatura: TemperaturaLead;
+  /** anotações internas da equipe (não visíveis ao paciente) */
+  observacao?: string;
+  criadoEm: string;
+  atualizadoEm: string;
+}
+
 // ---------- Atendimento humano (handoff do WhatsApp) ----------
 export type StatusAtendimento = 'aguardando' | 'em_atendimento' | 'resolvido';
 

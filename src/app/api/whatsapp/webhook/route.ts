@@ -1,6 +1,9 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { carregarClinicConfig } from '@/lib/clinic-config';
+import { registrarMensagem } from '@/lib/db';
 import { processarMensagem, type Entrada } from '@/lib/whatsapp/agent';
+import { enviarTexto } from '@/lib/whatsapp/client';
 
 // Verificação do webhook exigida pela Meta ao configurar.
 export async function GET(req: NextRequest) {
@@ -46,7 +49,7 @@ export async function POST(req: NextRequest) {
     const entrada = normalizar(msg);
     if (entrada) {
       // não bloquear a resposta ao webhook (Meta espera 200 rápido)
-      processarMensagem(from, entrada).catch((e) =>
+      tratarEntrada(from, entrada).catch((e) =>
         console.error(`[agente] erro (from=${from}, tipo=${entrada.tipo}):`, e),
       );
     }
@@ -55,6 +58,24 @@ export async function POST(req: NextRequest) {
     console.error('[webhook] erro:', e);
     return NextResponse.json({ ok: true });
   }
+}
+
+/**
+ * Roteia a mensagem: se o agente estiver LIGADO nas configurações,
+ * processa normalmente; se estiver DESLIGADO (modo manual), registra a
+ * mensagem na fila humana (/atendimentos) e envia a resposta automática.
+ */
+async function tratarEntrada(from: string, entrada: Entrada): Promise<void> {
+  const { agente } = await carregarClinicConfig();
+  if (agente.ativo) return processarMensagem(from, entrada);
+
+  const texto = entrada.tipo === 'imagem' ? '📷 (enviou uma imagem)' : entrada.valor;
+  await registrarMensagem(
+    from,
+    { de: 'paciente', texto, ts: new Date().toISOString() },
+    { status: 'aguardando' },
+  );
+  await enviarTexto(from, agente.mensagemForaDoAr);
 }
 
 function normalizar(msg: any): Entrada | null {

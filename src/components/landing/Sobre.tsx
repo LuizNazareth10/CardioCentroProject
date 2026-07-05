@@ -46,10 +46,12 @@ export function Sobre() {
             Referência em diagnóstico cardiológico
           </h2>
           <p className="mt-5 text-lg leading-relaxed text-gray-600">
-            A Cardiocentro reúne precisão diagnóstica e cuidado humano no coração
-            de Juiz de Fora. Cada exame é conduzido com atenção aos detalhes e
-            respeito à sua história — porque por trás de cada coração existe uma
-            vida inteira.
+            No Centro de Juiz de Fora, a Cardiocentro reúne a linha completa de
+            métodos diagnósticos em cardiologia — do eletrocardiograma ao teste
+            cardiopulmonar — com médicos especialistas e atendimento a particular
+            e a mais de 20 convênios. Cada exame é conduzido com atenção aos
+            detalhes e respeito à sua história — porque por trás de cada coração
+            existe uma vida inteira.
           </p>
 
           <ul className="mt-8 space-y-4">

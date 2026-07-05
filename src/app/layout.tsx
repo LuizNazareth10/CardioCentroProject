@@ -1,7 +1,8 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter, Nunito, Playfair_Display } from 'next/font/google';
 import './globals.css';
 import '@/lib/env'; // valida variáveis de ambiente no boot do servidor
+import { CookieBanner } from '@/components/CookieBanner';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -24,28 +25,62 @@ const nunito = Nunito({
   display: 'swap',
 });
 
+const SITE_URL = process.env.APP_BASE_URL ?? 'https://cardiocentrojf.com.br';
+
 export const metadata: Metadata = {
-  metadataBase: new URL('https://cardiocentro.com.br'),
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: 'Cardiocentro — Métodos Diagnósticos em Cardiologia',
+    default: 'Cardiocentro — Métodos Diagnósticos em Cardiologia em Juiz de Fora',
     template: '%s · Cardiocentro',
   },
   description:
-    'Cuidado cardiológico humano e de alta precisão em Juiz de Fora. Diagnóstico avançado, corpo médico especializado e agendamento simples.',
-  keywords: ['cardiologia', 'cardiocentro', 'Juiz de Fora', 'ecocardiograma', 'holter', 'consulta cardiológica'],
+    'Exames cardiológicos completos em Juiz de Fora: ecocardiograma, Holter 24h, MAPA, teste ergométrico e cardiopulmonar. Corpo médico especializado, mais de 20 convênios e agendamento pelo WhatsApp.',
+  keywords: [
+    'cardiologia juiz de fora',
+    'ecocardiograma juiz de fora',
+    'holter 24h juiz de fora',
+    'mapa 24h juiz de fora',
+    'teste ergométrico juiz de fora',
+    'clínica cardiológica jf',
+    'cardiocentro',
+  ],
+  alternates: { canonical: '/' },
   openGraph: {
-    title: 'Cardiocentro — Métodos Diagnósticos em Cardiologia',
+    title: 'Cardiocentro — Métodos Diagnósticos em Cardiologia em Juiz de Fora',
     description:
-      'Cuidado cardiológico humano e de alta precisão em Juiz de Fora.',
+      'Ecocardiograma, Holter 24h, MAPA, teste ergométrico e mais. Corpo médico especializado e agendamento pelo WhatsApp em menos de 1 minuto.',
+    url: '/',
+    siteName: 'Cardiocentro',
     locale: 'pt_BR',
     type: 'website',
+    images: [
+      {
+        url: '/img/hero-cardio.jpg',
+        alt: 'Cardiocentro — clínica de métodos diagnósticos em cardiologia em Juiz de Fora',
+      },
+    ],
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Cardiocentro — Cardiologia em Juiz de Fora',
+    description:
+      'Exames cardiológicos completos com agendamento pelo WhatsApp em menos de 1 minuto.',
+    images: ['/img/hero-cardio.jpg'],
+  },
+  robots: { index: true, follow: true },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#05132E',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" className={`${inter.variable} ${playfair.variable} ${nunito.variable}`}>
-      <body className="font-sans antialiased">{children}</body>
+      <body className="font-sans antialiased">
+        {children}
+        <CookieBanner />
+      </body>
     </html>
   );
 }

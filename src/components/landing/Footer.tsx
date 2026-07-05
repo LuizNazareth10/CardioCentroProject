@@ -104,6 +104,14 @@ export function Footer() {
 
         <div className="mt-14 flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-8 text-xs text-white/50 sm:flex-row">
           <p>© {new Date().getFullYear()} Cardiocentro — Métodos Diagnósticos em Cardiologia Ltda. Todos os direitos reservados.</p>
+          <nav aria-label="Links legais" className="flex items-center gap-4">
+            <Link href="/privacidade" className="transition-colors hover:text-cardio-400">
+              Política de Privacidade
+            </Link>
+            <Link href="/termos" className="transition-colors hover:text-cardio-400">
+              Termos de Uso
+            </Link>
+          </nav>
           <p>Juiz de Fora · Minas Gerais</p>
         </div>
       </div>

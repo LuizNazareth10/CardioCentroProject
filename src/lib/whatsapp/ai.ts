@@ -1,4 +1,4 @@
-import { EXAMES } from '../seed-data';
+import { CONTATO, CONVENIOS, EXAMES, MEDICOS } from '../seed-data';
 import { mensagemDuvidaFallback } from './messages';
 
 // =============================================================
@@ -10,31 +10,54 @@ import { mensagemDuvidaFallback } from './messages';
 // =============================================================
 
 export interface Intencao {
-  acao: 'agendar' | 'menu' | 'humano' | 'duvida';
+  acao: 'agendar' | 'menu' | 'humano' | 'duvida' | 'urgencia';
   exames: string[]; // ids de EXAMES
   medicoMencionado?: string;
   resposta?: string; // resposta livre para "duvida"
 }
 
-const listaExames = EXAMES.map((e) => `${e.id}: ${e.nome}`).join('\n');
+const listaExames = EXAMES.map((e) => `${e.id}: ${e.nome}${e.preparo ? ` (preparo: ${e.preparo})` : ''}`).join('\n');
+const listaMedicos = MEDICOS.filter((m) => m.ativo)
+  .map((m) => `- ${m.nome}${m.especialidade ? ` — ${m.especialidade}` : ''}`)
+  .join('\n');
+const listaConvenios = CONVENIOS.filter((c) => c.ativo).map((c) => c.nome).join(', ');
 
 export async function interpretar(texto: string): Promise<Intencao> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return fallbackPorPalavras(texto);
 
-  const system = `Você é a atendente virtual da clínica Cardiocentro (cardiologia, Juiz de Fora).
-Seja educada, acolhedora, calorosa e use emojis com moderação. Incentive a marcação de exames.
-Lembre sempre que o paciente deve trazer o pedido médico no dia do exame.
-Para cancelar ou remarcar, oriente a ligar para o telefone fixo (32) 3215-8744.
-Exames disponíveis (id: nome):
+  const system = `Você é a Cardi, assistente virtual da ${CONTATO.nomeClinica} — ${CONTATO.subtitulo}, clínica de cardiologia em Juiz de Fora, MG.
+Tom: profissional, acolhedor e objetivo. Nunca robótico ou burocrático. Emojis com moderação.
+
+# Contexto da clínica
+- Endereço: ${CONTATO.enderecoCompleto}.
+- Horário: segunda a quinta 08h–18h, sexta 08h–17h. Fechado aos fins de semana.
+- Telefone fixo (cancelar/remarcar/laudos): ${CONTATO.telefoneFixo}. Cancelamento e remarcação são feitos SOMENTE por telefone.
+- Convênios aceitos: ${listaConvenios}. Também atende particular.
+- No dia do exame é OBRIGATÓRIO trazer o pedido médico (papel ou digital), documento com foto e carteirinha do convênio.
+- Prazo de laudo: varia por exame; a equipe informa no dia do atendimento (NUNCA prometa prazo específico).
+
+# Exames disponíveis (id: nome)
 ${listaExames}
 
+# Médicos
+${listaMedicos}
+(Mapa 24h e Holter 24h são exames de aparelho, sem escolha de médico.)
+
+# Regras de segurança (OBRIGATÓRIAS)
+1. Você NÃO é médica: nunca dê diagnóstico, interprete sintomas/exames nem recomende/ajuste medicação. Dúvida clínica → orientar consulta com cardiologista.
+2. URGÊNCIA: se o paciente relatar sintomas agudos AGORA (dor no peito, falta de ar intensa, desmaio, palpitações fortes com mal-estar, suspeita de infarto/AVC), classifique como "urgencia" — nunca tente agendar nesse caso.
+3. Escale para humano ("humano"): reclamações, reembolso/pagamento, situações delicadas ou qualquer coisa que exija julgamento humano.
+4. Se o paciente demonstrar medo ou ansiedade, acolha com empatia ANTES de falar de agendamento.
+5. Não invente informações (preços, prazos, promoções). O que não souber → "humano".
+
 Responda SOMENTE com um JSON válido, sem texto fora dele, no formato:
-{"acao":"agendar|menu|humano|duvida","exames":["id",...],"medicoMencionado":"...|null","resposta":"texto curto se acao=duvida, senão null"}
-- "agendar": paciente quer marcar um ou mais exames (preencha "exames").
+{"acao":"agendar|menu|humano|duvida|urgencia","exames":["id",...],"medicoMencionado":"...|null","resposta":"texto curto se acao=duvida, senão null"}
+- "agendar": paciente quer marcar um ou mais exames (preencha "exames" com os ids).
 - "menu": paciente quer ver as opções/voltar ao início.
-- "humano": paciente quer falar com uma pessoa.
-- "duvida": pergunta geral (responda em "resposta", de forma curta, gentil e acolhedora, e convide a agendar).`;
+- "humano": paciente quer falar com uma pessoa OU caso das regras 3/5.
+- "urgencia": sintomas agudos acontecendo agora (regra 2).
+- "duvida": pergunta geral (responda em "resposta", curto, gentil e acolhedor, e convide a agendar quando fizer sentido).`;
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -114,6 +137,10 @@ export async function lerPedidoMedico(base64: string, mime: string): Promise<str
 
 function fallbackPorPalavras(texto: string): Intencao {
   const t = texto.toLowerCase();
+  // urgência tem prioridade máxima — sintomas agudos nunca viram agendamento
+  if (/(dor no peito|dor forte no peito|infart|avc|derrame|desmai|falta de ar (forte|intensa)|n[ãa]o consigo respirar|socorro|emerg[êe]ncia)/.test(t)) {
+    return { acao: 'urgencia', exames: [] };
+  }
   if (/(atendente|humano|pessoa|recep)/.test(t)) return { acao: 'humano', exames: [] };
   if (/(menu|opç|come|in[ií]cio|voltar)/.test(t)) return { acao: 'menu', exames: [] };
   const exames = EXAMES.filter((e) => {

@@ -9,7 +9,9 @@ const links = [
   { href: '/agenda', label: 'Agenda', icon: 'calendar' },
   { href: '/agendar', label: 'Novo agendamento', icon: 'plus' },
   { href: '/pacientes', label: 'Pacientes', icon: 'user' },
+  { href: '/leads', label: 'Leads', icon: 'target' },
   { href: '/atendimentos', label: 'Atendimentos', icon: 'chat' },
+  { href: '/metricas', label: 'Métricas', icon: 'chart' },
   { href: '/simulador', label: 'Simulador WhatsApp', icon: 'phone' },
   { href: '/configuracoes', label: 'Configurações', icon: 'gear' },
 ];
@@ -22,6 +24,8 @@ function Icon({ name }: { name: string }) {
     plus: <><circle cx="12" cy="12" r="9" /><path d="M12 8v8M8 12h8" /></>,
     user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" /></>,
     chat: <><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z" /></>,
+    target: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></>,
+    chart: <><path d="M3 3v18h18" /><rect x="7" y="12" width="3" height="6" /><rect x="12" y="8" width="3" height="10" /><rect x="17" y="5" width="3" height="13" /></>,
     phone: <><rect x="7" y="2" width="10" height="20" rx="2" /><path d="M11 18h2" /></>,
     gear: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" /></>,
   };

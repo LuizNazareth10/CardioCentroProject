@@ -1,4 +1,4 @@
-import type { FichaMedica, Paciente, Sexo } from './types';
+import type { FichaMedica, Lead, Paciente, Sexo } from './types';
 
 /**
  * Erro de validação de ENTRADA DO USUÁRIO — seguro para exibir ao cliente.
@@ -130,6 +130,47 @@ export function sanitizarPaciente(raw: Record<string, unknown>): PacienteEntrada
     convenioId: str(raw.convenioId, 60),
     carteirinha: str(raw.carteirinha, 60),
     fichaMedica: sanitizarFicha((raw.fichaMedica ?? {}) as Record<string, unknown>),
+  };
+}
+
+// =============================================================
+// Lead do formulário público da landing page.
+// Endpoint SEM autenticação → validação estrita é obrigatória.
+// =============================================================
+
+export type LeadEntrada = Omit<Lead, 'id' | 'criadoEm' | 'atualizadoEm'>;
+
+export function sanitizarLeadFormulario(raw: Record<string, unknown>): LeadEntrada {
+  const nome = str(raw.nome, 120);
+  const telefoneBruto = str(raw.telefone, 30);
+  if (!nome || nome.length < 3) throw new ValidationError('Informe seu nome completo.');
+  const digitos = (telefoneBruto ?? '').replace(/\D/g, '');
+  if (digitos.length < 10 || digitos.length > 13) {
+    throw new ValidationError('Telefone inválido — informe DDD e número.');
+  }
+  const email = str(raw.email, 120);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new ValidationError('E-mail inválido.');
+  }
+  const dataPreferencial = str(raw.dataPreferencial, 10);
+  if (dataPreferencial && !/^\d{4}-\d{2}-\d{2}$/.test(dataPreferencial)) {
+    throw new ValidationError('Data preferencial inválida.');
+  }
+  const turno = raw.turnoPreferencial;
+  const turnoPreferencial =
+    turno === 'manha' || turno === 'tarde' || turno === 'indiferente' ? turno : undefined;
+
+  return {
+    nome,
+    telefone: telefoneBruto!,
+    email,
+    exameInteresse: str(raw.exame, 120),
+    mensagem: str(raw.mensagem, 1000),
+    dataPreferencial,
+    turnoPreferencial,
+    origem: 'formulario',
+    status: 'novo',
+    temperatura: 'morno',
   };
 }
 
