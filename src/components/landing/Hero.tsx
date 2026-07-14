@@ -79,11 +79,11 @@ export function Hero() {
           <div className="relative overflow-hidden rounded-[2rem] shadow-lift ring-1 ring-navyblue-100/80">
             <Image
               src={photos.hero}
-              alt="Estetoscópio e equipamento de aferição de pressão arterial em atendimento cardiológico"
+              alt="Fachada e entrada da clínica Cardiocentro em Juiz de Fora"
               width={720}
               height={860}
               priority
-              className="h-[420px] w-full object-cover object-center sm:h-[520px]"
+              className="h-[420px] w-full object-cover object-[center_30%] sm:h-[520px]"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-navyblue-900/50 via-navyblue-900/5 to-transparent" />
           </div>

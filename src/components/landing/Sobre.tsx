@@ -13,7 +13,7 @@ export function Sobre() {
             <div className="group relative aspect-[4/5] overflow-hidden rounded-[2rem] shadow-lift ring-1 ring-navyblue-100/80">
               <Image
                 src={photos.about}
-                alt="Ambiente interno da clínica Cardiocentro"
+                alt="Recepção da clínica Cardiocentro em Juiz de Fora"
                 fill
                 sizes="(max-width: 640px) 45vw, 280px"
                 className="object-cover object-center transition duration-700 group-hover:scale-[1.03]"
@@ -23,10 +23,10 @@ export function Sobre() {
             <div className="group relative aspect-[4/5] overflow-hidden rounded-[2rem] shadow-lift ring-1 ring-navyblue-100/80">
               <Image
                 src={photos.aboutSecondary}
-                alt="Fachada da clínica Cardiocentro em Juiz de Fora"
+                alt="Sala de espera confortável da clínica Cardiocentro"
                 fill
                 sizes="(max-width: 640px) 45vw, 280px"
-                className="object-cover object-[center_35%] transition duration-700 group-hover:scale-[1.03]"
+                className="object-cover object-center transition duration-700 group-hover:scale-[1.03]"
               />
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-navyblue-900/30 via-navyblue-900/5 to-transparent" />
             </div>

@@ -55,7 +55,7 @@ export const metadata: Metadata = {
     type: 'website',
     images: [
       {
-        url: '/img/hero-cardio.jpg',
+        url: '/img/clinica-fachada-entrada.jpg',
         alt: 'Cardiocentro — clínica de métodos diagnósticos em cardiologia em Juiz de Fora',
       },
     ],
@@ -65,7 +65,7 @@ export const metadata: Metadata = {
     title: 'Cardiocentro — Cardiologia em Juiz de Fora',
     description:
       'Centro especializado em diagnóstico cardiológico em Juiz de Fora, com mais de 45 anos de tradição.',
-    images: ['/img/hero-cardio.jpg'],
+    images: ['/img/clinica-fachada-entrada.jpg'],
   },
   robots: { index: true, follow: true },
 };

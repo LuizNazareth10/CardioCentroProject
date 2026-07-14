@@ -20,12 +20,41 @@ export const brandAssets = {
   examesList: '/img/ExamesList.jpeg',
 };
 
-// Imagens locais (public/img) — cardiologia, sem rostos.
+// Fotos reais da clínica (public/img) — fachada, recepção e salas de exame.
 export const photos = {
-  hero: '/img/hero-cardio.jpg',
-  about: '/img/FotoClinica.jpeg',
-  aboutSecondary: '/img/FotoClinicaFachada.jpg',
-  cta: '/img/hero-cardio.jpg',
+  hero: '/img/clinica-fachada-entrada.jpg',
+  about: '/img/clinica-recepcao.jpg',
+  aboutSecondary: '/img/clinica-sala-espera.jpg',
+  cta: '/img/clinica-fachada-entrada.jpg',
+};
+
+// Galeria "Conheça nossa estrutura" — mosaico com o restante do acervo real.
+export const structurePhotos = {
+  patio: {
+    src: '/img/clinica-patio-exames.jpg',
+    alt: 'Pátio interno e área de exames da Cardiocentro, com bancos e jardim',
+    label: 'Área externa de exames',
+  },
+  fachada: {
+    src: '/img/clinica-fachada-detalhe.jpg',
+    alt: 'Detalhe da fachada da Cardiocentro com a marca em destaque',
+    label: 'Nossa fachada',
+  },
+  ecocardiograma: {
+    src: '/img/clinica-sala-ecocardiograma.jpg',
+    alt: 'Sala equipada para realização de ecocardiograma',
+    label: 'Sala de Ecocardiograma',
+  },
+  ergometrico: {
+    src: '/img/clinica-sala-ergometrico.jpg',
+    alt: 'Sala equipada para teste ergométrico, com esteira e monitoramento',
+    label: 'Sala de Teste Ergométrico',
+  },
+  salaExame: {
+    src: '/img/clinica-sala-exame.jpg',
+    alt: 'Sala de exames da Cardiocentro, limpa e climatizada',
+    label: 'Sala de Exames',
+  },
 };
 
 // Catálogo completo conforme material oficial (ExamesList.jpeg).
@@ -34,46 +63,55 @@ export const services = [
     icon: Stethoscope,
     title: 'Consulta Cardiológica',
     desc: 'Avaliação clínica completa com cardiologista, histórico e plano de cuidado personalizado.',
+    bookable: false,
   },
   {
     icon: Activity,
     title: 'Eletrocardiograma (ECG)',
     desc: 'Registro da atividade elétrica do coração para investigar arritmias e outras alterações.',
+    bookable: false,
   },
   {
     icon: Scissors,
     title: 'Risco Cirúrgico',
     desc: 'Avaliação cardiovascular pré-operatória para orientar procedimentos com segurança.',
+    bookable: false,
   },
   {
     icon: ScanHeart,
     title: 'Ecocardiograma com Doppler Colorido/Ecocardiograma Transtorácico',
     desc: 'Ultrassom do coração com imagem de alta definição para avaliar estrutura e função cardíaca.',
+    bookable: true,
   },
   {
     icon: Waves,
     title: 'Duplex Scan de Carótidas e Vertebrais',
     desc: 'Ultrassom com Doppler das artérias carótidas e vertebrais para avaliar o fluxo sanguíneo.',
+    bookable: true,
   },
   {
     icon: Bike,
     title: 'Teste Ergométrico Computadorizado',
     desc: 'Avaliação do coração sob esforço físico controlado, com acompanhamento médico integral.',
+    bookable: true,
   },
   {
     icon: HeartPulse,
     title: 'Teste Cardiopulmonar',
     desc: 'Análise integrada do coração, pulmões e músculos durante o esforço, com precisão máxima.',
+    bookable: true,
   },
   {
     icon: Clock,
     title: 'Holter 24h',
     desc: 'Monitoramento contínuo do ritmo cardíaco ao longo de 24 horas para detectar arritmias.',
+    bookable: true,
   },
   {
     icon: Gauge,
     title: 'MAPA 24h',
     desc: 'Medição da pressão arterial ao longo de 24 horas para diagnóstico preciso da hipertensão.',
+    bookable: true,
   },
 ];
 

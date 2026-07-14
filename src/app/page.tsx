@@ -2,6 +2,7 @@ import { Header } from '@/components/landing/Header';
 import { Hero } from '@/components/landing/Hero';
 import { Especialidades } from '@/components/landing/Especialidades';
 import { Sobre } from '@/components/landing/Sobre';
+import { Estrutura } from '@/components/landing/Estrutura';
 import { CorpoMedico } from '@/components/landing/CorpoMedico';
 import { Convenios } from '@/components/landing/Convenios';
 import { Preparo } from '@/components/landing/Preparo';
@@ -19,7 +20,7 @@ const clinicJsonLd = {
   '@type': 'MedicalClinic',
   name: `${CONTATO.nomeClinica} — ${CONTATO.subtitulo}`,
   url: SITE_URL,
-  image: `${SITE_URL}/img/FotoClinicaFachada.jpg`,
+  image: `${SITE_URL}/img/clinica-fachada-entrada.jpg`,
   telephone: '+55-32-3215-8744',
   email: CONTATO.email,
   address: {
@@ -60,6 +61,7 @@ export default function LandingPage() {
         <Hero />
         <Especialidades />
         <Sobre />
+        <Estrutura />
         <CorpoMedico />
         <Convenios />
         <Preparo />
