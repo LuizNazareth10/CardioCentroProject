@@ -12,12 +12,38 @@ import { transporteEvolution } from '@/lib/whatsapp/evolution';
 // número-agente pareado na instância da Evolution API. Qualquer outra
 // origem — outro número, grupo, ou mensagem enviada pelo próprio agente
 // (eco) — é ignorada sem processar nada e sem tocar no banco.
+//
+// maxDuration maior que o padrão: o fluxo completo (sessão + IA + envio)
+// pode passar de alguns segundos, e a Evolution API RETRANSMITE o webhook
+// se não receber resposta a tempo — cada retransmissão, sem a proteção de
+// `jaProcessada` abaixo, reprocessaria a mensagem inteira do zero.
 // =============================================================
+export const maxDuration = 60;
 
 function autorizado(req: NextRequest): boolean {
   const segredo = process.env.EVOLUTION_WEBHOOK_SECRET;
   if (!segredo) return true; // sem segredo configurado → não valida (dev)
   return req.headers.get('x-evolution-secret') === segredo;
+}
+
+/**
+ * Marca um id de mensagem como processado de forma ATÔMICA (via `.create()`,
+ * que falha se o doc já existir). Devolve `true` só na primeira vez que esse
+ * id é visto — chamadas seguintes (reenvio/retry da Evolution API) devolvem
+ * `false` e o webhook responde ok sem rodar o agente de novo.
+ */
+async function primeiraVez(messageId: string | undefined): Promise<boolean> {
+  if (!messageId) return true;
+  try {
+    const { db } = await import('@/lib/db/firestore');
+    await db().collection('evolution_msgs_processadas').doc(messageId).create({ processadoEm: new Date().toISOString() });
+    return true;
+  } catch (e) {
+    const codigo = (e as { code?: number })?.code;
+    if (codigo === 6 || /ALREADY_EXISTS/i.test(String(e))) return false; // já processada (retry)
+    console.error('[evolution:dedup] erro ao checar duplicidade:', e);
+    return true; // falha ao checar → não bloqueia (prefere um possível duplicado a perder a mensagem)
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -44,6 +70,8 @@ export async function POST(req: NextRequest) {
     if (numerosPermitidos.length === 0 || !numerosPermitidos.includes(numero)) {
       return NextResponse.json({ ok: true }); // só os números de teste
     }
+
+    if (!(await primeiraVez(key.id))) return NextResponse.json({ ok: true }); // retry da Evolution — já tratamos essa mensagem
 
     const entrada = normalizarEntrada(data);
     if (!entrada) return NextResponse.json({ ok: true });
