@@ -4,7 +4,9 @@ import { atualizarAgendamento, listarAgendamentos, criarAgendamentos } from '@/l
 import type { Agendamento, StatusAgendamento } from '@/lib/types';
 import { fromISO } from '@/lib/scheduling/time';
 
-const STATUS_VALIDOS: StatusAgendamento[] = ['agendado', 'confirmado', 'realizado', 'cancelado', 'faltou'];
+const STATUS_VALIDOS: StatusAgendamento[] = [
+  'agendado', 'confirmado', 'chegou', 'em_atendimento', 'realizado', 'cancelado', 'faltou',
+];
 
 // GET /api/agendamentos?de=2026-07-06&ate=2026-07-07
 export async function GET(req: NextRequest) {

@@ -6,6 +6,7 @@ import { APARELHOS, MEDICOS, EXAMES } from '@/lib/seed-data';
 import type { Agendamento, Medico, StatusAgendamento, TipoAparelho, Weekday } from '@/lib/types';
 import { hhmmToMin, minToHHMM, semanaQuinzenalAtiva, weekdayOf } from '@/lib/scheduling/time';
 import { fmtDataExtenso, hojeJF } from '@/lib/format';
+import { STATUS_AGENDAMENTO_COR, STATUS_AGENDAMENTO_LABEL } from '@/lib/status-agendamento';
 
 const GRID = 15;
 const ROW_H = 54; // px por linha de 15min — mais espaço para ler o bloco
@@ -176,18 +177,13 @@ function AgendaConteudo() {
     carregar(data);
   }
 
-  const statusCor: Record<StatusAgendamento, string> = {
-    agendado: 'bg-navyblue', confirmado: 'bg-info', realizado: 'bg-success',
-    faltou: 'bg-warning', cancelado: 'bg-gray-400',
-  };
-
   const blocoOcupado = (ag: Agendamento, span: number) => (
     <button
       type="button"
       onClick={() => setAcaoAg(ag)}
-      className={`absolute inset-x-0.5 overflow-hidden rounded-lg px-2 py-2 text-left text-white shadow-soft transition hover:brightness-110 ${statusCor[ag.status]} ${destaqueId === ag.id ? 'ring-2 ring-cardio ring-offset-2 animate-pulse' : ''}`}
+      className={`absolute inset-x-0.5 overflow-hidden rounded-lg px-2 py-2 text-left text-white shadow-soft transition hover:brightness-110 ${STATUS_AGENDAMENTO_COR[ag.status]} ${destaqueId === ag.id ? 'ring-2 ring-cardio ring-offset-2 animate-pulse' : ''}`}
       style={{ height: `calc(${span * ROW_H}px - 4px)` }}
-      title={`${rotuloPaciente(ag.pacienteId)} · ${ag.pacienteNome} · ${nomeExame(ag.exameId)} (${ag.status})`}
+      title={`${rotuloPaciente(ag.pacienteId)} · ${ag.pacienteNome} · ${nomeExame(ag.exameId)} (${STATUS_AGENDAMENTO_LABEL[ag.status]})`}
     >
       <div className="truncate text-[11px] font-bold leading-snug">{ag.pacienteNome}</div>
       <div className="truncate text-[9px] font-semibold uppercase tracking-wide text-white/80">{rotuloPaciente(ag.pacienteId)}</div>
@@ -226,7 +222,11 @@ function AgendaConteudo() {
 
       <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted">
         <span className="flex items-center gap-1.5"><i className="slot-livre h-3.5 w-3.5 rounded ring-1 ring-inset ring-success/30" /> Livre · clique para agendar</span>
-        <span className="flex items-center gap-1.5"><i className="h-3.5 w-3.5 rounded bg-navyblue" /> Ocupado (clique p/ gerenciar)</span>
+        <span className="flex items-center gap-1.5"><i className="h-3.5 w-3.5 rounded bg-navyblue" /> Agendado</span>
+        <span className="flex items-center gap-1.5"><i className="h-3.5 w-3.5 rounded bg-success" /> Confirmado</span>
+        <span className="flex items-center gap-1.5"><i className="h-3.5 w-3.5 rounded bg-danger" /> Chegou</span>
+        <span className="flex items-center gap-1.5"><i className="h-3.5 w-3.5 rounded bg-warning" /> Em atendimento</span>
+        <span className="flex items-center gap-1.5"><i className="h-3.5 w-3.5 rounded bg-info" /> Realizado</span>
         <span className="flex items-center gap-1.5"><i className="slot-bloqueado h-3.5 w-3.5 rounded ring-1 ring-inset ring-navy-100" /> Bloqueado · fora do horário</span>
         <span className="flex items-center gap-1.5"><i className="h-3.5 w-3.5 rounded bg-cardio" /> Agora</span>
       </div>
@@ -340,9 +340,11 @@ function PopoverAcao({ ag, nomeExame, onFechar, onStatus, onFicha }: {
   onStatus: (id: string, s: StatusAgendamento) => void; onFicha: () => void;
 }) {
   const acoes: Array<{ label: string; status?: StatusAgendamento; cls: string }> = [
-    { label: 'Confirmar presença', status: 'confirmado', cls: 'text-info' },
-    { label: 'Marcar como realizado', status: 'realizado', cls: 'text-success' },
-    { label: 'Marcar falta', status: 'faltou', cls: 'text-warning' },
+    { label: 'Confirmar presença (verde)', status: 'confirmado', cls: 'text-success' },
+    { label: 'Paciente chegou (vermelho)', status: 'chegou', cls: 'text-danger' },
+    { label: 'Em atendimento (laranja)', status: 'em_atendimento', cls: 'text-warning' },
+    { label: 'Finalizar atendimento (azul)', status: 'realizado', cls: 'text-info' },
+    { label: 'Marcar falta', status: 'faltou', cls: 'text-gray-600' },
     { label: 'Cancelar (libera o horário)', status: 'cancelado', cls: 'text-brand-red' },
   ];
   return (
@@ -353,7 +355,7 @@ function PopoverAcao({ ag, nomeExame, onFechar, onStatus, onFicha }: {
         <div className="text-xs text-muted">
           {nomeExame(ag.exameId)} · {ag.inicio.slice(11, 16)}–{ag.fim.slice(11, 16)}
         </div>
-        <span className="badge mt-2 bg-navy-50 text-navy-700 capitalize">{ag.status}</span>
+        <span className="badge mt-2 bg-navy-50 text-navy-700">{STATUS_AGENDAMENTO_LABEL[ag.status]}</span>
 
         <div className="mt-4 space-y-1.5">
           <button onClick={onFicha} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-700 hover:bg-navy-50">

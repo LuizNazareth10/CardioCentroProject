@@ -135,10 +135,41 @@ export default function ConfiguracoesPage() {
       </section>
 
       <section className="mt-7">
+        <h2 className="mb-3 font-bold text-navy-900">Confirmação de presença</h2>
+        <div className="card p-5">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4"
+              checked={config.agente.confirmacaoAntecedenciaAtiva}
+              disabled={!config.editavel}
+              onChange={(e) =>
+                setConfig({ ...config, agente: { ...config.agente, confirmacaoAntecedenciaAtiva: e.target.checked } })
+              }
+            />
+            <span>
+              <span className="block text-sm font-semibold text-ink">
+                Lembrete automático 1 dia antes {config.agente.confirmacaoAntecedenciaAtiva ? 'ligado' : 'desligado'}
+              </span>
+              <span className="block text-xs text-muted">
+                Ligado = o agente manda uma mensagem no WhatsApp um dia antes do horário marcado, pedindo para o
+                paciente confirmar presença. Quando o paciente responde (texto ou botão), o agendamento fica{' '}
+                <strong className="text-success">verde</strong> na Agenda automaticamente.
+              </span>
+            </span>
+          </label>
+          <p className="mt-3 text-xs text-muted">
+            As demais cores da Agenda (paciente chegou · em atendimento · finalizado) são sempre marcadas
+            manualmente pela recepção — o agente nunca altera essas etapas.
+          </p>
+        </div>
+      </section>
+
+      <section className="mt-7">
         <h2 className="mb-3 font-bold text-navy-900">Médicos</h2>
         <p className="mb-3 text-xs text-muted">Horários de atendimento — alteração sob demanda com suporte técnico.</p>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {config.medicos.map((m) => (
+          {config.medicos.filter((m) => m.ativo).map((m) => (
             <div key={m.id} className="card p-4">
               <div className="text-sm font-bold text-navy-900">{m.nome}</div>
               <div className="text-xs text-muted">{m.crm}</div>

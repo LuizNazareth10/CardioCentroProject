@@ -103,11 +103,24 @@ export const CONVENIOS: Convenio[] = [
   'Plan Minas',
   'A.M.D.A.R',
   'Portal da Luz',
+  'Abertta Saúde',
+  // convênios de baixo volume vindos do histórico da clínica (retroalimentação)
+  // que não têm entrada própria no catálogo — agrupados aqui em vez de perder
+  // o registro de qual convênio o paciente/agendamento usava.
+  'Outros',
 ].map((nome) => ({
   id: nome.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
   nome,
   ativo: true,
 }));
+
+// Convênios que exigem autorização prévia: o agente do WhatsApp só confirma
+// o agendamento após o paciente enviar foto da carteirinha + pedido médico
+// (o conteúdo das imagens não é validado, só a presença dos dois envios).
+const NOMES_CONVENIOS_AUTORIZACAO = ['Saúde Caixa', 'Abertta Saúde', 'Sul América', 'PLASC', 'Sabin Sinai'];
+export const CONVENIOS_REQUEREM_AUTORIZACAO_IDS: string[] = CONVENIOS
+  .filter((c) => NOMES_CONVENIOS_AUTORIZACAO.includes(c.nome))
+  .map((c) => c.id);
 
 // ids de exame usados nas janelas (atalhos legíveis)
 const ECO = 'eco-doppler';
@@ -127,7 +140,7 @@ export const MEDICOS: Medico[] = [
   {
     id: 'med-daher',
     nome: 'Dr. Ricardo Daher',
-    crm: '',
+    crm: 'CRM MG 49062',
     especialidade: 'Cardiologista · Ecocardiografia e Doppler',
     foto: '',
     examesHabilitados: [ECO, CARO, ERGO],
@@ -145,7 +158,7 @@ export const MEDICOS: Medico[] = [
   {
     id: 'med-zorzo',
     nome: 'Dr. Paulo Zorzo',
-    crm: '',
+    crm: 'CRM MG 10312',
     especialidade: 'Cardiologista · Ecocardiografia',
     foto: '',
     examesHabilitados: [ECO, CARO],
@@ -160,7 +173,7 @@ export const MEDICOS: Medico[] = [
   {
     id: 'med-lovisi',
     nome: 'Dr. Júlio Lovisi',
-    crm: '',
+    crm: 'CRM MG 16343',
     especialidade: 'Cardiologista · Teste Cardiopulmonar',
     foto: '',
     examesHabilitados: [ECO, CARO, CARDIOPULM],
@@ -175,7 +188,7 @@ export const MEDICOS: Medico[] = [
   {
     id: 'med-lanzoni',
     nome: 'Dra. Fernanda Lanzoni',
-    crm: '',
+    crm: 'CRM MG 40312',
     especialidade: 'Cardiologista · Teste Ergométrico',
     foto: '',
     examesHabilitados: [ERGO],
@@ -188,6 +201,43 @@ export const MEDICOS: Medico[] = [
       { weekday: 5, inicio: '13:20', fim: '15:20', exames: [ERGO] },
     ],
     ativo: true,
+  },
+  // -----------------------------------------------------------
+  // Médicos INATIVOS: só têm histórico (retroalimentação), sem agenda
+  // futura nem horário configurado. Mantidos aqui apenas para que os
+  // agendamentos antigos deles mostrem o nome certo (não o id cru) na
+  // ficha do paciente. Não aparecem na Agenda nem no agendamento por
+  // não terem `disponibilidade` e por `ativo: false`.
+  // -----------------------------------------------------------
+  {
+    id: 'med-pedro-paulo',
+    nome: 'Dr. Pedro Paulo de Oliveira',
+    crm: 'CRM MG 19061',
+    especialidade: 'Cardiologista',
+    foto: '',
+    examesHabilitados: [],
+    disponibilidade: [],
+    ativo: false,
+  },
+  {
+    id: 'med-sonielle',
+    nome: 'Dra. Sonielle Albertino',
+    crm: 'CRM MG 69987',
+    especialidade: 'Cardiologista',
+    foto: '',
+    examesHabilitados: [],
+    disponibilidade: [],
+    ativo: false,
+  },
+  {
+    id: 'med-luisa-lovisi',
+    nome: 'Dra. Luisa Lovisi',
+    crm: '',
+    especialidade: 'Cardiologista',
+    foto: '',
+    examesHabilitados: [],
+    disponibilidade: [],
+    ativo: false,
   },
 ];
 

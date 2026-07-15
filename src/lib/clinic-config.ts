@@ -31,12 +31,21 @@ export interface AgenteConfig {
   ativo: boolean;
   /** resposta automática enviada quando o agente está desligado */
   mensagemForaDoAr: string;
+  /**
+   * true = o agente manda uma mensagem de confirmação de presença 1 dia antes
+   * do horário marcado (via cron diário) e, ao receber "sim"/confirmação do
+   * paciente, marca o agendamento como confirmado (bloco verde na agenda).
+   * A recepção também pode confirmar manualmente a qualquer momento — isso
+   * não depende deste toggle.
+   */
+  confirmacaoAntecedenciaAtiva: boolean;
 }
 
 export const AGENTE_PADRAO: AgenteConfig = {
   ativo: true,
   mensagemForaDoAr:
     'Olá! 👋 Recebemos sua mensagem. Nossa equipe vai te responder em breve, dentro do horário comercial. 💙',
+  confirmacaoAntecedenciaAtiva: true,
 };
 
 export interface ClinicConfigOverrides {

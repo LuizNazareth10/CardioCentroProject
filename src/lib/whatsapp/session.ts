@@ -17,6 +17,7 @@ export type EtapaConversa =
   | 'escolhendo_medico'
   | 'escolhendo_horario'
   | 'identificacao'
+  | 'aguardando_documentos' // convênio com autorização: aguarda foto da carteirinha + pedido médico
   | 'confirmando'
   | 'humano'; // handoff: o agente para de processar, a recepção assume
 
@@ -42,6 +43,8 @@ export interface ConversaState {
   pacienteId?: string;
   // true enquanto esperamos o paciente digitar o nome de um convênio fora da lista
   aguardandoConvenio?: boolean;
+  // nº de fotos recebidas (carteirinha + pedido médico) p/ convênios com autorização — precisa de 2
+  docsAutorizacaoRecebidos?: number;
   atualizadoEm: number;
 }
 

@@ -74,9 +74,15 @@ export interface Convenio {
   ativo: boolean;
 }
 
+// agendado = criado, sem confirmação · confirmado = presença confirmada (verde,
+// pelo agente via lembrete ou manualmente) · chegou = paciente chegou na clínica
+// (vermelho, manual) · em_atendimento = sendo atendido agora (laranja, manual) ·
+// realizado = atendimento finalizado (azul, manual) · cancelado/faltou = como antes.
 export type StatusAgendamento =
   | 'agendado'
   | 'confirmado'
+  | 'chegou'
+  | 'em_atendimento'
   | 'realizado'
   | 'cancelado'
   | 'faltou';
@@ -101,6 +107,8 @@ export interface Agendamento {
   grupoId?: string;
   observacao?: string;
   criadoEm: string;
+  /** ISO datetime de quando o lembrete de confirmação (1 dia antes) foi enviado pelo agente */
+  lembreteEnviadoEm?: string;
 }
 
 // ---------- Cadastro de paciente / prontuário ----------

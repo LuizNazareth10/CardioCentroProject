@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { Agendamento, Paciente, Triagem } from '@/lib/types';
 import { CONVENIOS, EXAMES, MEDICOS } from '@/lib/seed-data';
+import { STATUS_AGENDAMENTO_BADGE, STATUS_AGENDAMENTO_LABEL } from '@/lib/status-agendamento';
 import { fmtData, fmtHora, idade, iniciais } from '@/lib/format';
 import { FichaIdentidadePrint, medicoUltimaConsulta } from '@/components/FichaIdentidadePrint';
 import { Printer } from 'lucide-react';
@@ -84,7 +85,7 @@ export default function PacientePage({ params }: { params: { id: string } }) {
                     <div className="text-sm font-semibold text-ink">{nomeExame(h.exameId)}</div>
                     <div className="text-xs text-muted">{nomeMedico(h.medicoId)}</div>
                   </div>
-                  <span className={`badge ${statusCor(h.status)}`}>{h.status}</span>
+                  <span className={`badge ${STATUS_AGENDAMENTO_BADGE[h.status]}`}>{STATUS_AGENDAMENTO_LABEL[h.status]}</span>
                 </div>
               ))}
           </div>
@@ -122,6 +123,7 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }:
     telefone: paciente.telefone,
     email: paciente.email ?? '',
     endereco: paciente.endereco ?? '',
+    convenioId: paciente.convenioId ?? 'particular',
     carteirinha: paciente.carteirinha ?? '',
     pesoKg: paciente.fichaMedica?.pesoKg?.toString() ?? '',
     alturaCm: paciente.fichaMedica?.alturaCm?.toString() ?? '',
@@ -136,6 +138,7 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }:
       telefone: paciente.telefone,
       email: paciente.email ?? '',
       endereco: paciente.endereco ?? '',
+      convenioId: paciente.convenioId ?? 'particular',
       carteirinha: paciente.carteirinha ?? '',
       pesoKg: paciente.fichaMedica?.pesoKg?.toString() ?? '',
       alturaCm: paciente.fichaMedica?.alturaCm?.toString() ?? '',
@@ -157,6 +160,7 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }:
           telefone: dados.telefone,
           email: dados.email,
           endereco: dados.endereco,
+          convenioId: dados.convenioId,
           carteirinha: dados.carteirinha,
           fichaMedica: {
             pesoKg: dados.pesoKg ? Number(dados.pesoKg) : undefined,
@@ -239,6 +243,12 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }:
           <h3 className="font-bold text-navy-900">Cadastro e antropometria</h3>
           {editando ? (
             <>
+              <div>
+                <label className="label">Convênio</label>
+                <select className="input" value={dados.convenioId} onChange={(e) => setDados({ ...dados, convenioId: e.target.value })}>
+                  {CONVENIOS.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                </select>
+              </div>
               <CampoInput label="Carteirinha" value={dados.carteirinha} onChange={(v) => setDados({ ...dados, carteirinha: v })} />
               <div className="grid gap-3 sm:grid-cols-2">
                 <CampoInput label="Peso (kg)" type="number" value={dados.pesoKg} onChange={(v) => setDados({ ...dados, pesoKg: v })} />
@@ -422,7 +432,4 @@ function Metric({ label, valor, trend }: { label: string; valor: string; trend?:
 }
 function Bloco({ titulo, texto }: { titulo: string; texto?: string }) {
   return <div><div className="text-xs font-semibold uppercase tracking-wide text-muted">{titulo}</div><div className="text-sm text-ink/85">{texto || '—'}</div></div>;
-}
-function statusCor(s: string) {
-  return { agendado: 'bg-navy-50 text-navy-700', confirmado: 'bg-blue-50 text-blue-700', realizado: 'bg-green-50 text-green-700', cancelado: 'bg-gray-100 text-gray-500', faltou: 'bg-red-50 text-brand-red' }[s] ?? 'bg-navy-50 text-navy-700';
 }

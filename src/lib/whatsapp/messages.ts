@@ -287,6 +287,52 @@ export function mensagemUrgencia(): string {
   ].join('\n');
 }
 
+// ─── Lembrete de confirmação (1 dia antes) ───────────────────────
+
+export function mensagemLembreteConfirmacao(primeiroNome: string, data: string, hora: string): string {
+  return [
+    `Olá, *${primeiroNome}*! 👋`,
+    '',
+    `Passando para lembrar do seu exame amanhã, *${data}* às *${hora}*. 🗓️`,
+    '',
+    'Você confirma sua presença? Responda *SIM* ou toque no botão abaixo. ✅',
+  ].join('\n');
+}
+
+export function mensagemConfirmacaoLembreteRecebida(primeiroNome: string, data: string, hora: string): string {
+  return [
+    `Perfeito, *${primeiroNome}*! Presença confirmada. ✅`,
+    '',
+    `Te esperamos em *${data}* às *${hora}*.`,
+    `📍 *${CONTATO.enderecoCompleto}*`,
+  ].join('\n');
+}
+
+// ─── Autorização de convênio (carteirinha + pedido médico) ──────
+
+export function mensagemPedirDocumentosAutorizacao(convenio: string): string {
+  return [
+    `Para agendar pelo convênio *${convenio}*, é necessário enviar dois documentos por foto antes de eu concluir o agendamento: 📋`,
+    '',
+    '1️⃣ Foto da *carteirinha do convênio*',
+    '2️⃣ Foto do *pedido médico*',
+    '',
+    'Pode enviar uma foto de cada vez, agora mesmo, aqui no WhatsApp. Assim que eu receber as duas, seguimos com a confirmação do seu agendamento. 💙',
+  ].join('\n');
+}
+
+export function mensagemDocumentoRecebidoParcial(): string {
+  return [
+    'Recebi 1 dos 2 documentos necessários. ✅',
+    '',
+    'Agora envie a outra foto (carteirinha ou pedido médico) para eu continuar com o agendamento.',
+  ].join('\n');
+}
+
+export function mensagemDocumentosCompletos(): string {
+  return 'Documentos recebidos! ✅\nVamos finalizar seu agendamento.';
+}
+
 // ─── Atendimento humano ─────────────────────────────────────────
 
 export function mensagemTransferenciaHumana(): string {

@@ -1,5 +1,5 @@
-import { APARELHOS, CONVENIOS, EXAMES, MEDICOS } from '../seed-data';
-import { criarAgendamentos, criarPaciente, listarAgendamentos, listarPacientes, registrarLeadWhatsapp, registrarMensagem } from '../db';
+import { APARELHOS, CONVENIOS, CONVENIOS_REQUEREM_AUTORIZACAO_IDS, EXAMES, MEDICOS } from '../seed-data';
+import { atualizarAgendamento, criarAgendamentos, criarPaciente, listarAgendamentos, listarPacientes, registrarLeadWhatsapp, registrarMensagem } from '../db';
 import { gerarSlots, gerarSlotsAparelho, proporSessao } from '../scheduling/engine';
 import { fmtData, fmtDiaCurto, fmtHora } from '../format';
 import { baixarMidia, enviarBotoes, enviarLista, enviarTexto } from './client';
@@ -7,9 +7,12 @@ import {
   mensagemAgendamentoCancelado,
   mensagemAgendamentoConfirmado,
   mensagemBoasVindasAgendamento,
+  mensagemConfirmacaoLembreteRecebida,
   mensagemConfirmarPedidoMedico,
   mensagemConvenioNaoEncontrado,
   mensagemConvenioOutro,
+  mensagemDocumentoRecebidoParcial,
+  mensagemDocumentosCompletos,
   mensagemErroImagem,
   mensagemExameAdicionado,
   mensagemExameDuplicado,
@@ -24,6 +27,7 @@ import {
   mensagemPedidoIdentificado,
   mensagemPedidoNaoIdentificado,
   mensagemPedirConvenio,
+  mensagemPedirDocumentosAutorizacao,
   mensagemPedirNome,
   mensagemPreferenciaMedico,
   mensagemRecebendoPedido,
@@ -76,6 +80,16 @@ export async function processarMensagem(from: string, e: Entrada): Promise<void>
     return; // a recepção assume a conversa
   }
 
+  // (1.5) confirmação do lembrete de presença (1 dia antes) — só quando não
+  // há fluxo de agendamento em andamento, para não interferir na etapa "confirmando"
+  if (
+    (s.etapa === 'inicio' || s.etapa === 'menu') &&
+    (e.valor === 'lembrete_confirmar' || (e.tipo === 'texto' && /^sim\b|^confirmo\b|^confirmar\b|^confirmado\b/.test(vlow)))
+  ) {
+    const confirmou = await confirmarAgendamentoPorLembrete(from);
+    if (confirmou) return;
+  }
+
   // (2) chegada pelo deep link ("olá, gostaria de agendar um exame") → já inicia o fluxo
   if (
     /gostaria de agendar|quero agendar|agendar (um )?exame|marcar (um )?exame/.test(vlow) &&
@@ -125,6 +139,9 @@ export async function processarMensagem(from: string, e: Entrada): Promise<void>
 
     case 'identificacao':
       return tratarIdentificacao(from, s, e);
+
+    case 'aguardando_documentos':
+      return tratarDocumentosAutorizacao(from, s);
 
     case 'confirmando':
       return tratarConfirmacao(from, s, e);
@@ -391,13 +408,13 @@ async function tratarIdentificacao(from: string, s: ConversaState, e: Entrada) {
   }
   if (e.valor.startsWith('conv:')) {
     s.convenioId = e.valor.slice(5); s.aguardandoConvenio = false; await salvarSessao(from, s);
-    return mostrarConfirmacao(from, s);
+    return avancarAposConvenio(from, s);
   }
   // texto livre: tenta casar com um convênio da lista completa
   const c = acharConvenio(e.valor);
   if (c) {
     s.convenioId = c.id; s.aguardandoConvenio = false; await salvarSessao(from, s);
-    return mostrarConfirmacao(from, s);
+    return avancarAposConvenio(from, s);
   }
   if (s.aguardandoConvenio) {
     return enviarTexto(from, mensagemConvenioNaoEncontrado(e.valor));
@@ -406,8 +423,35 @@ async function tratarIdentificacao(from: string, s: ConversaState, e: Entrada) {
   return pedirConvenioOuConfirmar(from, s);
 }
 
+/** convênios que exigem carteirinha + pedido médico por foto antes de confirmar */
+function convenioRequerAutorizacao(convenioId?: string): boolean {
+  return !!convenioId && CONVENIOS_REQUEREM_AUTORIZACAO_IDS.includes(convenioId);
+}
+
+/** após saber o convênio: pede documentos (se exigido) ou vai direto para a confirmação */
+async function avancarAposConvenio(from: string, s: ConversaState) {
+  if (convenioRequerAutorizacao(s.convenioId) && (s.docsAutorizacaoRecebidos ?? 0) < 2) {
+    return pedirDocumentosAutorizacao(from, s);
+  }
+  return mostrarConfirmacao(from, s);
+}
+
+async function pedirDocumentosAutorizacao(from: string, s: ConversaState) {
+  s.etapa = 'aguardando_documentos';
+  s.docsAutorizacaoRecebidos = s.docsAutorizacaoRecebidos ?? 0;
+  await salvarSessao(from, s);
+  const nomeConvenio = CONVENIOS.find((c) => c.id === s.convenioId)?.nome ?? '';
+  await enviarTexto(from, mensagemPedirDocumentosAutorizacao(nomeConvenio));
+}
+
+/** texto/botão recebido enquanto aguardamos as fotos — só reforça o pedido */
+async function tratarDocumentosAutorizacao(from: string, s: ConversaState) {
+  const nomeConvenio = CONVENIOS.find((c) => c.id === s.convenioId)?.nome ?? '';
+  return enviarTexto(from, mensagemPedirDocumentosAutorizacao(nomeConvenio));
+}
+
 async function pedirConvenioOuConfirmar(from: string, s: ConversaState) {
-  if (s.convenioId) return mostrarConfirmacao(from, s);
+  if (s.convenioId) return avancarAposConvenio(from, s);
   const populares = CONVENIOS_POPULARES
     .map((nome) => CONVENIOS.find((c) => c.nome === nome))
     .filter((c): c is NonNullable<typeof c> => Boolean(c));
@@ -529,6 +573,23 @@ async function rotearIA(from: string, s: ConversaState, texto: string) {
   return enviarListaExames(from);
 }
 
+// -------- CONFIRMAÇÃO DO LEMBRETE (1 dia antes) --------
+// Marca de VERDE o agendamento mais próximo desse paciente que já recebeu o
+// lembrete e ainda não foi confirmado. É a ÚNICA mudança de status que o
+// agente faz sozinho — chegada/atendimento/finalização são sempre manuais.
+async function confirmarAgendamentoPorLembrete(from: string): Promise<boolean> {
+  const pac = await acharPacientePorTelefone(from);
+  if (!pac) return false;
+  const ags = await listarAgendamentos({ pacienteId: pac.id });
+  const pendente = ags
+    .filter((a) => a.status === 'agendado' && a.lembreteEnviadoEm)
+    .sort((a, b) => a.inicio.localeCompare(b.inicio))[0];
+  if (!pendente) return false;
+  await atualizarAgendamento(pendente.id, { status: 'confirmado' });
+  await enviarTexto(from, mensagemConfirmacaoLembreteRecebida(pac.nome.split(' ')[0], fmtData(pendente.inicio), fmtHora(pendente.inicio)));
+  return true;
+}
+
 async function falarComHumano(from: string) {
   const s = await carregarSessao(from);
   s.etapa = 'humano'; await salvarSessao(from, s);
@@ -557,6 +618,18 @@ async function tratarImagem(from: string, s: ConversaState, e: Entrada) {
       { nome: s.nome, status: 'aguardando' },
     );
     return;
+  }
+
+  // convênio com autorização: as fotos são carteirinha/pedido médico — só
+  // contamos os envios (não fazemos OCR aqui, é o fluxo de leitura de exames)
+  if (s.etapa === 'aguardando_documentos') {
+    s.docsAutorizacaoRecebidos = (s.docsAutorizacaoRecebidos ?? 0) + 1;
+    await salvarSessao(from, s);
+    if (s.docsAutorizacaoRecebidos < 2) {
+      return enviarTexto(from, mensagemDocumentoRecebidoParcial());
+    }
+    await enviarTexto(from, mensagemDocumentosCompletos());
+    return mostrarConfirmacao(from, s);
   }
 
   await enviarTexto(from, mensagemRecebendoPedido());

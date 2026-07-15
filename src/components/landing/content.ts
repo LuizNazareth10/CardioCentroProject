@@ -116,13 +116,13 @@ export const services = [
 ];
 
 export const doctors = [
-  { name: 'Dr. Ricardo Daher' },
-  { name: 'Dr. Paulo Zorzo' },
-  { name: 'Dr. Júlio Lovisi' },
-  { name: 'Dra. Fernanda Lanzoni' },
-  { name: 'Dra. Sonielle Albertino' },
-  { name: 'Dr. Pedro Paulo de Oliveira' },
-  { name: 'Dr. Vagner Campos' },
+  { name: 'Dr. Ricardo Daher', crm: 'CRM MG 49062' },
+  { name: 'Dr. Paulo Zorzo', crm: 'CRM MG 10312' },
+  { name: 'Dr. Júlio Lovisi', crm: 'CRM MG 16343' },
+  { name: 'Dra. Fernanda Lanzoni', crm: 'CRM MG 40312' },
+  { name: 'Dra. Sonielle Albertino', crm: 'CRM MG 69987' },
+  { name: 'Dr. Pedro Paulo de Oliveira', crm: 'CRM MG 19061' },
+  { name: 'Dr. Vagner Campos', crm: 'CRM MG 39283' },
 ];
 
 export const testimonials = [

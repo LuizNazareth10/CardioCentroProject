@@ -92,6 +92,10 @@ export function Footer() {
             <div className="mt-5 space-y-3">
               <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
                 <ShieldCheck className="h-5 w-5 flex-none text-success" aria-hidden />
+                Clínica registrada — CRM MG 4152
+              </div>
+              <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
+                <ShieldCheck className="h-5 w-5 flex-none text-success" aria-hidden />
                 Corpo clínico registrado no CRM-MG
               </div>
               <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm">

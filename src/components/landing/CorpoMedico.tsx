@@ -39,8 +39,11 @@ export function CorpoMedico() {
                     className="grid h-2 w-2 flex-none rounded-full bg-cardio shadow-[0_0_12px_rgba(221,23,36,0.55)]"
                     aria-hidden
                   />
-                  <span className="font-serif text-xl font-semibold tracking-tight text-white sm:text-2xl">
-                    {d.name}
+                  <span className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                    <span className="font-serif text-xl font-semibold tracking-tight text-white sm:text-2xl">
+                      {d.name}
+                    </span>
+                    <span className="text-xs font-medium text-white/50">{d.crm}</span>
                   </span>
                 </motion.li>
               ))}
