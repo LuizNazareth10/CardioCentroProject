@@ -48,14 +48,14 @@ export async function POST(req: NextRequest) {
     const entrada = normalizarEntrada(data);
     if (!entrada) return NextResponse.json({ ok: true });
 
-    // não bloquear a resposta ao webhook — mesma estratégia do webhook oficial
-    comTransporte(transporteEvolution, () => processarMensagem(numero, entrada)).catch((e) =>
-      console.error(`[evolution:agente] erro (numero=${numero}):`, e),
-    );
+    // AGUARDA o processamento (diferente do webhook da Meta): em runtime
+    // serverless (Vercel), uma promise "solta" pode ser encerrada assim que
+    // a resposta HTTP é enviada, antes do envio de saída terminar.
+    await comTransporte(transporteEvolution, () => processarMensagem(numero, entrada));
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('[evolution:webhook] erro:', e);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, erro: e instanceof Error ? e.message : String(e) });
   }
 }
 
