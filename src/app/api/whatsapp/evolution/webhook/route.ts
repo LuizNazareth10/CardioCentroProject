@@ -7,11 +7,11 @@ import { transporteEvolution } from '@/lib/whatsapp/evolution';
 // Webhook da Evolution API — canal de TESTE, isolado do webhook oficial
 // da Meta Cloud API (src/app/api/whatsapp/webhook/route.ts, inalterado).
 //
-// Restrito por design a um único número de cliente de teste
-// (EVOLUTION_NUMERO_TESTE) conversando com o número-agente pareado na
-// instância da Evolution API. Qualquer outra origem — outro número,
-// grupo, ou mensagem enviada pelo próprio agente (eco) — é ignorada sem
-// processar nada e sem tocar no banco.
+// Restrito por design à lista de números de cliente de teste
+// (EVOLUTION_NUMEROS_TESTE, separados por vírgula) conversando com o
+// número-agente pareado na instância da Evolution API. Qualquer outra
+// origem — outro número, grupo, ou mensagem enviada pelo próprio agente
+// (eco) — é ignorada sem processar nada e sem tocar no banco.
 // =============================================================
 
 function autorizado(req: NextRequest): boolean {
@@ -36,9 +36,14 @@ export async function POST(req: NextRequest) {
     const remoteJid: string = key.remoteJid ?? '';
     if (remoteJid.endsWith('@g.us')) return NextResponse.json({ ok: true }); // bloqueia grupos
 
-    const numeroPermitido = process.env.EVOLUTION_NUMERO_TESTE?.replace(/\D/g, '');
+    const numerosPermitidos = (process.env.EVOLUTION_NUMEROS_TESTE ?? '')
+      .split(',')
+      .map((n) => n.replace(/\D/g, ''))
+      .filter(Boolean);
     const numero = remoteJid.replace(/@.*$/, '').replace(/\D/g, '');
-    if (!numeroPermitido || numero !== numeroPermitido) return NextResponse.json({ ok: true }); // só o número de teste
+    if (numerosPermitidos.length === 0 || !numerosPermitidos.includes(numero)) {
+      return NextResponse.json({ ok: true }); // só os números de teste
+    }
 
     const entrada = normalizarEntrada(data);
     if (!entrada) return NextResponse.json({ ok: true });
