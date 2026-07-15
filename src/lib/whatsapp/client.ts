@@ -30,6 +30,32 @@ export async function capturarEnvios(fn: () => Promise<void>): Promise<EnvioCapt
   return sink;
 }
 
+// -------------------------------------------------------------
+// Transporte externo alternativo (ex.: Evolution API para o número de
+// teste): quando ativo no contexto async, as funções de envio/mídia
+// abaixo delegam para essa implementação em vez de chamar a Meta Cloud
+// API. Mesma ideia do modo simulação acima, mas para um canal real
+// diferente — não altera em nada o fluxo de negócio do agente (agent.ts
+// continua chamando as MESMAS funções exportadas deste arquivo).
+// -------------------------------------------------------------
+export interface TransporteExterno {
+  enviarTexto(to: string, texto: string): Promise<void>;
+  enviarBotoes(to: string, texto: string, botoes: Array<{ id: string; titulo: string }>): Promise<void>;
+  enviarLista(
+    to: string,
+    texto: string,
+    botaoLista: string,
+    secoes: Array<{ titulo: string; itens: Array<{ id: string; titulo: string; descricao?: string }> }>,
+  ): Promise<void>;
+  baixarMidia(mediaId: string): Promise<{ base64: string; mime: string } | null>;
+}
+const transporteStore = new AsyncLocalStorage<TransporteExterno>();
+
+/** roda `fn` usando `transporte` no lugar da Meta Cloud API para todo envio/mídia */
+export async function comTransporte<T>(transporte: TransporteExterno, fn: () => Promise<T>): Promise<T> {
+  return transporteStore.run(transporte, fn);
+}
+
 async function enviar(payload: Record<string, unknown>) {
   const sink = capturaStore.getStore();
   if (sink) {
@@ -52,11 +78,15 @@ async function enviar(payload: Record<string, unknown>) {
 }
 
 export async function enviarTexto(to: string, texto: string) {
+  const t = transporteStore.getStore();
+  if (t) return t.enviarTexto(to, texto);
   await enviar({ to, type: 'text', text: { body: texto } });
 }
 
 /** até 3 botões de resposta rápida */
 export async function enviarBotoes(to: string, texto: string, botoes: Array<{ id: string; titulo: string }>) {
+  const t = transporteStore.getStore();
+  if (t) return t.enviarBotoes(to, texto, botoes);
   await enviar({
     to,
     type: 'interactive',
@@ -78,6 +108,8 @@ export async function enviarBotoes(to: string, texto: string, botoes: Array<{ id
  * IDs reais da Meta são sempre numéricos, então não há risco de colisão.
  */
 export async function baixarMidia(mediaId: string): Promise<{ base64: string; mime: string } | null> {
+  const t = transporteStore.getStore();
+  if (t) return t.baixarMidia(mediaId);
   if (mediaId.startsWith('local:')) {
     const { readFile } = await import('fs/promises');
     const caminho = mediaId.slice('local:'.length);
@@ -111,6 +143,8 @@ export async function enviarLista(
   botaoLista: string,
   secoes: Array<{ titulo: string; itens: Array<{ id: string; titulo: string; descricao?: string }> }>,
 ) {
+  const t = transporteStore.getStore();
+  if (t) return t.enviarLista(to, texto, botaoLista, secoes);
   await enviar({
     to,
     type: 'interactive',
