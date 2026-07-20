@@ -78,6 +78,7 @@ export async function processarMensagem(
   const s = await carregarSessao(from);
   if (meta?.pushName?.trim() && !s.pushName) {
     s.pushName = meta.pushName.trim();
+    await salvarSessao(from, s);
   }
 
   // (0) imagem de pedido médico — tratada em qualquer etapa
@@ -609,7 +610,7 @@ async function confirmarAgendamentoPorLembrete(from: string): Promise<boolean> {
 async function falarComHumano(from: string) {
   const s = await carregarSessao(from);
   s.etapa = 'humano'; await salvarSessao(from, s);
-  const aviso = mensagemTransferenciaHumana();
+  const aviso = mensagemTransferenciaHumana(primeiroNome(s));
   // coloca a conversa na fila de atendimento humano (painel /atendimentos)
   await registrarMensagem(
     from,

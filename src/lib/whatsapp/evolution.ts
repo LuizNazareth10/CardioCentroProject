@@ -33,15 +33,24 @@ async function chamar(caminho: string, body: unknown): Promise<Response | null> 
     console.error('[evolution] não configurada (EVOLUTION_API_URL/EVOLUTION_API_KEY/EVOLUTION_INSTANCE)');
     return null;
   }
-  // JSON.stringify UTF-8 puro — NÃO reescrever \uXXXX (isso quebrava o JSON
-  // e a Evolution respondia 400 em mensagens com emoji, ex.: transferência).
+  // A Evolution às vezes não decodifica \uD83D\uDC99 e manda o escape literal no WhatsApp.
+  // Expandimos SÓ pares de surrogate (emojis) para UTF-8 real — sem tocar em \n, \" etc.
   const res = await fetch(`${c.apiUrl}${caminho}/${c.instancia}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json; charset=utf-8', apikey: c.apiKey },
-    body: JSON.stringify(body),
+    body: jsonUtf8(body),
   });
   if (!res.ok) console.error('[evolution] erro ao chamar', caminho, res.status, await res.text());
   return res;
+}
+
+/** JSON com emojis em UTF-8 real (evita \uD83D… literal no WhatsApp). */
+function jsonUtf8(body: unknown): Buffer {
+  const json = JSON.stringify(body).replace(
+    /\\u([dD][89aAbB][0-9a-fA-F]{2})\\u([dD][c-fC-F][0-9a-fA-F]{2})/g,
+    (_m, hi: string, lo: string) => String.fromCharCode(parseInt(hi, 16), parseInt(lo, 16)),
+  );
+  return Buffer.from(json, 'utf8');
 }
 
 function numeroLimpo(numero: string): string {
@@ -49,7 +58,11 @@ function numeroLimpo(numero: string): string {
 }
 
 async function enviarTextoPlano(to: string, texto: string): Promise<void> {
-  await chamar('/message/sendText', { number: numeroLimpo(to), text: texto });
+  // Se por algum caminho o texto já vier com escape literal, normaliza antes de enviar.
+  const limpo = texto.replace(/\\u([0-9a-fA-F]{4})/gi, (_m, hex: string) =>
+    String.fromCharCode(parseInt(hex, 16)),
+  );
+  await chamar('/message/sendText', { number: numeroLimpo(to), text: limpo });
 }
 
 export const transporteEvolution: TransporteExterno = {

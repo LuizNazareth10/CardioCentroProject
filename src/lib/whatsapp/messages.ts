@@ -340,9 +340,10 @@ export function mensagemDocumentosCompletos(): string {
 
 // ─── Atendimento humano ─────────────────────────────────────────
 
-export function mensagemTransferenciaHumana(): string {
+export function mensagemTransferenciaHumana(primeiroNome?: string): string {
+  const oi = primeiroNome ? `Tudo bem, *${primeiroNome}*!` : 'Tudo bem!';
   return [
-    'Tudo bem! 💙',
+    `${oi} 💙`,
     '',
     'Vou te transferir para a nossa recepção. Em instantes alguém do time assume por aqui.',
     '',
