@@ -45,12 +45,11 @@ async function chamar(caminho: string, body: unknown): Promise<Response | null> 
 }
 
 /** JSON com emojis em UTF-8 real (evita \uD83D… literal no WhatsApp). */
-function jsonUtf8(body: unknown): Buffer {
-  const json = JSON.stringify(body).replace(
+function jsonUtf8(body: unknown): string {
+  return JSON.stringify(body).replace(
     /\\u([dD][89aAbB][0-9a-fA-F]{2})\\u([dD][c-fC-F][0-9a-fA-F]{2})/g,
     (_m, hi: string, lo: string) => String.fromCharCode(parseInt(hi, 16), parseInt(lo, 16)),
   );
-  return Buffer.from(json, 'utf8');
 }
 
 function numeroLimpo(numero: string): string {
