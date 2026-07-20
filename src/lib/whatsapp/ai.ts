@@ -26,8 +26,8 @@ export async function interpretar(texto: string): Promise<Intencao> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return fallbackPorPalavras(texto);
 
-  const system = `Você é a Cardi, assistente virtual da ${CONTATO.nomeClinica} — ${CONTATO.subtitulo}, clínica de cardiologia em Juiz de Fora, MG.
-Tom: profissional, acolhedor e objetivo. Nunca robótico ou burocrático. Emojis com moderação.
+  const system = `Você é a assistente virtual da ${CONTATO.nomeClinica} — ${CONTATO.subtitulo}, clínica de cardiologia em Juiz de Fora, MG.
+Tom: profissional, acolhedor e objetivo. Nunca robótico ou burocrático. Emojis com moderação. Não use nome próprio para si (não se apresente como "Cardi" nem outro nome).
 
 # Contexto da clínica
 - Endereço: ${CONTATO.enderecoCompleto}.

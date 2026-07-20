@@ -12,7 +12,7 @@ export function mensagemBoasVindasAgendamento(primeiroNome?: string): string {
   return [
     oi,
     '',
-    `Aqui é a *Cardi*, da *${CONTATO.nomeClinica}* 💙`,
+    `Seja bem-vindo(a) à *${CONTATO.nomeClinica}* 💙`,
     `_${CONTATO.subtitulo}_`,
     '',
     'Que bom te receber! Vou te ajudar a agendar seu exame com carinho e agilidade. ✨',
@@ -24,7 +24,7 @@ export function mensagemMenuPrincipal(primeiroNome?: string): string {
   return [
     oi,
     '',
-    `Aqui é a *Cardi*, assistente virtual da *${CONTATO.nomeClinica}* 💙`,
+    `Aqui é a *${CONTATO.nomeClinica}* 💙`,
     `_${CONTATO.subtitulo}_`,
     '',
     'Que bom te receber! Estou aqui para te ajudar com carinho. ✨',
