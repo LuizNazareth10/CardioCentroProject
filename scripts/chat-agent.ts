@@ -41,6 +41,13 @@ if (backend !== 'firestore') {
   console.log('   Dica: rode com DATA_BACKEND=firestore no .env.local para ver os');
   console.log('   agendamentos/handoff aparecerem de verdade no painel web.');
 }
+if (backend === 'firestore' && process.env.CHAT_AGENT_ALLOW_FIRESTORE !== '1') {
+  console.log('\n⚠️  DATA_BACKEND=firestore aponta para o banco de PRODUÇÃO.');
+  console.log('   Este simulador cria pacientes/agendamentos REAIS a cada conversa de teste.');
+  console.log('   Se é isso mesmo que você quer, rode de novo com:');
+  console.log('     CHAT_AGENT_ALLOW_FIRESTORE=1 npm run chat-agent\n');
+  process.exit(1);
+}
 console.log('   Comandos: /click <id>  ·  /foto <caminho>  ·  /novo  ·  /sair\n');
 
 let telefone = numeroFake();

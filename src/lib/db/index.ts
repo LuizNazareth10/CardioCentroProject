@@ -47,9 +47,35 @@ export async function obterPaciente(id: string): Promise<Paciente | null> {
   return memoria.pacientes.find((p) => p.id === id) ?? null;
 }
 
+const soDigitos = (v?: string) => (v ?? '').replace(/\D/g, '');
+
+/**
+ * Acha um paciente já cadastrado com o mesmo CPF (chave forte) ou o mesmo
+ * telefone (últimos 8 dígitos, tolera DDI/DDD/9º dígito diferentes) para
+ * evitar criar um segundo registro para a mesma pessoa — cobre tanto o
+ * agente do WhatsApp (nunca coleta CPF) quanto o cadastro manual.
+ */
+async function acharPacienteDuplicado(dados: Pick<Paciente, 'cpf' | 'telefone'>): Promise<Paciente | null> {
+  const cpf = soDigitos(dados.cpf);
+  const telefone = soDigitos(dados.telefone).slice(-8);
+  if (!cpf && !telefone) return null;
+  const todos = await listarPacientes();
+  if (cpf) {
+    const porCpf = todos.find((p) => soDigitos(p.cpf) === cpf);
+    if (porCpf) return porCpf;
+  }
+  if (telefone) {
+    const porTelefone = todos.find((p) => soDigitos(p.telefone).slice(-8) === telefone);
+    if (porTelefone) return porTelefone;
+  }
+  return null;
+}
+
 export async function criarPaciente(
   dados: Omit<Paciente, 'id' | 'criadoEm' | 'atualizadoEm'>,
 ): Promise<Paciente> {
+  const existente = await acharPacienteDuplicado(dados);
+  if (existente) return existente;
   const agora = new Date().toISOString();
   const paciente: Paciente = { ...dados, id: novoId('pac'), criadoEm: agora, atualizadoEm: agora };
   if (isFirestore) {

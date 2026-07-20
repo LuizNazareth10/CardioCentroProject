@@ -239,6 +239,26 @@ export const MEDICOS: Medico[] = [
     disponibilidade: [],
     ativo: false,
   },
+  {
+    id: 'med-tassiana-campos',
+    nome: 'Dra. Tassiana Miranda Campos',
+    crm: '',
+    especialidade: 'Cardiologista',
+    foto: '',
+    examesHabilitados: [],
+    disponibilidade: [],
+    ativo: false,
+  },
+  {
+    id: 'med-vagner-silva',
+    nome: 'Dr. Vagner de Campos Silva',
+    crm: '',
+    especialidade: 'Cardiologista',
+    foto: '',
+    examesHabilitados: [],
+    disponibilidade: [],
+    ativo: false,
+  },
 ];
 
 // =============================================================
