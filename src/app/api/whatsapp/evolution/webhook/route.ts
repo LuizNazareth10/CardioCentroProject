@@ -93,7 +93,11 @@ export async function POST(req: NextRequest) {
     // AGUARDA o processamento (diferente do webhook da Meta): em runtime
     // serverless (Vercel), uma promise "solta" pode ser encerrada assim que
     // a resposta HTTP é enviada, antes do envio de saída terminar.
-    await comTransporte(transporteEvolution, () => processarMensagem(destino, entrada));
+    await comTransporte(transporteEvolution, () =>
+      processarMensagem(destino, entrada, {
+        pushName: typeof data?.pushName === 'string' ? data.pushName : undefined,
+      }),
+    );
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('[evolution:webhook] erro:', e);

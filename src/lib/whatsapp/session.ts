@@ -39,6 +39,8 @@ export interface ConversaState {
   opcoes?: Array<{ rotulo: string; itens: ItemProposto[] }>;
   // dados de identificação coletados
   nome?: string;
+  /** Nome de exibição do WhatsApp (pushName), usado só para saudação até o paciente informar o nome completo */
+  pushName?: string;
   convenioId?: string;
   pacienteId?: string;
   // true enquanto esperamos o paciente digitar o nome de um convênio fora da lista

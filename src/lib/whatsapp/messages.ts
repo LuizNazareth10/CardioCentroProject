@@ -7,22 +7,27 @@ export const TELEFONE_FIXO_CLINICA = CONTATO.telefoneFixo;
 
 // ─── Saudações e menu ───────────────────────────────────────────
 
-export function mensagemBoasVindasAgendamento(): string {
+export function mensagemBoasVindasAgendamento(primeiroNome?: string): string {
+  const oi = primeiroNome ? `Olá, *${primeiroNome}*! 👋` : 'Olá! 👋';
   return [
-    'Olá! 👋',
+    oi,
     '',
-    `Seja bem-vindo(a) à *${CONTATO.nomeClinica}* 💙`,
+    `Aqui é a *Cardi*, da *${CONTATO.nomeClinica}* 💙`,
     `_${CONTATO.subtitulo}_`,
     '',
-    'Vou te ajudar a agendar seu exame com carinho e agilidade. ✨',
+    'Que bom te receber! Vou te ajudar a agendar seu exame com carinho e agilidade. ✨',
   ].join('\n');
 }
 
-export function mensagemMenuPrincipal(): string {
+export function mensagemMenuPrincipal(primeiroNome?: string): string {
+  const oi = primeiroNome ? `Olá, *${primeiroNome}*! 👋` : 'Olá! 👋';
   return [
-    'Olá! 👋',
+    oi,
     '',
-    `Aqui é a *${CONTATO.nomeClinica}* — ${CONTATO.subtitulo}.`,
+    `Aqui é a *Cardi*, assistente virtual da *${CONTATO.nomeClinica}* 💙`,
+    `_${CONTATO.subtitulo}_`,
+    '',
+    'Que bom te receber! Estou aqui para te ajudar com carinho. ✨',
     '',
     'Como posso te ajudar hoje? 😊',
   ].join('\n');

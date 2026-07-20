@@ -33,10 +33,15 @@ async function chamar(caminho: string, body: unknown): Promise<Response | null> 
     console.error('[evolution] não configurada (EVOLUTION_API_URL/EVOLUTION_API_KEY/EVOLUTION_INSTANCE)');
     return null;
   }
+  // JSON.stringify pode emitir \uD83D\uDC4B; se a Evolution não decodificar o escape,
+  // o WhatsApp mostra a sequência literal. Reescrevemos para UTF-8 real no payload.
+  const json = JSON.stringify(body).replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) =>
+    String.fromCharCode(parseInt(hex, 16)),
+  );
   const res = await fetch(`${c.apiUrl}${caminho}/${c.instancia}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', apikey: c.apiKey },
-    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json; charset=utf-8', apikey: c.apiKey },
+    body: json,
   });
   if (!res.ok) console.error('[evolution] erro ao chamar', caminho, res.status, await res.text());
   return res;

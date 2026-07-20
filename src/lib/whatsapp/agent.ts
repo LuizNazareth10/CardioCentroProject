@@ -61,8 +61,24 @@ function agoraJF(): string {
 const nomeExame = (id: string) => nomeExameDisplay(id);
 const nomeMedico = (id: string) => MEDICOS.find((m) => m.id === id)?.nome ?? id;
 
-export async function processarMensagem(from: string, e: Entrada): Promise<void> {
+/** Primeiro nome para saudação: cadastro da sessão, senão pushName do WhatsApp. */
+function primeiroNome(s: ConversaState): string | undefined {
+  const bruto = (s.nome ?? s.pushName ?? '').trim();
+  if (!bruto) return undefined;
+  // evita usar número/JID como "nome"
+  if (/^\d+$/.test(bruto.replace(/\D/g, '')) && bruto.replace(/\D/g, '').length >= 8) return undefined;
+  return bruto.split(/\s+/)[0];
+}
+
+export async function processarMensagem(
+  from: string,
+  e: Entrada,
+  meta?: { pushName?: string },
+): Promise<void> {
   const s = await carregarSessao(from);
+  if (meta?.pushName?.trim() && !s.pushName) {
+    s.pushName = meta.pushName.trim();
+  }
 
   // (0) imagem de pedido médico — tratada em qualquer etapa
   if (e.tipo === 'imagem') return tratarImagem(from, s, e);
@@ -96,7 +112,7 @@ export async function processarMensagem(from: string, e: Entrada): Promise<void>
     (s.etapa === 'inicio' || s.etapa === 'menu')
   ) {
     s.etapa = 'escolhendo_exames'; s.examesSelecionados = []; await salvarSessao(from, s);
-    await enviarTexto(from, mensagemBoasVindasAgendamento());
+    await enviarTexto(from, mensagemBoasVindasAgendamento(primeiroNome(s)));
     return enviarListaExames(from);
   }
 
@@ -156,7 +172,7 @@ async function menuPrincipal(from: string, s: ConversaState) {
   s.etapa = 'menu'; await salvarSessao(from, s);
   await enviarBotoes(
     from,
-    mensagemMenuPrincipal(),
+    mensagemMenuPrincipal(primeiroNome(s)),
     [
       { id: 'agendar', titulo: 'Agendar exame' },
       { id: 'falar_humano', titulo: 'Falar c/ atendente' },

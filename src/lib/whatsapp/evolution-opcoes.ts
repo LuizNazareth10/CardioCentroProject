@@ -55,5 +55,5 @@ export async function resolverOpcaoEvolution(numero: string, texto: string): Pro
 /** Monta o corpo de texto com opções *1* … *N* para o paciente responder. */
 export function formatarMenuTexto(texto: string, opcoes: OpcaoNumerada[]): string {
   const linhas = opcoes.map((o, i) => `*${i + 1}* — ${o.titulo}`);
-  return [texto.trim(), '', ...linhas, '', '_Responda com o número da opção._'].join('\n');
+  return [texto.trim(), '', ...linhas, '', '_É só responder com o número da opção, tá bem?_ 💙'].join('\n');
 }
