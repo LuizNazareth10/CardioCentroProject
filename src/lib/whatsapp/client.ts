@@ -80,7 +80,21 @@ async function enviar(payload: Record<string, unknown>) {
 export async function enviarTexto(to: string, texto: string) {
   const t = transporteStore.getStore();
   if (t) return t.enviarTexto(to, texto);
+  // Sem Meta Cloud API configurada, mas com Evolution (canal de teste atual):
+  // respostas da recepção em /atendimentos também precisam sair por aqui.
+  if (!cfg().ativo && evolutionEnvOk()) {
+    const { transporteEvolution } = await import('./evolution');
+    return transporteEvolution.enviarTexto(to, texto);
+  }
   await enviar({ to, type: 'text', text: { body: texto } });
+}
+
+function evolutionEnvOk(): boolean {
+  return Boolean(
+    process.env.EVOLUTION_API_URL?.trim() &&
+      process.env.EVOLUTION_API_KEY?.trim() &&
+      process.env.EVOLUTION_INSTANCE?.trim(),
+  );
 }
 
 /** até 3 botões de resposta rápida */

@@ -24,7 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: { telefone: s
   if (acao === 'responder') {
     const texto = (body.texto ?? '').trim();
     if (!texto) return NextResponse.json({ erro: 'mensagem vazia' }, { status: 400 });
-    // envia via WhatsApp Cloud API (em dev, apenas loga) e registra no histórico
+    // Usa Meta Cloud API se configurada; senão Evolution (mesmo canal do agente de teste).
     await enviarTexto(telefone, texto);
     const conversa = await registrarMensagem(
       telefone,
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: { telefone: s
   if (acao === 'resolver') {
     await definirStatusConversa(telefone, 'resolvido');
     // devolve o controle ao agente: a próxima mensagem do paciente recomeça no menu
-    limparSessao(telefone);
+    await limparSessao(telefone);
     return NextResponse.json({ ok: true });
   }
 

@@ -609,10 +609,11 @@ async function confirmarAgendamentoPorLembrete(from: string): Promise<boolean> {
 async function falarComHumano(from: string) {
   const s = await carregarSessao(from);
   s.etapa = 'humano'; await salvarSessao(from, s);
+  const aviso = mensagemTransferenciaHumana();
   // coloca a conversa na fila de atendimento humano (painel /atendimentos)
   await registrarMensagem(
     from,
-    { de: 'agente', texto: 'Paciente solicitou falar com um atendente.', ts: new Date().toISOString() },
+    { de: 'agente', texto: aviso, ts: new Date().toISOString() },
     { nome: s.nome, status: 'aguardando' },
   );
   // lead MORNO: demonstrou interesse mas foi para atendimento humano
@@ -621,7 +622,7 @@ async function falarComHumano(from: string) {
   } catch (err) {
     console.error('[agente] falha ao registrar lead morno:', err);
   }
-  await enviarTexto(from, mensagemTransferenciaHumana());
+  await enviarTexto(from, aviso);
 }
 
 // -------- IMAGEM (pedido médico) --------
