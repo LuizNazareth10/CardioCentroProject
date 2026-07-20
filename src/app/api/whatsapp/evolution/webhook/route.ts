@@ -66,8 +66,11 @@ export async function POST(req: NextRequest) {
       .split(',')
       .map((n) => n.replace(/\D/g, ''))
       .filter(Boolean);
-    const numero = remoteJid.replace(/@.*$/, '').replace(/\D/g, '');
-    if (numerosPermitidos.length === 0 || !numerosPermitidos.includes(numero)) {
+    // WhatsApp/Evolution pode mandar com ou sem 55, com ou sem o 9º dígito,
+    // e em alguns casos o JID principal vem como @lid (telefone em remoteJidAlt).
+    const numero = extrairTelefone(key, data);
+    if (numerosPermitidos.length === 0 || !numeroPermitido(numero, numerosPermitidos)) {
+      console.info('[evolution:webhook] ignorado (fora da allowlist):', numero || remoteJid);
       return NextResponse.json({ ok: true }); // só os números de teste
     }
 
@@ -76,15 +79,69 @@ export async function POST(req: NextRequest) {
     const entrada = normalizarEntrada(data);
     if (!entrada) return NextResponse.json({ ok: true });
 
+    // Responde sempre no formato internacional BR (55…), que a Evolution espera.
+    const destino = numero.startsWith('55') ? numero : `55${numero}`;
+
     // AGUARDA o processamento (diferente do webhook da Meta): em runtime
     // serverless (Vercel), uma promise "solta" pode ser encerrada assim que
     // a resposta HTTP é enviada, antes do envio de saída terminar.
-    await comTransporte(transporteEvolution, () => processarMensagem(numero, entrada));
+    await comTransporte(transporteEvolution, () => processarMensagem(destino, entrada));
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('[evolution:webhook] erro:', e);
     return NextResponse.json({ ok: true, erro: e instanceof Error ? e.message : String(e) });
   }
+}
+
+/** Digitos de um JID WhatsApp (`5532…@s.whatsapp.net` → `5532…`). Ignora `@lid`. */
+function digitosDeJid(jid: unknown): string {
+  if (typeof jid !== 'string' || !jid) return '';
+  if (jid.includes('@lid')) return '';
+  return jid.replace(/@.*$/, '').replace(/\D/g, '');
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extrairTelefone(key: any, data: any): string {
+  const candidatos = [
+    digitosDeJid(key?.remoteJid),
+    digitosDeJid(key?.remoteJidAlt),
+    digitosDeJid(key?.participant),
+    digitosDeJid(key?.participantAlt),
+    String(data?.sender ?? '').replace(/\D/g, ''),
+  ].filter((n) => n.length >= 10);
+  return candidatos[0] ?? '';
+}
+
+/**
+ * Gera variantes BR comuns do mesmo número (com/sem 55, com/sem 9 após DDD)
+ * para a allowlist não falhar por formatação.
+ */
+function variantesBr(numero: string): string[] {
+  const d = numero.replace(/\D/g, '');
+  if (!d) return [];
+  const out = new Set<string>([d]);
+  if (d.startsWith('55') && d.length >= 12) out.add(d.slice(2));
+  else if (!d.startsWith('55') && d.length >= 10) out.add(`55${d}`);
+
+  for (const v of [...out]) {
+    const nat = v.startsWith('55') ? v.slice(2) : v;
+    if (nat.length === 11 && nat[2] === '9') {
+      const sem9 = nat.slice(0, 2) + nat.slice(3);
+      out.add(sem9);
+      out.add(`55${sem9}`);
+    } else if (nat.length === 10) {
+      const com9 = nat.slice(0, 2) + '9' + nat.slice(2);
+      out.add(com9);
+      out.add(`55${com9}`);
+    }
+  }
+  return [...out];
+}
+
+function numeroPermitido(numero: string, permitidos: string[]): boolean {
+  if (!numero) return false;
+  const allowed = new Set(permitidos.flatMap(variantesBr));
+  return variantesBr(numero).some((v) => allowed.has(v));
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
