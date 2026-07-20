@@ -1,13 +1,17 @@
 // =============================================================
 // Cliente da Evolution API (WhatsApp via Baileys) — usado SOMENTE para o
-// número de teste configurado em EVOLUTION_NUMERO_TESTE (ver webhook em
+// canal de teste (ver webhook em
 // src/app/api/whatsapp/evolution/webhook/route.ts). Implementa a mesma
 // interface `TransporteExterno` de client.ts, então reaproveita 100% da
 // lógica de negócio do agente (src/lib/whatsapp/agent.ts) sem duplicar nada.
-// Requer EVOLUTION_API_URL, EVOLUTION_API_KEY, EVOLUTION_INSTANCE.
+//
+// IMPORTANTE: botões e listas interativas da Evolution/Baileys quebram no
+// WhatsApp comum ("Não foi possível carregar a mensagem"). Por isso
+// enviamos sempre texto numerado e resolvemos a resposta no webhook.
 // =============================================================
 
 import type { TransporteExterno } from './client';
+import { formatarMenuTexto, salvarOpcoesEvolution } from './evolution-opcoes';
 
 interface EvolutionConfig {
   apiUrl: string;
@@ -42,33 +46,28 @@ function numeroLimpo(numero: string): string {
   return numero.replace(/\D/g, '');
 }
 
+async function enviarTextoPlano(to: string, texto: string): Promise<void> {
+  await chamar('/message/sendText', { number: numeroLimpo(to), text: texto });
+}
+
 export const transporteEvolution: TransporteExterno = {
   async enviarTexto(to, texto) {
-    await chamar('/message/sendText', { number: numeroLimpo(to), text: texto });
+    await enviarTextoPlano(to, texto);
   },
 
   async enviarBotoes(to, texto, botoes) {
-    await chamar('/message/sendButtons', {
-      number: numeroLimpo(to),
-      title: texto,
-      buttons: botoes.slice(0, 3).map((b) => ({ type: 'reply', displayText: b.titulo.slice(0, 20), id: b.id })),
-    });
+    const opcoes = botoes.slice(0, 3).map((b) => ({ id: b.id, titulo: b.titulo }));
+    await salvarOpcoesEvolution(to, opcoes);
+    await enviarTextoPlano(to, formatarMenuTexto(texto, opcoes));
   },
 
-  async enviarLista(to, texto, botaoLista, secoes) {
-    await chamar('/message/sendList', {
-      number: numeroLimpo(to),
-      title: texto,
-      buttonText: botaoLista.slice(0, 20),
-      sections: secoes.map((s) => ({
-        title: s.titulo.slice(0, 24),
-        rows: s.itens.slice(0, 10).map((i) => ({
-          title: i.titulo.slice(0, 24),
-          description: i.descricao?.slice(0, 72) ?? '',
-          rowId: i.id,
-        })),
-      })),
-    });
+  async enviarLista(to, texto, _botaoLista, secoes) {
+    const opcoes = secoes.flatMap((s) => s.itens).slice(0, 10).map((i) => ({
+      id: i.id,
+      titulo: i.descricao ? `${i.titulo} — ${i.descricao}` : i.titulo,
+    }));
+    await salvarOpcoesEvolution(to, opcoes);
+    await enviarTextoPlano(to, formatarMenuTexto(texto, opcoes));
   },
 
   /**

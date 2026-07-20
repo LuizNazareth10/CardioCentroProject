@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { processarMensagem, type Entrada } from '@/lib/whatsapp/agent';
 import { comTransporte } from '@/lib/whatsapp/client';
 import { transporteEvolution } from '@/lib/whatsapp/evolution';
+import { resolverOpcaoEvolution } from '@/lib/whatsapp/evolution-opcoes';
 
 // =============================================================
 // Webhook da Evolution API — canal de TESTE, isolado do webhook oficial
@@ -76,11 +77,18 @@ export async function POST(req: NextRequest) {
 
     if (!(await primeiraVez(key.id))) return NextResponse.json({ ok: true }); // retry da Evolution — já tratamos essa mensagem
 
-    const entrada = normalizarEntrada(data);
+    let entrada = normalizarEntrada(data);
     if (!entrada) return NextResponse.json({ ok: true });
 
     // Responde sempre no formato internacional BR (55…), que a Evolution espera.
     const destino = numero.startsWith('55') ? numero : `55${numero}`;
+
+    // Menus do Evolution vão em texto numerado (botões/listas quebram no WA comum).
+    // Se o paciente responder "1", "2"…, traduzimos para o id interativo esperado pelo agente.
+    if (entrada.tipo === 'texto') {
+      const idOpcao = await resolverOpcaoEvolution(destino, entrada.valor);
+      if (idOpcao) entrada = { tipo: 'interativo', valor: idOpcao };
+    }
 
     // AGUARDA o processamento (diferente do webhook da Meta): em runtime
     // serverless (Vercel), uma promise "solta" pode ser encerrada assim que
