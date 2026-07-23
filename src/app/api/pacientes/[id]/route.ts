@@ -14,13 +14,22 @@ interface Ctx { params: { id: string } }
 // Detalhe completo: paciente + histórico de agendamentos + triagens
 export async function GET(_req: NextRequest, { params }: Ctx) {
   if (!(await lerSessao())) return NextResponse.json({ erro: 'não autorizado' }, { status: 401 });
-  const paciente = await obterPaciente(params.id);
-  if (!paciente) return NextResponse.json({ erro: 'paciente não encontrado' }, { status: 404 });
-  const [historico, triagens] = await Promise.all([
-    listarAgendamentos({ pacienteId: params.id }),
-    listarTriagens(params.id),
-  ]);
-  return NextResponse.json({ paciente, historico, triagens });
+  try {
+    const paciente = await obterPaciente(params.id);
+    if (!paciente) return NextResponse.json({ erro: 'paciente não encontrado' }, { status: 404 });
+    const [historico, triagens] = await Promise.all([
+      listarAgendamentos({ pacienteId: params.id }),
+      listarTriagens(params.id),
+    ]);
+    return NextResponse.json({ paciente, historico, triagens });
+  } catch (e) {
+    // sempre responde JSON (nunca deixa a tela presa em "Carregando…")
+    console.error('[api/pacientes/GET] erro ao carregar detalhe:', e);
+    return NextResponse.json(
+      { erro: 'Não foi possível carregar os dados do paciente. Tente novamente em instantes.' },
+      { status: 500 },
+    );
+  }
 }
 
 // Atualiza ficha de identidade / dados cadastrais

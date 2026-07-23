@@ -17,15 +17,33 @@ export default function PacientePage({ params }: { params: { id: string } }) {
   const [triagens, setTriagens] = useState<Triagem[]>([]);
   const [aba, setAba] = useState<Aba>('identidade');
   const [triando, setTriando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [carregando, setCarregando] = useState(true);
 
   async function carregar() {
-    const res = await fetch(`/api/pacientes/${id}`);
-    const json = await res.json();
-    setPaciente(json.paciente); setHistorico(json.historico ?? []); setTriagens(json.triagens ?? []);
+    setErro('');
+    try {
+      const res = await fetch(`/api/pacientes/${id}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.erro || `Falha ao carregar (HTTP ${res.status}).`);
+      setPaciente(json.paciente); setHistorico(json.historico ?? []); setTriagens(json.triagens ?? []);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Falha ao carregar o paciente.');
+    } finally {
+      setCarregando(false);
+    }
   }
-  useEffect(() => { carregar(); }, [id]);
+  useEffect(() => { carregar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id]);
 
-  if (!paciente) return <div className="card p-8 text-center text-sm text-muted">Carregando…</div>;
+  if (erro && !paciente) {
+    return (
+      <div className="card p-8 text-center">
+        <p className="text-sm font-medium text-brand-red">{erro}</p>
+        <button className="btn-outline mt-4" onClick={() => { setCarregando(true); carregar(); }}>Tentar novamente</button>
+      </div>
+    );
+  }
+  if (carregando || !paciente) return <div className="card p-8 text-center text-sm text-muted">Carregando…</div>;
 
   const conv = CONVENIOS.find((c) => c.id === paciente.convenioId)?.nome ?? 'Particular';
   const nomeExame = (i: string) => EXAMES.find((e) => e.id === i)?.nome ?? i;

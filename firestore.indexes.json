@@ -1,29 +1,5 @@
 {
-  "indexes": [
-    {
-      "collectionGroup": "agendamentos",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "pacienteId", "order": "ASCENDING" },
-        { "fieldPath": "inicio", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "agendamentos",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "medicoId", "order": "ASCENDING" },
-        { "fieldPath": "inicio", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "triagens",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "pacienteId", "order": "ASCENDING" },
-        { "fieldPath": "data", "order": "DESCENDING" }
-      ]
-    }
-  ],
+  "//": "Nenhum índice composto é necessário: TODAS as queries do app usam um único campo (ordenação/filtro), coberto pelo índice automático do Firestore. Isso é proposital — evita depender de deploy manual de índice, cuja ausência travava as telas. Ver docs/PERFORMANCE.md.",
+  "indexes": [],
   "fieldOverrides": []
 }

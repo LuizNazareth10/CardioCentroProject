@@ -274,12 +274,17 @@ export async function atualizarPaciente(id: string, patch: Partial<Paciente>): P
 // ============== AGENDAMENTOS ==============
 
 /**
- * Lista agendamentos. `de`/`ate` e `pacienteId` viram cláusulas WHERE na
- * query — este é o ponto que mais pesava no sistema: a Agenda de UM dia
- * lia os ~94 mil agendamentos e descartava 99,9% em memória.
+ * Lista agendamentos.
  *
- * `de`/`ate` são ISO datetime comparados lexicograficamente, que para
- * ISO-8601 no mesmo fuso equivale à ordem cronológica.
+ * ROBUSTEZ: cada modo de consulta usa um ÚNICO campo indexável (índice
+ * automático) — nunca um índice composto (que precisa de deploy manual e,
+ * se faltar, quebra a tela). Concretamente:
+ *   - por período (`de`/`ate`) → range no campo `inicio` + orderBy `inicio`.
+ *   - por paciente            → igualdade em `pacienteId`, ordenado em memória.
+ * (A combinação paciente + período não é usada.)
+ *
+ * `de`/`ate` são ISO datetime; comparados lexicograficamente equivalem à
+ * ordem cronológica no mesmo fuso.
  */
 export async function listarAgendamentos(filtro?: {
   de?: string;
@@ -295,12 +300,28 @@ export async function listarAgendamentos(filtro?: {
     return filtro?.limite ? arr.slice(0, filtro.limite) : arr;
   }
 
-  const rotulo = filtro?.pacienteId ? 'paciente' : filtro?.de || filtro?.ate ? 'período' : 'TUDO';
+  // por PACIENTE: igualdade em campo único, ordena em memória (um paciente
+  // tem poucos agendamentos) — evita o índice composto (pacienteId, inicio).
+  if (filtro?.pacienteId) {
+    return medir(
+      'listarAgendamentos(paciente)',
+      async () => {
+        const snap = await (await fs())
+          .collection('agendamentos')
+          .where('pacienteId', '==', filtro.pacienteId)
+          .get();
+        const arr = snap.docs.map((d) => d.data() as Agendamento).sort((a, b) => a.inicio.localeCompare(b.inicio));
+        return filtro.limite ? arr.slice(0, filtro.limite) : arr;
+      },
+      (r) => r.length,
+    );
+  }
+
+  // por PERÍODO (ou tudo): range no campo único `inicio`.
   return medir(
-    `listarAgendamentos(${rotulo})`,
+    `listarAgendamentos(${filtro?.de || filtro?.ate ? 'período' : 'TUDO'})`,
     async () => {
       let q = (await fs()).collection('agendamentos') as FirebaseFirestore.Query;
-      if (filtro?.pacienteId) q = q.where('pacienteId', '==', filtro.pacienteId);
       if (filtro?.de) q = q.where('inicio', '>=', filtro.de);
       if (filtro?.ate) q = q.where('inicio', '<=', filtro.ate);
       q = q.orderBy('inicio');
@@ -313,9 +334,10 @@ export async function listarAgendamentos(filtro?: {
 }
 
 /**
- * Agendamentos de UM médico num intervalo — usado na revalidação de
- * conflito, que antes carregava a coleção inteira só para comparar
- * alguns horários.
+ * Agendamentos de UM médico num intervalo — revalidação de conflito.
+ * Consulta pelo range de `inicio` (campo único, do dia pesquisado) e filtra
+ * o médico em memória: assim não precisa do índice composto (medicoId,
+ * inicio) e ainda lê só os agendamentos daquele dia.
  */
 export async function listarAgendamentosDoMedico(
   medicoId: string,
@@ -330,12 +352,11 @@ export async function listarAgendamentosDoMedico(
     async () => {
       const snap = await (await fs())
         .collection('agendamentos')
-        .where('medicoId', '==', medicoId)
         .where('inicio', '>=', de)
         .where('inicio', '<=', ate)
         .orderBy('inicio')
         .get();
-      return snap.docs.map((d) => d.data() as Agendamento);
+      return snap.docs.map((d) => d.data() as Agendamento).filter((a) => a.medicoId === medicoId);
     },
     (r) => r.length,
   );
@@ -390,13 +411,16 @@ export async function atualizarAgendamento(id: string, patch: Partial<Agendament
 // ============== TRIAGENS ==============
 export async function listarTriagens(pacienteId: string): Promise<Triagem[]> {
   if (isFirestore) {
+    // igualdade em campo único + ordenação em memória (um paciente tem
+    // poucas triagens) — evita o índice composto (pacienteId, data).
     const snap = await (await fs())
       .collection('triagens')
       .where('pacienteId', '==', pacienteId)
-      .orderBy('data', 'desc')
-      .limit(50)
       .get();
-    return snap.docs.map((d) => d.data() as Triagem);
+    return snap.docs
+      .map((d) => d.data() as Triagem)
+      .sort((a, b) => b.data.localeCompare(a.data))
+      .slice(0, 50);
   }
   return memoria.triagens
     .filter((t) => t.pacienteId === pacienteId)
