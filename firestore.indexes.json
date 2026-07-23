@@ -23,6 +23,22 @@
         { "fieldPath": "pacienteId", "order": "ASCENDING" },
         { "fieldPath": "data", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "pacientes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "nomeBusca", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "telefoneSufixo", "order": "ASCENDING" },
+        { "fieldPath": "origem", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

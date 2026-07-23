@@ -11,7 +11,9 @@
     "test:engine": "tsx scripts/test-engine.ts",
     "test:agent": "tsx scripts/test-agent.ts",
     "chat-agent": "tsx scripts/chat-agent.ts",
-    "seed": "tsx scripts/seed-firestore.ts"
+    "seed": "tsx scripts/seed-firestore.ts",
+    "backfill-busca": "tsx scripts/backfill-busca.ts",
+    "medir-performance": "tsx scripts/medir-performance.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

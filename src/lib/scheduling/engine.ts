@@ -26,6 +26,13 @@ interface BuscaOpts {
   naoAntesDe?: string;
   /** limite de slots retornados */
   limite?: number;
+  /**
+   * Todos os exames da SESSÃO sendo agendada (não só o exame atual). Usado
+   * para avaliar janelas com `exigeExame`: uma janela que exige o
+   * cardiopulmonar só é liberada se a sessão inteira o incluir. Default:
+   * o próprio exame sendo gerado.
+   */
+  examesSessao?: string[];
 }
 
 /** duração (min) de um exame PARA ESTE médico (override do padrão) */
@@ -36,6 +43,15 @@ export function duracaoDoMedico(medico: Medico, exame: Exame): number {
 /** o médico oferece este exame nesta janela? (respeita exames da janela) */
 function janelaOferece(medico: Medico, janela: { exames?: string[] }, exameId: string): boolean {
   return janela.exames ? janela.exames.includes(exameId) : medico.examesHabilitados.includes(exameId);
+}
+
+/**
+ * A janela está liberada para ESTA sessão? Janelas com `exigeExame` (regra
+ * do Dr. Júlio na seg/sex) só abrem se a sessão inteira incluir o exame
+ * prioritário — assim eco/carótida nunca são oferecidos sozinhos nesses dias.
+ */
+function janelaLiberadaParaSessao(janela: { exigeExame?: string }, examesSessao: string[]): boolean {
+  return !janela.exigeExame || examesSessao.includes(janela.exigeExame);
 }
 
 /** dois intervalos [a1,a2) e [b1,b2) se sobrepõem? */
@@ -94,6 +110,9 @@ export function gerarSlots(
   opts: BuscaOpts,
 ): SlotDisponivel[] {
   const { dataInicio, dias = 14, medicoPreferidoId, naoAntesDe, limite = 60 } = opts;
+  // por padrão a "sessão" é o próprio exame; assim um eco isolado NÃO satisfaz
+  // uma janela que exige o cardiopulmonar (regra seg/sex do Dr. Júlio).
+  const examesSessao = opts.examesSessao ?? [exame.id];
   const elegiveis = medicos.filter(
     (m) =>
       m.ativo &&
@@ -108,7 +127,9 @@ export function gerarSlots(
     const date = addDays(dataInicio, d);
 
     for (const medico of elegiveis) {
-      const janelas = janelasDoDia(medico, date).filter((j) => janelaOferece(medico, j, exame.id));
+      const janelas = janelasDoDia(medico, date).filter(
+        (j) => janelaOferece(medico, j, exame.id) && janelaLiberadaParaSessao(j, examesSessao),
+      );
       if (janelas.length === 0) continue;
       const ocup = ocupacoesDoDia(medico.id, date, agendamentos);
       const dur = duracaoDoMedico(medico, exame);
@@ -214,6 +235,7 @@ export function proporSessao(
 ): Proposta | null {
   const { dataInicio, dias = 14, medicoPreferidoId, naoAntesDe } = opts;
   const piso = naoAntesDe ? fromISO(naoAntesDe) : null;
+  const idsSessao = examesSeq.map((e) => e.id);
 
   // 1) tenta o mesmo médico para o bloco inteiro
   const candidatos = medicos.filter(
@@ -228,9 +250,10 @@ export function proporSessao(
     for (const medico of candidatos) {
       const duracaoTotal = examesSeq.reduce((s, e) => s + duracaoDoMedico(medico, e), 0);
       const ocup = ocupacoesDoDia(medico.id, date, agendamentos);
-      // só janelas que ofereçam TODOS os exames da sessão
-      const janelas = janelasDoDia(medico, date).filter((j) =>
-        examesSeq.every((e) => janelaOferece(medico, j, e.id)),
+      // só janelas que ofereçam TODOS os exames da sessão E estejam liberadas
+      // para ela (regra `exigeExame`: cardiopulmonar prioritário na seg/sex)
+      const janelas = janelasDoDia(medico, date).filter(
+        (j) => examesSeq.every((e) => janelaOferece(medico, j, e.id)) && janelaLiberadaParaSessao(j, idsSessao),
       );
       for (const j of janelas) {
         const janInicio = hhmmToMin(j.inicio);
@@ -270,6 +293,9 @@ export function proporSessao(
       medicoPreferidoId,
       naoAntesDe: cursorISO,
       limite: 1,
+      // preserva a composição da sessão ao distribuir exame a exame, senão
+      // um eco desta sessão seria barrado nas janelas seg/sex do Dr. Júlio
+      examesSessao: idsSessao,
     });
     if (slots.length === 0) return null;
     const s = slots[0];

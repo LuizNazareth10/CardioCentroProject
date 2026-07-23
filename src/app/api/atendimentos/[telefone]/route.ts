@@ -26,11 +26,12 @@ export async function POST(req: NextRequest, { params }: { params: { telefone: s
     if (!texto) return NextResponse.json({ erro: 'mensagem vazia' }, { status: 400 });
     // Usa Meta Cloud API se configurada; senão Evolution (mesmo canal do agente de teste).
     await enviarTexto(telefone, texto);
-    const conversa = await registrarMensagem(
+    await registrarMensagem(
       telefone,
       { de: 'recepcao', texto, ts: new Date().toISOString() },
       { status: 'em_atendimento' },
     );
+    const conversa = await obterConversa(telefone);
     return NextResponse.json({ conversa });
   }
 

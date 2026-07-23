@@ -5,7 +5,7 @@ import type { Agendamento, Paciente, Triagem } from '@/lib/types';
 import { CONVENIOS, EXAMES, MEDICOS } from '@/lib/seed-data';
 import { STATUS_AGENDAMENTO_BADGE, STATUS_AGENDAMENTO_LABEL } from '@/lib/status-agendamento';
 import { fmtData, fmtHora, idade, iniciais } from '@/lib/format';
-import { FichaIdentidadePrint, medicoUltimaConsulta } from '@/components/FichaIdentidadePrint';
+import { FichaIdentidadePrint, medicoUltimaConsulta, exameMaisRecente, type ExameMaisRecente } from '@/components/FichaIdentidadePrint';
 import { Printer } from 'lucide-react';
 
 type Aba = 'identidade' | 'historico' | 'triagens';
@@ -32,10 +32,11 @@ export default function PacientePage({ params }: { params: { id: string } }) {
   const nomeMedico = (i: string) => MEDICOS.find((m) => m.id === i)?.nome ?? i;
 
   const medicoResp = medicoUltimaConsulta(historico, nomeMedico);
+  const exameRecente = exameMaisRecente(historico, nomeExame);
 
   return (
     <div>
-      <FichaIdentidadePrint paciente={paciente} convenio={conv} medicoResponsavel={medicoResp} />
+      <FichaIdentidadePrint paciente={paciente} convenio={conv} medicoResponsavel={medicoResp} exameRecente={exameRecente} />
 
       {/* cabeçalho do paciente */}
       <div className="card p-5">
@@ -69,6 +70,7 @@ export default function PacientePage({ params }: { params: { id: string } }) {
             paciente={paciente}
             convenio={conv}
             medicoResponsavel={medicoResp}
+            exameRecente={exameRecente}
             onAtualizado={carregar}
           />
         )}
@@ -107,10 +109,11 @@ export default function PacientePage({ params }: { params: { id: string } }) {
   );
 }
 
-function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }: {
+function IdentidadeView({ paciente, convenio, medicoResponsavel, exameRecente, onAtualizado }: {
   paciente: Paciente;
   convenio: string;
   medicoResponsavel: string;
+  exameRecente: ExameMaisRecente | null;
   onAtualizado: () => void;
 }) {
   const [editando, setEditando] = useState(false);
@@ -241,6 +244,16 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, onAtualizado }:
 
         <div className="card p-5 space-y-4">
           <h3 className="font-bold text-navy-900">Cadastro e antropometria</h3>
+          {/* Exame mais recente (derivado do histórico): próximo agendado se
+              houver, senão o último realizado. Somente leitura nos dois modos. */}
+          <div className="rounded-xl bg-navy-50 px-3 py-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+              {exameRecente?.futuro ? 'Próximo exame agendado' : 'Último exame realizado'}
+            </div>
+            <div className="text-sm font-medium text-navy-900">
+              {exameRecente ? `${exameRecente.nome} — ${fmtData(exameRecente.quando)}` : '—'}
+            </div>
+          </div>
           {editando ? (
             <>
               <div>

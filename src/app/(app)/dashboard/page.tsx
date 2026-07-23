@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { listarAgendamentos, listarPacientes } from '@/lib/db';
+import { contarPacientes, listarAgendamentos } from '@/lib/db';
 import { EXAMES, MEDICOS } from '@/lib/seed-data';
 import { fmtHora, hojeJF, fmtDataExtenso } from '@/lib/format';
 
@@ -7,9 +7,14 @@ export const dynamic = 'force-dynamic';
 
 export default async function Dashboard() {
   const hoje = hojeJF();
-  const [todos, pacientes] = await Promise.all([listarAgendamentos(), listarPacientes()]);
-  const doDia = todos
-    .filter((a) => a.inicio.slice(0, 10) === hoje && a.status !== 'cancelado')
+  // só os agendamentos de HOJE (query indexada) + a CONTAGEM de pacientes
+  // por agregação — não mais a leitura das duas coleções inteiras.
+  const [doDiaBruto, totalPacientes] = await Promise.all([
+    listarAgendamentos({ de: `${hoje}T00:00:00-03:00`, ate: `${hoje}T23:59:59-03:00` }),
+    contarPacientes(),
+  ]);
+  const doDia = doDiaBruto
+    .filter((a) => a.status !== 'cancelado')
     .sort((a, b) => a.inicio.localeCompare(b.inicio));
 
   const nomeExame = (id: string) => EXAMES.find((e) => e.id === id)?.nome ?? id;
@@ -17,7 +22,7 @@ export default async function Dashboard() {
 
   const stats = [
     { label: 'Exames hoje', valor: doDia.length, cor: 'text-navy-700' },
-    { label: 'Pacientes cadastrados', valor: pacientes.length, cor: 'text-navy-700' },
+    { label: 'Pacientes cadastrados', valor: totalPacientes, cor: 'text-navy-700' },
     { label: 'Médicos ativos', valor: MEDICOS.filter((m) => m.ativo).length, cor: 'text-brand-red' },
     { label: 'Exames disponíveis', valor: EXAMES.filter((e) => e.ativo).length, cor: 'text-brand-red' },
   ];

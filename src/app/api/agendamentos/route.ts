@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { lerSessao } from '@/lib/auth';
-import { atualizarAgendamento, listarAgendamentos, criarAgendamentos } from '@/lib/db';
+import { atualizarAgendamento, listarAgendamentos, listarAgendamentosDoMedico, criarAgendamentos } from '@/lib/db';
 import type { Agendamento, StatusAgendamento } from '@/lib/types';
 import { fromISO } from '@/lib/scheduling/time';
 
@@ -28,15 +28,20 @@ export async function POST(req: NextRequest) {
   const itens: Array<Omit<Agendamento, 'id' | 'criadoEm'>> = body.itens ?? [];
   if (itens.length === 0) return NextResponse.json({ erro: 'nada a agendar' }, { status: 400 });
 
-  const existentes = await listarAgendamentos();
+  // revalida conflito lendo APENAS o dia de cada médico envolvido (query
+  // indexada), não a coleção inteira. Cache por médico+dia evita releituras
+  // quando vários itens caem no mesmo médico/data.
+  const cacheDia = new Map<string, Awaited<ReturnType<typeof listarAgendamentosDoMedico>>>();
   for (const novo of itens) {
-    const conflito = existentes.some(
-      (e) =>
-        e.medicoId === novo.medicoId &&
-        e.status !== 'cancelado' &&
-        fromISO(e.inicio).date === fromISO(novo.inicio).date &&
-        novo.inicio < e.fim &&
-        e.inicio < novo.fim,
+    const dia = fromISO(novo.inicio).date;
+    const chave = `${novo.medicoId}|${dia}`;
+    let doDia = cacheDia.get(chave);
+    if (!doDia) {
+      doDia = await listarAgendamentosDoMedico(novo.medicoId, `${dia}T00:00:00-03:00`, `${dia}T23:59:59-03:00`);
+      cacheDia.set(chave, doDia);
+    }
+    const conflito = doDia.some(
+      (e) => e.status !== 'cancelado' && novo.inicio < e.fim && e.inicio < novo.fim,
     );
     if (conflito) {
       return NextResponse.json(

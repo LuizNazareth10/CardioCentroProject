@@ -5,9 +5,12 @@ import { sanitizarPaciente, sanitizarPacienteAgendamento, ValidationError } from
 
 export async function GET(req: NextRequest) {
   if (!(await lerSessao())) return NextResponse.json({ erro: 'não autorizado' }, { status: 401 });
-  const busca = new URL(req.url).searchParams.get('q') || undefined;
-  const pacientes = await listarPacientes(busca);
-  return NextResponse.json({ pacientes });
+  const sp = new URL(req.url).searchParams;
+  const busca = sp.get('q') || undefined;
+  const cursor = sp.get('cursor') || undefined;
+  const limite = Number(sp.get('limite')) || undefined;
+  const { pacientes, proximoCursor } = await listarPacientes({ busca, cursor, limite });
+  return NextResponse.json({ pacientes, proximoCursor });
 }
 
 export async function POST(req: NextRequest) {

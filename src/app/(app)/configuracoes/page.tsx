@@ -1,10 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { ClinicConfig, ExameOverride } from '@/lib/clinic-config';
+import type { ClinicConfig, ExameOverride, ModoAgente } from '@/lib/clinic-config';
 import type { Exame } from '@/lib/types';
 
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+const MODOS: Array<{ id: ModoAgente; nome: string; desc: string; cor: string }> = [
+  { id: 'full', nome: 'Full — atende todos', desc: 'Comportamento padrão: a IA responde a todas as leads.', cor: 'text-navy-700' },
+  { id: 'shadow', nome: 'Shadow — só rascunho', desc: 'A IA rascunha a resposta mas NÃO envia ao paciente; o rascunho vai para o Slack/Discord. Risco zero — ideal para a fase 0.', cor: 'text-blue-700' },
+  { id: 'canary', nome: 'Canary — fração das leads', desc: 'A IA atende só uma % das leads (fixa por número); o restante segue com a recepção. Suba aos poucos.', cor: 'text-amber-700' },
+  { id: 'paused', nome: 'Pausado — kill-switch', desc: 'A IA não atende ninguém. Tudo volta para a recepção humana.', cor: 'text-brand-red' },
+];
 
 export default function ConfiguracoesPage() {
   const [config, setConfig] = useState<ClinicConfig | null>(null);
@@ -135,6 +142,73 @@ export default function ConfiguracoesPage() {
       </section>
 
       <section className="mt-7">
+        <h2 className="mb-3 font-bold text-navy-900">Rollout do agente (teste em produção)</h2>
+        <p className="mb-3 text-xs text-muted">
+          Controla <strong>quem</strong> a IA atende, ajustável aqui mesmo sem novo deploy. Use para testar com
+          clientes reais em fração pequena e crescente, sem risco de perder leads.
+        </p>
+        <div className="card p-5 space-y-4">
+          <div className="grid gap-2 sm:grid-cols-2">
+            {MODOS.map((m) => {
+              const ativo = config.agente.modo === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  disabled={!config.editavel}
+                  onClick={() => setConfig({ ...config, agente: { ...config.agente, modo: m.id } })}
+                  className={`rounded-2xl border p-3 text-left transition ${ativo ? 'border-brand-red bg-brand-red/5' : 'border-navy-100 hover:bg-navy-50'} disabled:opacity-60`}
+                >
+                  <div className={`text-sm font-bold ${m.cor}`}>{ativo ? '● ' : ''}{m.nome}</div>
+                  <div className="mt-0.5 text-xs text-muted">{m.desc}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          {config.agente.modo === 'canary' && (
+            <div className="rounded-xl bg-amber-50 p-4">
+              <label className="label">Porcentagem de leads atendidas pela IA</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range" min={0} max={100} step={1}
+                  disabled={!config.editavel}
+                  value={config.agente.canaryPct}
+                  onChange={(e) => setConfig({ ...config, agente: { ...config.agente, canaryPct: Number(e.target.value) } })}
+                  className="flex-1"
+                />
+                <input
+                  type="number" min={0} max={100}
+                  disabled={!config.editavel}
+                  value={config.agente.canaryPct}
+                  onChange={(e) => setConfig({ ...config, agente: { ...config.agente, canaryPct: Math.max(0, Math.min(100, Number(e.target.value))) } })}
+                  className="input w-20 text-center"
+                />
+                <span className="text-sm font-bold text-amber-800">%</span>
+              </div>
+              <p className="mt-2 text-xs text-amber-800">
+                A seleção é <strong>fixa por número</strong>: o mesmo paciente é sempre IA ou sempre humano — nunca
+                alterna no meio da conversa. Seus números de teste (allowlist) são sempre atendidos.
+              </p>
+            </div>
+          )}
+
+          {config.agente.modo === 'shadow' && (
+            <p className="rounded-xl bg-blue-50 p-3 text-xs text-blue-800">
+              Defina <code>SHADOW_WEBHOOK_URL</code> (Slack ou Discord) nas variáveis de ambiente para receber os
+              rascunhos. Sem ela, os rascunhos apenas aparecem nos logs do servidor.
+            </p>
+          )}
+
+          <p className="text-xs text-muted">
+            Lembre-se de <strong>salvar</strong> para aplicar. A mudança passa a valer nas próximas mensagens, sem redeploy.
+          </p>
+
+          <MonitorAgente />
+        </div>
+      </section>
+
+      <section className="mt-7">
         <h2 className="mb-3 font-bold text-navy-900">Confirmação de presença</h2>
         <div className="card p-5">
           <label className="flex cursor-pointer items-start gap-3">
@@ -217,6 +291,86 @@ export default function ConfiguracoesPage() {
           </ul>
         </div>
       </section>
+    </div>
+  );
+}
+
+interface EventoAgente {
+  ts: string; numero: string; bucket: number; modo: string; desfecho: string; motivo: string; ms?: number; erro?: string;
+}
+const DESFECHO_META: Record<string, { label: string; cls: string }> = {
+  atendido: { label: 'Atendido pela IA', cls: 'bg-green-50 text-green-700' },
+  shadow: { label: 'Rascunho (shadow)', cls: 'bg-blue-50 text-blue-700' },
+  humano: { label: 'Para recepção', cls: 'bg-navy-50 text-navy-700' },
+  pausado: { label: 'Pausado', cls: 'bg-navy-50 text-muted' },
+  erro: { label: 'Erro', cls: 'bg-red-50 text-brand-red' },
+};
+
+/** Painel leve de monitoramento do rollout: contadores + últimos eventos. */
+function MonitorAgente() {
+  const [dados, setDados] = useState<{ porDesfecho: Record<string, number>; ultimos: EventoAgente[] } | null>(null);
+  const [aberto, setAberto] = useState(false);
+
+  async function carregar() {
+    const res = await fetch('/api/agente/monitor');
+    if (!res.ok) return;
+    const j = await res.json();
+    setDados(j.monitor);
+  }
+  useEffect(() => {
+    carregar();
+    const id = setInterval(carregar, 10000);
+    return () => clearInterval(id);
+  }, []);
+
+  const contadores = dados?.porDesfecho ?? {};
+  const chaves = ['atendido', 'shadow', 'erro', 'pausado'];
+
+  return (
+    <div className="rounded-xl border border-navy-100 p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-bold text-navy-900">Monitoramento (últimos 100 eventos)</span>
+        <button type="button" className="text-xs font-semibold text-navy-700 hover:underline" onClick={() => setAberto((v) => !v)}>
+          {aberto ? 'Ocultar detalhes' : 'Ver detalhes'}
+        </button>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {chaves.map((k) => (
+          <span key={k} className={`badge ${DESFECHO_META[k]?.cls ?? 'bg-navy-50 text-navy-700'}`}>
+            {DESFECHO_META[k]?.label ?? k}: <strong className="ml-1">{contadores[k] ?? 0}</strong>
+          </span>
+        ))}
+      </div>
+      {aberto && (
+        <div className="mt-3 max-h-64 overflow-y-auto rounded-lg border border-navy-100">
+          {(dados?.ultimos ?? []).length === 0 ? (
+            <div className="p-4 text-center text-xs text-muted">Nenhum evento registrado ainda.</div>
+          ) : (
+            <table className="w-full text-left text-xs">
+              <thead className="sticky top-0 bg-navy-50 text-muted">
+                <tr>
+                  <th className="p-2">Horário</th><th className="p-2">Número</th>
+                  <th className="p-2">Desfecho</th><th className="p-2">Motivo</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-navy-100/70">
+                {(dados?.ultimos ?? []).map((e, i) => (
+                  <tr key={i}>
+                    <td className="p-2 text-muted">{e.ts.slice(5, 16).replace('T', ' ')}</td>
+                    <td className="p-2 font-mono">{e.numero}</td>
+                    <td className="p-2"><span className={`badge ${DESFECHO_META[e.desfecho]?.cls ?? ''}`}>{DESFECHO_META[e.desfecho]?.label ?? e.desfecho}</span></td>
+                    <td className="p-2 text-muted">{e.erro ? `⚠️ ${e.erro}` : e.motivo}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+      <p className="mt-2 text-[11px] text-muted">
+        Só são registrados eventos das leads que a IA <strong>tocou</strong> (atendidas, rascunhos, erros) — é a
+        superfície de risco do teste. As leads que foram direto para a recepção seguem o fluxo normal da clínica.
+      </p>
     </div>
   );
 }

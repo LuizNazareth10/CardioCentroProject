@@ -24,11 +24,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ erro: 'exame inválido' }, { status: 400 });
   }
 
-  const agendamentos = await listarAgendamentos();
   const temAparelho = examesSeq.some((e) => e.aparelho);
   const dias = Number.isFinite(diasParam) && diasParam > 0
     ? Math.min(diasParam, 90)
     : temAparelho ? 42 : 28;
+
+  // só os agendamentos da JANELA pesquisada (não a coleção inteira): o
+  // motor precisa deles apenas para descartar horários já ocupados.
+  const fimBusca = new Date(`${dataInicio}T12:00:00Z`);
+  fimBusca.setUTCDate(fimBusca.getUTCDate() + dias + 1);
+  const agendamentos = await listarAgendamentos({
+    de: `${dataInicio}T00:00:00-03:00`,
+    ate: `${fimBusca.toISOString().slice(0, 10)}T23:59:59-03:00`,
+  });
 
   if (examesSeq.length === 1) {
     const exame = examesSeq[0];

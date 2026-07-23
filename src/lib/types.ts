@@ -31,6 +31,16 @@ export interface JanelaDisponibilidade {
   exames?: string[];
   /** true = só ocorre nas semanas quinzenais ativas (referência 2026-07-08) */
   quinzenal?: boolean;
+  /**
+   * Exame OBRIGATÓRIO nesta janela: nenhum horário é oferecido aqui a menos
+   * que a sessão inclua este exame. Os demais exames da janela só podem ser
+   * marcados ACOMPANHANDO ele.
+   *
+   * Regra de negócio real da clínica: nas janelas de segunda e sexta do
+   * Dr. Júlio Lovisi o Teste Cardiopulmonar tem prioridade — eco e carótida
+   * só entram junto com ele, nunca sozinhos.
+   */
+  exigeExame?: string;
 }
 
 /** Médico da clínica */
@@ -130,6 +140,17 @@ export interface Paciente {
   fichaMedica: FichaMedica;
   criadoEm: string;
   atualizadoEm: string;
+
+  // ---- campos DERIVADOS, only para busca indexada no Firestore ----
+  // Sem eles a busca precisaria ler a coleção inteira (19 mil documentos)
+  // e filtrar em memória. São recalculados a cada gravação — nunca devem
+  // ser editados à mão. Ver `derivarCamposBusca` em lib/db/index.ts.
+  /** nome em minúsculas e sem acentos, para busca por prefixo */
+  nomeBusca?: string;
+  /** só os dígitos do CPF, para busca exata */
+  cpfDigitos?: string;
+  /** últimos 8 dígitos do telefone (tolera DDI/DDD/9º dígito) */
+  telefoneSufixo?: string;
 }
 
 /** Conteúdo clínico da ficha (padrão cardiologia) */
@@ -231,6 +252,8 @@ export interface Lead {
   observacao?: string;
   criadoEm: string;
   atualizadoEm: string;
+  /** derivado: últimos 8 dígitos do telefone, p/ deduplicar sem varrer a coleção */
+  telefoneSufixo?: string;
 }
 
 // ---------- Atendimento humano (handoff do WhatsApp) ----------
@@ -240,6 +263,12 @@ export interface MensagemConversa {
   de: 'paciente' | 'recepcao' | 'agente';
   texto: string;
   ts: string; // ISO
+  /**
+   * Nota INTERNA da equipe: aparece no painel /atendimentos mas NUNCA é
+   * enviada ao paciente. Usada para passar contexto no transbordo (ex.:
+   * exames já escolhidos, horário pretendido, motivo da transferência).
+   */
+  interna?: boolean;
 }
 
 /** Conversa de WhatsApp transferida para atendimento humano */

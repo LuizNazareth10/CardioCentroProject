@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processarMensagem, type Entrada } from '@/lib/whatsapp/agent';
-import { comTransporte } from '@/lib/whatsapp/client';
+import { capturarEnvios, comTransporte } from '@/lib/whatsapp/client';
 import { transporteEvolution } from '@/lib/whatsapp/evolution';
 import { resolverOpcaoEvolution } from '@/lib/whatsapp/evolution-opcoes';
+import { carregarClinicConfig } from '@/lib/clinic-config';
+import { decidirRollout, encaminharRascunhoShadow, transporteCaptura } from '@/lib/whatsapp/rollout';
+import { registrarEvento } from '@/lib/whatsapp/monitor';
 
 // =============================================================
 // Webhook da Evolution API — canal de TESTE, isolado do webhook oficial
@@ -63,16 +66,32 @@ export async function POST(req: NextRequest) {
     const remoteJid: string = key.remoteJid ?? '';
     if (remoteJid.endsWith('@g.us')) return NextResponse.json({ ok: true }); // bloqueia grupos
 
+    // WhatsApp/Evolution pode mandar com ou sem 55, com ou sem o 9º dígito,
+    // e em alguns casos o JID principal vem como @lid (telefone em remoteJidAlt).
+    const numero = extrairTelefone(key, data);
+    if (!numero) return NextResponse.json({ ok: true });
+
+    // A allowlist (EVOLUTION_NUMEROS_TESTE) deixou de ser um portão rígido:
+    // agora é o sinal "sempre atende" (seus números de QA). QUEM a IA atende
+    // é decidido pelo MODO DE ROLLOUT (full/shadow/canary/paused), ajustável
+    // em runtime na tela de Configurações — é isso que permite testar com
+    // clientes reais em fração pequena e crescente, sem redeploy.
     const numerosPermitidos = (process.env.EVOLUTION_NUMEROS_TESTE ?? '')
       .split(',')
       .map((n) => n.replace(/\D/g, ''))
       .filter(Boolean);
-    // WhatsApp/Evolution pode mandar com ou sem 55, com ou sem o 9º dígito,
-    // e em alguns casos o JID principal vem como @lid (telefone em remoteJidAlt).
-    const numero = extrairTelefone(key, data);
-    if (numerosPermitidos.length === 0 || !numeroPermitido(numero, numerosPermitidos)) {
-      console.info('[evolution:webhook] ignorado (fora da allowlist):', numero || remoteJid);
-      return NextResponse.json({ ok: true }); // só os números de teste
+    const sempreAtende = numerosPermitidos.length > 0 && numeroPermitido(numero, numerosPermitidos);
+
+    const { agente } = await carregarClinicConfig();
+    const decisao = decidirRollout(numero, agente, sempreAtende);
+
+    if (!decisao.atende) {
+      // lead vai para a recepção humana (ou IA pausada): não tocamos em nada.
+      console.info('[evolution:webhook] não atendido pela IA:', decisao.motivo);
+      // só registramos evento quando a IA estava ELEGÍVEL (paused), para não
+      // gerar uma escrita por mensagem no volume de humanos do canary.
+      if (decisao.modo === 'paused') await registrarEvento(numero, decisao, 'pausado');
+      return NextResponse.json({ ok: true });
     }
 
     if (!(await primeiraVez(key.id))) return NextResponse.json({ ok: true }); // retry da Evolution — já tratamos essa mensagem
@@ -90,14 +109,40 @@ export async function POST(req: NextRequest) {
       if (idOpcao) entrada = { tipo: 'interativo', valor: idOpcao };
     }
 
-    // AGUARDA o processamento (diferente do webhook da Meta): em runtime
-    // serverless (Vercel), uma promise "solta" pode ser encerrada assim que
-    // a resposta HTTP é enviada, antes do envio de saída terminar.
-    await comTransporte(transporteEvolution, () =>
-      processarMensagem(destino, entrada, {
-        pushName: typeof data?.pushName === 'string' ? data.pushName : undefined,
-      }),
-    );
+    const t0 = Date.now();
+    try {
+      if (decisao.shadow) {
+        // MODO SHADOW: roda o agente para produzir o rascunho, mas o
+        // transporte de captura garante que NADA chega ao paciente. O
+        // rascunho vai para o webhook de observação (Slack/Discord).
+        const rascunhos: Array<Record<string, unknown>> = [];
+        await comTransporte(transporteCaptura(rascunhos), () =>
+          processarMensagem(destino, entrada, {
+            pushName: typeof data?.pushName === 'string' ? data.pushName : undefined,
+          }),
+        );
+        const textoEntrada = entrada.tipo === 'texto' ? entrada.valor : `[${entrada.tipo}]`;
+        await encaminharRascunhoShadow(destino, textoEntrada, rascunhos);
+        await registrarEvento(numero, decisao, 'shadow', { ms: Date.now() - t0 });
+        return NextResponse.json({ ok: true });
+      }
+
+      // AGUARDA o processamento (diferente do webhook da Meta): em runtime
+      // serverless (Vercel), uma promise "solta" pode ser encerrada assim que
+      // a resposta HTTP é enviada, antes do envio de saída terminar.
+      await comTransporte(transporteEvolution, () =>
+        processarMensagem(destino, entrada, {
+          pushName: typeof data?.pushName === 'string' ? data.pushName : undefined,
+        }),
+      );
+      await registrarEvento(numero, decisao, 'atendido', { ms: Date.now() - t0 });
+    } catch (err) {
+      await registrarEvento(numero, decisao, 'erro', {
+        ms: Date.now() - t0,
+        erro: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('[evolution:webhook] erro:', e);

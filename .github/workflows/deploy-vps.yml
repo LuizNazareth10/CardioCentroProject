@@ -1,0 +1,53 @@
+# =============================================================
+# CI/CD da VPS (Evolution API) — atualiza a stack SEM reler o QR Code.
+#
+# Dispara quando algo em deploy/ muda (ou manualmente). Faz SSH na VPS e
+# roda `deploy.sh pull`, que recria os containers preservando os volumes
+# da sessão do WhatsApp. O agente (Next.js) tem deploy próprio na Vercel
+# via integração Git — este workflow NÃO mexe nele.
+#
+# Segredos necessários no repositório (Settings → Secrets → Actions):
+#   VPS_HOST, VPS_USER, VPS_SSH_KEY (chave privada), VPS_DEPLOY_DIR
+# =============================================================
+name: Deploy VPS (Evolution)
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/**'
+      - '.github/workflows/deploy-vps.yml'
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copiar deploy/ para a VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: 'deploy/*'
+          target: ${{ secrets.VPS_DEPLOY_DIR }}
+          strip_components: 1
+
+      - name: Atualizar a stack sem reler QR
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd ${{ secrets.VPS_DEPLOY_DIR }}
+            chmod +x deploy.sh
+            # 'pull' recria os containers com as imagens novas; volumes (a
+            # sessão do WhatsApp) permanecem intactos — nenhum QR é pedido.
+            ./deploy.sh pull

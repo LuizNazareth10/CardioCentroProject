@@ -25,6 +25,19 @@ export type ContatoConfig = {
 
 export type ExameOverride = Partial<Pick<Exame, 'nome' | 'duracaoMin' | 'preparo' | 'ativo'>>;
 
+/**
+ * Modo de operação do agente — controla QUEM ele atende, ajustável em
+ * runtime (sem redeploy) pela tela de Configurações:
+ *  - full   : atende todo mundo (comportamento padrão).
+ *  - shadow : RASCUNHA a resposta mas NÃO envia ao paciente; o rascunho é
+ *             encaminhado para um webhook de observação (Slack/Discord).
+ *             Risco zero — ideal para a fase 0 de validação.
+ *  - canary : atende só uma fração (`canaryPct`%) das leads, de forma
+ *             pegajosa por número; o restante segue com a recepção humana.
+ *  - paused : kill-switch — o agente não atende ninguém.
+ */
+export type ModoAgente = 'full' | 'shadow' | 'canary' | 'paused';
+
 /** Configuração do agente de WhatsApp (liga/desliga sem deploy). */
 export interface AgenteConfig {
   /** false = modo manual: toda mensagem vai direto para a fila humana (/atendimentos) */
@@ -39,13 +52,25 @@ export interface AgenteConfig {
    * não depende deste toggle.
    */
   confirmacaoAntecedenciaAtiva: boolean;
+  /** modo de rollout — ver ModoAgente */
+  modo: ModoAgente;
+  /** no modo canary, % de leads (0–100) atendidas pela IA (pegajoso por número) */
+  canaryPct: number;
 }
+
+const MODO_INICIAL = ((): ModoAgente => {
+  const v = process.env.AGENTE_MODO;
+  return v === 'shadow' || v === 'canary' || v === 'paused' ? v : 'full';
+})();
+const CANARY_PCT_INICIAL = Math.max(0, Math.min(100, Number(process.env.AGENTE_CANARY_PCT) || 0));
 
 export const AGENTE_PADRAO: AgenteConfig = {
   ativo: true,
   mensagemForaDoAr:
     'Olá! 👋 Recebemos sua mensagem. Nossa equipe vai te responder em breve, dentro do horário comercial. 💙',
   confirmacaoAntecedenciaAtiva: true,
+  modo: MODO_INICIAL,
+  canaryPct: CANARY_PCT_INICIAL,
 };
 
 export interface ClinicConfigOverrides {

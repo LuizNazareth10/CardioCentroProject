@@ -7,10 +7,12 @@ export function FichaIdentidadePrint({
   paciente,
   convenio,
   medicoResponsavel,
+  exameRecente,
 }: {
   paciente: Paciente;
   convenio: string;
   medicoResponsavel: string;
+  exameRecente?: ExameMaisRecente | null;
 }) {
   const fm = paciente.fichaMedica;
   const sexo =
@@ -58,6 +60,11 @@ export function FichaIdentidadePrint({
             <Campo label="Convênio" valor={convenio} />
             <Campo label="Carteirinha" valor={paciente.carteirinha} />
             <Campo label="Médico solicitante" valor={medicoResponsavel} className="col-span-2" />
+            <Campo
+              label={exameRecente?.futuro ? 'Próximo exame agendado' : 'Último exame realizado'}
+              valor={exameRecente ? `${exameRecente.nome} — ${fmtData(exameRecente.quando)}` : undefined}
+              className="col-span-2"
+            />
           </dl>
         </section>
 
@@ -94,4 +101,38 @@ export function medicoUltimaConsulta(historico: Agendamento[], nomeMedico: (id: 
     .sort((a, b) => b.inicio.localeCompare(a.inicio));
   if (consultas.length === 0) return '—';
   return nomeMedico(consultas[0].medicoId);
+}
+
+export interface ExameMaisRecente {
+  nome: string;
+  quando: string; // ISO do início
+  futuro: boolean; // true = agendado à frente; false = último realizado
+}
+
+/**
+ * Exame mais relevante para exibir na ficha:
+ *  - se houver algum agendamento FUTURO (não cancelado), mostra o mais
+ *    próximo (o próximo exame que o paciente vai fazer);
+ *  - senão, mostra o exame mais recente já passado (o último realizado).
+ * Cancelados são ignorados nos dois casos.
+ */
+export function exameMaisRecente(
+  historico: Agendamento[],
+  nomeExame: (id: string) => string,
+  agoraISO: string = new Date().toISOString(),
+): ExameMaisRecente | null {
+  const validos = historico.filter((h) => h.status !== 'cancelado' && h.status !== 'faltou');
+  const futuros = validos
+    .filter((h) => h.inicio >= agoraISO)
+    .sort((a, b) => a.inicio.localeCompare(b.inicio));
+  if (futuros.length > 0) {
+    return { nome: nomeExame(futuros[0].exameId), quando: futuros[0].inicio, futuro: true };
+  }
+  const passados = validos
+    .filter((h) => h.inicio < agoraISO)
+    .sort((a, b) => b.inicio.localeCompare(a.inicio));
+  if (passados.length > 0) {
+    return { nome: nomeExame(passados[0].exameId), quando: passados[0].inicio, futuro: false };
+  }
+  return null;
 }

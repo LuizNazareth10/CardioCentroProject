@@ -1,5 +1,5 @@
-import { APARELHOS, CONVENIOS, CONVENIOS_REQUEREM_AUTORIZACAO_IDS, EXAMES, MEDICOS } from '../seed-data';
-import { atualizarAgendamento, criarAgendamentos, criarPaciente, listarAgendamentos, listarPacientes, registrarLeadWhatsapp, registrarMensagem } from '../db';
+import { APARELHOS, CONVENIOS, CONVENIOS_REQUEREM_AUTORIZACAO_IDS, CONVENIOS_TRANSBORDO_IMEDIATO_IDS, EXAMES, MEDICOS } from '../seed-data';
+import { atualizarAgendamento, criarAgendamentos, criarPaciente, listarAgendamentos, obterPacientePorTelefone, registrarLeadWhatsapp, registrarMensagem } from '../db';
 import { gerarSlots, gerarSlotsAparelho, proporSessao } from '../scheduling/engine';
 import { fmtData, fmtDiaCurto, fmtHora } from '../format';
 import { baixarMidia, enviarBotoes, enviarLista, enviarTexto } from './client';
@@ -34,6 +34,7 @@ import {
   mensagemResumoAgendamento,
   mensagemSemHorarios,
   mensagemSemMedicoUnico,
+  mensagemFinalizarComRecepcao,
   mensagemTransferenciaHumana,
   mensagemUrgencia,
   montarOrientacoesExames,
@@ -266,9 +267,22 @@ async function tratarMedico(from: string, s: ConversaState, e: Entrada) {
 
 type Proposta = NonNullable<ConversaState['propostas']>[number];
 
+/**
+ * Janela de agendamentos relevante para a busca de horários: de hoje até
+ * ~90 dias à frente. O motor só oferece slots nos próximos ~28-42 dias, e
+ * agendamentos no passado não geram conflito futuro — carregar a coleção
+ * inteira (~94 mil docs) para marcar UM horário era desperdício puro.
+ */
+async function agendamentosParaBusca(): Promise<Awaited<ReturnType<typeof listarAgendamentos>>> {
+  const hoje = hojeJF();
+  const ate = new Date(`${hoje}T12:00:00Z`);
+  ate.setUTCDate(ate.getUTCDate() + 90);
+  return listarAgendamentos({ de: `${hoje}T00:00:00-03:00`, ate: `${ate.toISOString().slice(0, 10)}T23:59:59-03:00` });
+}
+
 async function calcularEoferecer(from: string, s: ConversaState) {
   const examesSeq = s.examesSelecionados.map((id) => EXAMES.find((x) => x.id === id)!).filter(Boolean);
-  const agendamentos = await listarAgendamentos();
+  const agendamentos = await agendamentosParaBusca();
   const propostas: Proposta[] = [];
 
   if (examesSeq.length === 1 && examesSeq[0].aparelho) {
@@ -445,12 +459,69 @@ function convenioRequerAutorizacao(convenioId?: string): boolean {
   return !!convenioId && CONVENIOS_REQUEREM_AUTORIZACAO_IDS.includes(convenioId);
 }
 
-/** após saber o convênio: pede documentos (se exigido) ou vai direto para a confirmação */
+/** convênios que a clínica só finaliza na recepção (ex.: IPSEMG) */
+function convenioExigeTransbordo(convenioId?: string): boolean {
+  return !!convenioId && CONVENIOS_TRANSBORDO_IMEDIATO_IDS.includes(convenioId);
+}
+
+/** após saber o convênio: transborda (se exigido), pede documentos, ou confirma */
 async function avancarAposConvenio(from: string, s: ConversaState) {
+  // regra de negócio: alguns convênios (ex.: IPSEMG) não são fechados pelo
+  // agente — a recepção conclui. Transbordo natural, sem explicar o motivo.
+  if (convenioExigeTransbordo(s.convenioId)) {
+    return transbordarParaFinalizarConvenio(from, s);
+  }
   if (convenioRequerAutorizacao(s.convenioId) && (s.docsAutorizacaoRecebidos ?? 0) < 2) {
     return pedirDocumentosAutorizacao(from, s);
   }
   return mostrarConfirmacao(from, s);
+}
+
+/**
+ * Transborda a conversa para a recepção FINALIZAR o agendamento (convênio que
+ * a clínica trata manualmente). Deixa uma NOTA INTERNA — invisível ao
+ * paciente — com convênio, exames e horário pretendido, para o atendente
+ * assumir sem precisar perguntar tudo de novo.
+ */
+async function transbordarParaFinalizarConvenio(from: string, s: ConversaState) {
+  const nomeConvenio = CONVENIOS.find((c) => c.id === s.convenioId)?.nome ?? s.convenioId ?? '—';
+  const escolhida = s.opcoes?.[0];
+  const detalhes = (escolhida?.itens ?? [])
+    .map((i) => {
+      const med = MEDICOS.find((m) => m.id === i.medicoId);
+      const quem = med ? ` (${med.nome})` : '';
+      return `• ${nomeExame(i.exameId)} — ${fmtData(i.inicio)} ${fmtHora(i.inicio)}${quem}`;
+    })
+    .join('\n');
+  const notaInterna = [
+    `⚠️ Transbordo automático — convênio *${nomeConvenio}* (finalizar na recepção).`,
+    `Paciente: ${s.nome ?? '(não informado)'}`,
+    detalhes ? `Pretendido:\n${detalhes}` : 'Sem horário escolhido ainda.',
+  ].join('\n');
+
+  s.etapa = 'humano';
+  await salvarSessao(from, s);
+
+  // nota só para a equipe (interna: true → não vai ao paciente)
+  await registrarMensagem(
+    from,
+    { de: 'agente', texto: notaInterna, ts: new Date().toISOString(), interna: true },
+    { nome: s.nome, status: 'aguardando' },
+  );
+
+  // lead MORNO: demonstrou interesse e foi para atendimento humano
+  try {
+    await registrarLeadWhatsapp(from, {
+      nome: s.nome,
+      exameInteresse: (escolhida?.itens ?? []).map((i) => nomeExame(i.exameId)).join(', ') || undefined,
+      temperatura: 'morno',
+    });
+  } catch (err) {
+    console.error('[agente] falha ao registrar lead (transbordo convênio):', err);
+  }
+
+  // mensagem natural ao paciente (sem citar a regra interna)
+  await enviarTexto(from, mensagemFinalizarComRecepcao(primeiroNome(s)));
 }
 
 async function pedirDocumentosAutorizacao(from: string, s: ConversaState) {
@@ -525,8 +596,8 @@ async function tratarConfirmacao(from: string, s: ConversaState, e: Entrada) {
       });
       pacienteId = novo.id;
     }
-    // revalida conflito e grava
-    const existentes = await listarAgendamentos();
+    // revalida conflito e grava (janela futura, não a coleção inteira)
+    const existentes = await agendamentosParaBusca();
     const conflito = escolhida.itens.some((novo) => existentes.some(
       (x) => x.medicoId === novo.medicoId && x.status !== 'cancelado' && novo.inicio < x.fim && x.inicio < novo.fim,
     ));
@@ -668,9 +739,8 @@ async function tratarImagem(from: string, s: ConversaState, e: Entrada) {
 }
 
 async function acharPacientePorTelefone(from: string) {
-  const digitos = from.replace(/\D/g, '').slice(-8);
-  const todos = await listarPacientes();
-  return todos.find((p) => p.telefone.replace(/\D/g, '').includes(digitos)) ?? null;
+  // query indexada (telefoneSufixo) — antes varria os ~19 mil pacientes
+  return obterPacientePorTelefone(from);
 }
 
 function fichaVazia() {

@@ -24,15 +24,16 @@ const eco = gerarSlots(exame('eco-doppler'), MEDICOS, [], { dataInicio: SEG, dia
 check('Eco gera slots na segunda', eco.length > 0);
 check('Slots começam em múltiplo de 15min', eco.every((s) => Number(s.inicio.slice(14, 16)) % 15 === 0));
 
-// ---- 2: conflito — ocupa 09:00–09:15 do Lovisi, não deve ofertar esse slot ----
+// ---- 2: conflito — ocupa 13:30–13:45 do Daher (seg tarde), não deve ofertar esse slot ----
+// (usa o Daher porque a seg/sex do Lovisi têm a regra do cardiopulmonar — ver bloco 11)
 const ocupado: Agendamento[] = [{
-  id: 'a1', pacienteId: 'p', pacienteNome: 'X', medicoId: 'med-lovisi', exameId: 'eco-doppler',
-  convenioId: 'particular', inicio: `${SEG}T09:00:00-03:00`, fim: `${SEG}T09:15:00-03:00`,
+  id: 'a1', pacienteId: 'p', pacienteNome: 'X', medicoId: 'med-daher', exameId: 'eco-doppler',
+  convenioId: 'particular', inicio: `${SEG}T13:30:00-03:00`, fim: `${SEG}T13:45:00-03:00`,
   status: 'agendado', origem: 'sistema', criadoEm: '',
 }];
-const comConflito = gerarSlots(exame('eco-doppler'), MEDICOS, ocupado, { dataInicio: SEG, dias: 1, medicoPreferidoId: 'med-lovisi' });
-check('Slot 09:00 do Lovisi NÃO é ofertado (conflito)', !comConflito.some((s) => s.inicio === `${SEG}T09:00:00-03:00`));
-check('Slot 09:15 do Lovisi É ofertado', comConflito.some((s) => s.inicio === `${SEG}T09:15:00-03:00`));
+const comConflito = gerarSlots(exame('eco-doppler'), MEDICOS, ocupado, { dataInicio: SEG, dias: 1, medicoPreferidoId: 'med-daher' });
+check('Slot 13:30 do Daher NÃO é ofertado (conflito)', !comConflito.some((s) => s.inicio === `${SEG}T13:30:00-03:00`));
+check('Slot 13:45 do Daher É ofertado', comConflito.some((s) => s.inicio === `${SEG}T13:45:00-03:00`));
 
 // ---- 3: médico de preferência respeitado ----
 const pref = gerarSlots(exame('eco-doppler'), MEDICOS, [], { dataInicio: SEG, dias: 1, medicoPreferidoId: 'med-daher' });
@@ -90,6 +91,27 @@ check('Mapa mantém os outros 3 slots livres', mapaAposOcup.length === 3);
 // Cardiopulmonar só existe com Lovisi (seg/sex manhã); na quarta ele NÃO oferece.
 const cpQuaAtiva = gerarSlots(exame('cardiopulmonar'), MEDICOS, [], { dataInicio: QUA_ATIVA, dias: 1 });
 check('Cardiopulmonar NÃO é ofertado na quarta (Lovisi só faz eco/caró)', cpQuaAtiva.length === 0);
+
+// ---- 11: REGRA DR. JÚLIO LOVISI — seg/sex exigem o cardiopulmonar ----
+// Nas janelas de seg e sex do Lovisi, eco/carótida só entram ACOMPANHANDO o
+// cardiopulmonar; nunca sozinhos. Nas OUTRAS janelas/médicos, eco segue normal.
+const ecoSegLovisi = gerarSlots(exame('eco-doppler'), MEDICOS, [], { dataInicio: SEG, dias: 1, medicoPreferidoId: 'med-lovisi' });
+check('Eco SOZINHO na seg NÃO usa a janela do Lovisi', ecoSegLovisi.length === 0);
+const caroSexLovisi = gerarSlots(exame('duplex-carotidas'), MEDICOS, [], { dataInicio: SEX, dias: 1, medicoPreferidoId: 'med-lovisi' });
+check('Carótida SOZINHA na sex NÃO usa a janela do Lovisi', caroSexLovisi.length === 0);
+
+const cpSegLovisi = gerarSlots(exame('cardiopulmonar'), MEDICOS, [], { dataInicio: SEG, dias: 1, medicoPreferidoId: 'med-lovisi' });
+check('Cardiopulmonar SOZINHO na seg É ofertado pelo Lovisi', cpSegLovisi.length > 0);
+
+const cpMaisEco = proporSessao([exame('cardiopulmonar'), exame('eco-doppler')], MEDICOS, [], { dataInicio: SEG, dias: 1, medicoPreferidoId: 'med-lovisi' });
+check('Sessão Cardiopulmonar+Eco na seg é permitida (mesmo médico)', cpMaisEco !== null && cpMaisEco.mesmoMedico);
+
+const ecoMaisCaro = proporSessao([exame('eco-doppler'), exame('duplex-carotidas')], MEDICOS, [], { dataInicio: SEG, dias: 1, medicoPreferidoId: 'med-lovisi' });
+check('Sessão Eco+Carótida (sem cardiopulmonar) NÃO é agendada com Lovisi na seg', ecoMaisCaro === null);
+
+// eco continua disponível com OUTRO médico na segunda (Daher, tarde)
+const ecoSegQualquer = gerarSlots(exame('eco-doppler'), MEDICOS, [], { dataInicio: SEG, dias: 1 });
+check('Eco sozinho na seg AINDA é ofertado por outro médico (Daher)', ecoSegQualquer.some((s) => s.medicoId === 'med-daher'));
 
 console.log('\nResumo:', falhas === 0 ? 'TODOS OS TESTES PASSARAM 🎉' : `${falhas} falha(s)`);
 process.exit(falhas === 0 ? 0 : 1);

@@ -1,15 +1,24 @@
 import type { Agendamento, Conversa, Lead, MensagemConversa, Paciente, StatusAtendimento, Triagem, Usuario } from '../types';
 import { sanitizarFicha } from '../validation';
+import { medir } from './metrics';
 import { memoria, novoId } from './store';
 
 // =============================================================
 // API ÚNICA DE DADOS usada por toda a aplicação.
-// Implementação atual: memória (dev/demo). Para produção, cada
-// função tem o equivalente Firestore comentado/derivável a partir
-// de ./firestore. Mantemos a MESMA assinatura para troca limpa.
+// Backends: memória (dev/demo) e Firestore (produção).
+//
+// REGRA DE OURO DESTE ARQUIVO: nenhuma função lê uma coleção inteira.
+// Todo filtro (data, paciente, telefone, busca) vai DENTRO da query do
+// Firestore, nunca em `.filter()` depois do `.get()`. Com ~19 mil
+// pacientes e ~94 mil agendamentos reais, ler tudo e filtrar em memória
+// custava dezenas de milhares de leituras por clique — era a causa da
+// lentidão da área restrita e estourava a cota diária do Firestore.
 // =============================================================
 
 const isFirestore = process.env.DATA_BACKEND === 'firestore';
+
+/** teto de segurança: nenhuma query devolve mais que isto sem paginar */
+const LIMITE_PADRAO = 50;
 
 // ---- helper firestore (lazy import p/ não quebrar no modo memory) ----
 async function fs() {
@@ -17,25 +26,151 @@ async function fs() {
   return db();
 }
 
-// ============== PACIENTES ==============
-export async function listarPacientes(busca?: string): Promise<Paciente[]> {
-  if (isFirestore) {
-    const snap = await (await fs()).collection('pacientes').orderBy('nome').get();
-    let arr = snap.docs.map((d) => d.data() as Paciente);
-    if (busca) arr = filtrarPacientes(arr, busca);
-    return arr;
-  }
-  return filtrarPacientes(memoria.pacientes, busca);
+const soDigitos = (v?: string) => (v ?? '').replace(/\D/g, '');
+
+/** minúsculas, sem acento e sem pontuação — base das buscas por prefixo */
+export function normalizarBusca(v: string): string {
+  return v
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-function filtrarPacientes(arr: Paciente[], busca?: string) {
-  if (!busca) return arr;
-  const q = busca.toLowerCase();
+/**
+ * Campos derivados que tornam a busca indexável. Sem eles, procurar um
+ * paciente por nome/CPF/telefone exigiria varrer a coleção inteira.
+ * Recalculados a TODA gravação — nunca editados à mão.
+ */
+export function derivarCamposBusca(p: Pick<Paciente, 'nome' | 'cpf' | 'telefone'>) {
+  return {
+    nomeBusca: normalizarBusca(p.nome ?? ''),
+    cpfDigitos: soDigitos(p.cpf),
+    telefoneSufixo: soDigitos(p.telefone).slice(-8),
+  };
+}
+
+/** `` é o último code point utilizável — fecha um intervalo de prefixo */
+const FIM_PREFIXO = '';
+
+// ============== PACIENTES ==============
+
+export interface PaginaPacientes {
+  pacientes: Paciente[];
+  /** passe de volta em `cursor` para carregar a página seguinte; null = acabou */
+  proximoCursor: string | null;
+}
+
+/** cursor de paginação: par (nomeBusca, id), que é único e ordenável */
+function encodeCursor(p: Paciente): string {
+  return Buffer.from(JSON.stringify([p.nomeBusca ?? normalizarBusca(p.nome), p.id])).toString('base64url');
+}
+function decodeCursor(c?: string): [string, string] | null {
+  if (!c) return null;
+  try {
+    const v = JSON.parse(Buffer.from(c, 'base64url').toString('utf8'));
+    return Array.isArray(v) && v.length === 2 ? [String(v[0]), String(v[1])] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Lista pacientes PAGINADO. A busca é resolvida no banco:
+ * - texto  → prefixo do nome normalizado
+ * - número → prefixo do CPF ou do sufixo do telefone
+ *
+ * Limitação consciente: o Firestore não faz busca por SUBSTRING (only
+ * prefixo). Buscar "silva" não acha "José Silva". É o preço de não ler
+ * 19 mil documentos a cada tecla digitada; para busca por substring
+ * seria preciso um serviço de busca (Algolia/Typesense) à parte.
+ */
+export async function listarPacientes(opts?: {
+  busca?: string;
+  limite?: number;
+  cursor?: string;
+}): Promise<PaginaPacientes> {
+  const limite = Math.min(opts?.limite ?? LIMITE_PADRAO, 200);
+  const busca = opts?.busca?.trim();
+
+  if (!isFirestore) {
+    const filtrados = filtrarPacientesMemoria(memoria.pacientes, busca).sort((a, b) =>
+      normalizarBusca(a.nome).localeCompare(normalizarBusca(b.nome)),
+    );
+    const inicio = decodeCursor(opts?.cursor)
+      ? filtrados.findIndex((p) => p.id === decodeCursor(opts?.cursor)![1]) + 1
+      : 0;
+    const pagina = filtrados.slice(inicio, inicio + limite);
+    return {
+      pacientes: pagina,
+      proximoCursor: inicio + limite < filtrados.length && pagina.length ? encodeCursor(pagina[pagina.length - 1]) : null,
+    };
+  }
+
+  return medir(
+    `listarPacientes(${busca ? 'busca' : 'lista'})`,
+    async () => {
+      const col = (await fs()).collection('pacientes');
+      const digitos = soDigitos(busca);
+
+      // busca numérica: CPF ou telefone, por prefixo, no banco
+      if (busca && digitos.length >= 3 && digitos.length >= busca.replace(/\s/g, '').length - 2) {
+        const [porCpf, porTelefone] = await Promise.all([
+          col.orderBy('cpfDigitos').startAt(digitos).endAt(digitos + FIM_PREFIXO).limit(limite).get(),
+          col.orderBy('telefoneSufixo').startAt(digitos).endAt(digitos + FIM_PREFIXO).limit(limite).get(),
+        ]);
+        const porId = new Map<string, Paciente>();
+        [...porCpf.docs, ...porTelefone.docs].forEach((d) => {
+          const p = d.data() as Paciente;
+          porId.set(p.id, p);
+        });
+        const pacientes = [...porId.values()]
+          .sort((a, b) => (a.nomeBusca ?? '').localeCompare(b.nomeBusca ?? ''))
+          .slice(0, limite);
+        // busca numérica não pagina (o resultado é naturalmente pequeno)
+        return { pacientes, proximoCursor: null };
+      }
+
+      let q = col.orderBy('nomeBusca').orderBy('id');
+      if (busca) {
+        const alvo = normalizarBusca(busca);
+        q = q.startAt(alvo).endAt(alvo + FIM_PREFIXO);
+      }
+      const cursor = decodeCursor(opts?.cursor);
+      if (cursor) q = q.startAfter(cursor[0], cursor[1]);
+
+      const snap = await q.limit(limite).get();
+      const pacientes = snap.docs.map((d) => d.data() as Paciente);
+      return {
+        pacientes,
+        proximoCursor: pacientes.length === limite ? encodeCursor(pacientes[pacientes.length - 1]) : null,
+      };
+    },
+    (r) => r.pacientes.length,
+  );
+}
+
+/** filtro por substring — só no backend de memória, onde o custo é irrelevante */
+function filtrarPacientesMemoria(arr: Paciente[], busca?: string) {
+  if (!busca) return [...arr];
+  const q = normalizarBusca(busca);
+  const d = soDigitos(busca);
   return arr.filter(
     (p) =>
-      p.nome.toLowerCase().includes(q) ||
-      (p.cpf ?? '').includes(busca) ||
-      p.telefone.includes(busca),
+      normalizarBusca(p.nome).includes(q) ||
+      (d.length >= 3 && soDigitos(p.cpf).includes(d)) ||
+      (d.length >= 3 && soDigitos(p.telefone).includes(d)),
+  );
+}
+
+/** Total de pacientes via AGREGAÇÃO — 1 leitura, não 19 mil. */
+export async function contarPacientes(): Promise<number> {
+  if (!isFirestore) return memoria.pacientes.length;
+  return medir(
+    'contarPacientes()',
+    async () => (await (await fs()).collection('pacientes').count().get()).data().count,
+    () => 1,
   );
 }
 
@@ -47,26 +182,51 @@ export async function obterPaciente(id: string): Promise<Paciente | null> {
   return memoria.pacientes.find((p) => p.id === id) ?? null;
 }
 
-const soDigitos = (v?: string) => (v ?? '').replace(/\D/g, '');
+/**
+ * Acha um paciente pelo telefone (últimos 8 dígitos, tolera DDI/DDD/9º
+ * dígito). Query indexada — usada pelo agente do WhatsApp a cada conversa.
+ */
+export async function obterPacientePorTelefone(telefone: string): Promise<Paciente | null> {
+  const sufixo = soDigitos(telefone).slice(-8);
+  if (!sufixo) return null;
+  if (!isFirestore) {
+    return memoria.pacientes.find((p) => soDigitos(p.telefone).slice(-8) === sufixo) ?? null;
+  }
+  return medir(
+    'obterPacientePorTelefone()',
+    async () => {
+      const snap = await (await fs()).collection('pacientes').where('telefoneSufixo', '==', sufixo).limit(1).get();
+      return snap.empty ? null : (snap.docs[0].data() as Paciente);
+    },
+    (r) => (r ? 1 : 0),
+  );
+}
 
 /**
  * Acha um paciente já cadastrado com o mesmo CPF (chave forte) ou o mesmo
- * telefone (últimos 8 dígitos, tolera DDI/DDD/9º dígito diferentes) para
- * evitar criar um segundo registro para a mesma pessoa — cobre tanto o
- * agente do WhatsApp (nunca coleta CPF) quanto o cadastro manual.
+ * telefone, para não criar um segundo registro da mesma pessoa. Duas
+ * queries indexadas — antes isto varria os 19 mil pacientes a CADA
+ * cadastro, inclusive nos criados pelo agente do WhatsApp.
  */
 async function acharPacienteDuplicado(dados: Pick<Paciente, 'cpf' | 'telefone'>): Promise<Paciente | null> {
   const cpf = soDigitos(dados.cpf);
-  const telefone = soDigitos(dados.telefone).slice(-8);
-  if (!cpf && !telefone) return null;
-  const todos = await listarPacientes();
-  if (cpf) {
-    const porCpf = todos.find((p) => soDigitos(p.cpf) === cpf);
+  const sufixo = soDigitos(dados.telefone).slice(-8);
+  if (!cpf && !sufixo) return null;
+
+  if (!isFirestore) {
+    const porCpf = cpf ? memoria.pacientes.find((p) => soDigitos(p.cpf) === cpf) : null;
     if (porCpf) return porCpf;
+    return sufixo ? memoria.pacientes.find((p) => soDigitos(p.telefone).slice(-8) === sufixo) ?? null : null;
   }
-  if (telefone) {
-    const porTelefone = todos.find((p) => soDigitos(p.telefone).slice(-8) === telefone);
-    if (porTelefone) return porTelefone;
+
+  const col = (await fs()).collection('pacientes');
+  if (cpf) {
+    const snap = await col.where('cpfDigitos', '==', cpf).limit(1).get();
+    if (!snap.empty) return snap.docs[0].data() as Paciente;
+  }
+  if (sufixo) {
+    const snap = await col.where('telefoneSufixo', '==', sufixo).limit(1).get();
+    if (!snap.empty) return snap.docs[0].data() as Paciente;
   }
   return null;
 }
@@ -77,7 +237,13 @@ export async function criarPaciente(
   const existente = await acharPacienteDuplicado(dados);
   if (existente) return existente;
   const agora = new Date().toISOString();
-  const paciente: Paciente = { ...dados, id: novoId('pac'), criadoEm: agora, atualizadoEm: agora };
+  const paciente: Paciente = {
+    ...dados,
+    ...derivarCamposBusca(dados),
+    id: novoId('pac'),
+    criadoEm: agora,
+    atualizadoEm: agora,
+  };
   if (isFirestore) {
     await (await fs()).collection('pacientes').doc(paciente.id).set(paciente);
   } else {
@@ -99,6 +265,8 @@ export async function atualizarPaciente(id: string, patch: Partial<Paciente>): P
     fichaMedica: limpo.fichaMedica ? { ...fichaBase, ...limpo.fichaMedica } : fichaBase,
     atualizadoEm: new Date().toISOString(),
   };
+  // nome/cpf/telefone podem ter mudado → os campos de busca acompanham
+  Object.assign(novo, derivarCamposBusca(novo));
   if (isFirestore) {
     await (await fs()).collection('pacientes').doc(id).set(novo, { merge: true });
   } else {
@@ -109,22 +277,90 @@ export async function atualizarPaciente(id: string, patch: Partial<Paciente>): P
 }
 
 // ============== AGENDAMENTOS ==============
+
+/**
+ * Lista agendamentos. `de`/`ate` e `pacienteId` viram cláusulas WHERE na
+ * query — este é o ponto que mais pesava no sistema: a Agenda de UM dia
+ * lia os ~94 mil agendamentos e descartava 99,9% em memória.
+ *
+ * `de`/`ate` são ISO datetime comparados lexicograficamente, que para
+ * ISO-8601 no mesmo fuso equivale à ordem cronológica.
+ */
 export async function listarAgendamentos(filtro?: {
   de?: string;
   ate?: string;
   pacienteId?: string;
+  limite?: number;
 }): Promise<Agendamento[]> {
-  let arr: Agendamento[];
-  if (isFirestore) {
-    const snap = await (await fs()).collection('agendamentos').orderBy('inicio').get();
-    arr = snap.docs.map((d) => d.data() as Agendamento);
-  } else {
-    arr = [...memoria.agendamentos].sort((a, b) => a.inicio.localeCompare(b.inicio));
+  if (!isFirestore) {
+    let arr = [...memoria.agendamentos].sort((a, b) => a.inicio.localeCompare(b.inicio));
+    if (filtro?.de) arr = arr.filter((a) => a.inicio >= filtro.de!);
+    if (filtro?.ate) arr = arr.filter((a) => a.inicio <= filtro.ate!);
+    if (filtro?.pacienteId) arr = arr.filter((a) => a.pacienteId === filtro.pacienteId);
+    return filtro?.limite ? arr.slice(0, filtro.limite) : arr;
   }
-  if (filtro?.de) arr = arr.filter((a) => a.inicio >= filtro.de!);
-  if (filtro?.ate) arr = arr.filter((a) => a.inicio <= filtro.ate!);
-  if (filtro?.pacienteId) arr = arr.filter((a) => a.pacienteId === filtro.pacienteId);
-  return arr;
+
+  const rotulo = filtro?.pacienteId ? 'paciente' : filtro?.de || filtro?.ate ? 'período' : 'TUDO';
+  return medir(
+    `listarAgendamentos(${rotulo})`,
+    async () => {
+      let q = (await fs()).collection('agendamentos') as FirebaseFirestore.Query;
+      if (filtro?.pacienteId) q = q.where('pacienteId', '==', filtro.pacienteId);
+      if (filtro?.de) q = q.where('inicio', '>=', filtro.de);
+      if (filtro?.ate) q = q.where('inicio', '<=', filtro.ate);
+      q = q.orderBy('inicio');
+      if (filtro?.limite) q = q.limit(filtro.limite);
+      const snap = await q.get();
+      return snap.docs.map((d) => d.data() as Agendamento);
+    },
+    (r) => r.length,
+  );
+}
+
+/**
+ * Agendamentos de UM médico num intervalo — usado na revalidação de
+ * conflito, que antes carregava a coleção inteira só para comparar
+ * alguns horários.
+ */
+export async function listarAgendamentosDoMedico(
+  medicoId: string,
+  de: string,
+  ate: string,
+): Promise<Agendamento[]> {
+  if (!isFirestore) {
+    return memoria.agendamentos.filter((a) => a.medicoId === medicoId && a.inicio >= de && a.inicio <= ate);
+  }
+  return medir(
+    'listarAgendamentosDoMedico()',
+    async () => {
+      const snap = await (await fs())
+        .collection('agendamentos')
+        .where('medicoId', '==', medicoId)
+        .where('inicio', '>=', de)
+        .where('inicio', '<=', ate)
+        .orderBy('inicio')
+        .get();
+      return snap.docs.map((d) => d.data() as Agendamento);
+    },
+    (r) => r.length,
+  );
+}
+
+/** Contagem por agregação — 1 leitura em vez da coleção inteira. */
+export async function contarAgendamentos(filtro?: { de?: string; ate?: string }): Promise<number> {
+  if (!isFirestore) {
+    return (await listarAgendamentos(filtro)).length;
+  }
+  return medir(
+    'contarAgendamentos()',
+    async () => {
+      let q = (await fs()).collection('agendamentos') as FirebaseFirestore.Query;
+      if (filtro?.de) q = q.where('inicio', '>=', filtro.de);
+      if (filtro?.ate) q = q.where('inicio', '<=', filtro.ate);
+      return (await q.count().get()).data().count;
+    },
+    () => 1,
+  );
 }
 
 export async function criarAgendamentos(itens: Omit<Agendamento, 'id' | 'criadoEm'>[]): Promise<Agendamento[]> {
@@ -136,8 +372,9 @@ export async function criarAgendamentos(itens: Omit<Agendamento, 'id' | 'criadoE
     criadoEm: new Date().toISOString(),
   }));
   if (isFirestore) {
-    const batch = (await fs()).batch();
-    const col = (await fs()).collection('agendamentos');
+    const db_ = await fs();
+    const batch = db_.batch();
+    const col = db_.collection('agendamentos');
     criados.forEach((c) => batch.set(col.doc(c.id), c));
     await batch.commit();
   } else {
@@ -161,8 +398,10 @@ export async function listarTriagens(pacienteId: string): Promise<Triagem[]> {
     const snap = await (await fs())
       .collection('triagens')
       .where('pacienteId', '==', pacienteId)
+      .orderBy('data', 'desc')
+      .limit(50)
       .get();
-    return snap.docs.map((d) => d.data() as Triagem).sort((a, b) => b.data.localeCompare(a.data));
+    return snap.docs.map((d) => d.data() as Triagem);
   }
   return memoria.triagens
     .filter((t) => t.pacienteId === pacienteId)
@@ -180,13 +419,32 @@ export async function criarTriagem(dados: Omit<Triagem, 'id'>): Promise<Triagem>
 }
 
 // ============== ATENDIMENTOS (handoff WhatsApp) ==============
-export async function listarConversas(): Promise<Conversa[]> {
+
+/**
+ * Fila de atendimento humano. Ordenada e limitada NO BANCO. A ordenação
+ * por status (aguardando primeiro) é aplicada depois, sobre a página —
+ * é barato porque a página é pequena.
+ */
+export async function listarConversas(opts?: { limite?: number }): Promise<Conversa[]> {
+  const limite = Math.min(opts?.limite ?? LIMITE_PADRAO, 200);
   let arr: Conversa[];
   if (isFirestore) {
-    const snap = await (await fs()).collection('conversas').get();
-    arr = snap.docs.map((d) => d.data() as Conversa);
+    arr = await medir(
+      'listarConversas()',
+      async () => {
+        const snap = await (await fs())
+          .collection('conversas')
+          .orderBy('atualizadoEm', 'desc')
+          .limit(limite)
+          .get();
+        return snap.docs.map((d) => d.data() as Conversa);
+      },
+      (r) => r.length,
+    );
   } else {
-    arr = [...memoria.conversas];
+    arr = [...memoria.conversas]
+      .sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm))
+      .slice(0, limite);
   }
   // mais recentes primeiro; resolvidos por último
   const peso = (s: StatusAtendimento) => (s === 'aguardando' ? 0 : s === 'em_atendimento' ? 1 : 2);
@@ -201,63 +459,89 @@ export async function obterConversa(telefone: string): Promise<Conversa | null> 
   return memoria.conversas.find((c) => c.telefone === telefone) ?? null;
 }
 
-/** anexa uma mensagem à conversa (cria se não existir) e ajusta metadados */
+/**
+ * Anexa uma mensagem à conversa (cria se não existir).
+ *
+ * Usa `arrayUnion`, que faz o append NO SERVIDOR: não precisa ler o
+ * documento antes nem reenviar o histórico inteiro a cada mensagem —
+ * o que ficava progressivamente mais caro conforme a conversa crescia.
+ */
 export async function registrarMensagem(
   telefone: string,
   msg: MensagemConversa,
   meta?: { nome?: string; status?: StatusAtendimento },
-): Promise<Conversa> {
-  const atual = (await obterConversa(telefone)) ?? {
-    telefone, nome: meta?.nome, status: 'aguardando' as StatusAtendimento,
-    mensagens: [], atualizadoEm: new Date().toISOString(),
-  };
-  const nova: Conversa = {
-    ...atual,
-    nome: meta?.nome ?? atual.nome,
-    status: meta?.status ?? atual.status,
-    mensagens: [...atual.mensagens, msg],
-    atualizadoEm: new Date().toISOString(),
-  };
+): Promise<void> {
+  const agora = new Date().toISOString();
   if (isFirestore) {
-    await (await fs()).collection('conversas').doc(telefone).set(nova);
-  } else {
-    const i = memoria.conversas.findIndex((c) => c.telefone === telefone);
-    if (i >= 0) memoria.conversas[i] = nova;
-    else memoria.conversas.push(nova);
+    const { FieldValue } = await import('firebase-admin/firestore');
+    const doc: Record<string, unknown> = {
+      telefone,
+      mensagens: FieldValue.arrayUnion(JSON.parse(JSON.stringify(msg))),
+      atualizadoEm: agora,
+    };
+    if (meta?.nome !== undefined) doc.nome = meta.nome;
+    if (meta?.status !== undefined) doc.status = meta.status;
+    // `status` só é semeado na criação; um merge posterior sem status preserva o atual
+    const ref = (await fs()).collection('conversas').doc(telefone);
+    await ref.set({ status: meta?.status ?? 'aguardando', ...doc }, { merge: true });
+    return;
   }
-  return nova;
+  const atual = memoria.conversas.find((c) => c.telefone === telefone);
+  if (atual) {
+    atual.mensagens.push(msg);
+    atual.atualizadoEm = agora;
+    if (meta?.nome !== undefined) atual.nome = meta.nome;
+    if (meta?.status !== undefined) atual.status = meta.status;
+    return;
+  }
+  memoria.conversas.push({
+    telefone,
+    nome: meta?.nome,
+    status: meta?.status ?? 'aguardando',
+    mensagens: [msg],
+    atualizadoEm: agora,
+  });
 }
 
 export async function definirStatusConversa(telefone: string, status: StatusAtendimento): Promise<void> {
-  const atual = await obterConversa(telefone);
-  if (!atual) return;
-  const nova = { ...atual, status, atualizadoEm: new Date().toISOString() };
   if (isFirestore) {
-    await (await fs()).collection('conversas').doc(telefone).set(nova, { merge: true });
-  } else {
-    const i = memoria.conversas.findIndex((c) => c.telefone === telefone);
-    if (i >= 0) memoria.conversas[i] = nova;
+    await (await fs())
+      .collection('conversas')
+      .doc(telefone)
+      .set({ status, atualizadoEm: new Date().toISOString() }, { merge: true });
+    return;
   }
+  const i = memoria.conversas.findIndex((c) => c.telefone === telefone);
+  if (i >= 0) memoria.conversas[i] = { ...memoria.conversas[i], status, atualizadoEm: new Date().toISOString() };
 }
 
 // ============== LEADS (CRM básico) ==============
-export async function listarLeads(): Promise<Lead[]> {
-  let arr: Lead[];
+export async function listarLeads(opts?: { limite?: number }): Promise<Lead[]> {
+  const limite = Math.min(opts?.limite ?? LIMITE_PADRAO, 200);
   if (isFirestore) {
-    const snap = await (await fs()).collection('leads').get();
-    arr = snap.docs.map((d) => d.data() as Lead);
-  } else {
-    arr = [...memoria.leads];
+    return medir(
+      'listarLeads()',
+      async () => {
+        const snap = await (await fs()).collection('leads').orderBy('criadoEm', 'desc').limit(limite).get();
+        return snap.docs.map((d) => d.data() as Lead);
+      },
+      (r) => r.length,
+    );
   }
-  // mais recentes primeiro
-  return arr.sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+  return [...memoria.leads].sort((a, b) => b.criadoEm.localeCompare(a.criadoEm)).slice(0, limite);
 }
 
 export async function criarLead(
   dados: Omit<Lead, 'id' | 'criadoEm' | 'atualizadoEm'>,
 ): Promise<Lead> {
   const agora = new Date().toISOString();
-  const lead: Lead = { ...dados, id: novoId('lead'), criadoEm: agora, atualizadoEm: agora };
+  const lead: Lead = {
+    ...dados,
+    telefoneSufixo: soDigitos(dados.telefone).slice(-8),
+    id: novoId('lead'),
+    criadoEm: agora,
+    atualizadoEm: agora,
+  };
   if (isFirestore) {
     await (await fs()).collection('leads').doc(lead.id).set(lead);
   } else {
@@ -279,19 +563,31 @@ export async function atualizarLead(id: string, patch: Partial<Lead>): Promise<v
 }
 
 /**
- * Cria ou atualiza um lead a partir do WhatsApp, deduplicando pelo telefone
- * (últimos 8 dígitos). Usado pelo agente para registrar temperatura sem
- * gerar um lead novo a cada interação do mesmo número.
+ * Cria ou atualiza um lead do WhatsApp, deduplicando pelo telefone via
+ * query indexada (antes: varria todos os leads a cada interação).
  */
 export async function registrarLeadWhatsapp(
   telefone: string,
   dados: Partial<Pick<Lead, 'nome' | 'exameInteresse' | 'status' | 'temperatura' | 'mensagem'>>,
 ): Promise<void> {
-  const sufixo = telefone.replace(/\D/g, '').slice(-8);
-  const todos = await listarLeads();
-  const existente = todos.find(
-    (l) => l.origem === 'whatsapp' && l.status !== 'arquivado' && l.telefone.replace(/\D/g, '').endsWith(sufixo),
-  );
+  const sufixo = soDigitos(telefone).slice(-8);
+
+  let existente: Lead | null = null;
+  if (isFirestore) {
+    const snap = await (await fs())
+      .collection('leads')
+      .where('telefoneSufixo', '==', sufixo)
+      .where('origem', '==', 'whatsapp')
+      .limit(5)
+      .get();
+    existente = (snap.docs.map((d) => d.data() as Lead).find((l) => l.status !== 'arquivado') ?? null);
+  } else {
+    existente =
+      memoria.leads.find(
+        (l) => l.origem === 'whatsapp' && l.status !== 'arquivado' && soDigitos(l.telefone).endsWith(sufixo),
+      ) ?? null;
+  }
+
   if (existente) {
     // nunca rebaixa: lead que já agendou permanece quente/agendado
     const patch: Partial<Lead> = { ...dados };

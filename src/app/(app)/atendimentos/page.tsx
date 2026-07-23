@@ -106,6 +106,21 @@ export default function AtendimentosPage() {
               {conversa.mensagens.map((m, i) => {
                 const mine = m.de === 'recepcao';
                 const isAgente = m.de === 'agente';
+                // nota INTERNA: contexto do agente para a equipe, nunca foi
+                // enviada ao paciente — destacada para não haver confusão.
+                if (m.interna) {
+                  return (
+                    <div key={i} className="flex justify-center">
+                      <div className="max-w-[92%] rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-xs text-amber-900">
+                        <div className="mb-1 flex items-center gap-1 font-semibold uppercase tracking-wide text-amber-700">
+                          🔒 Nota interna · não enviada ao paciente
+                        </div>
+                        <div className="whitespace-pre-wrap">{m.texto}</div>
+                        <div className="mt-1 text-[10px] text-amber-700/70">{m.ts.slice(11, 16)}</div>
+                      </div>
+                    </div>
+                  );
+                }
                 return (
                   <div key={i} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                     <div

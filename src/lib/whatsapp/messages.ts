@@ -340,6 +340,23 @@ export function mensagemDocumentosCompletos(): string {
 
 // ─── Atendimento humano ─────────────────────────────────────────
 
+/**
+ * Transbordo NATURAL para finalizar o agendamento com a recepção — usado
+ * quando o convênio informado exige tratamento manual (ex.: IPSEMG). Do
+ * ponto de vista do paciente é só "a recepção conclui"; o motivo (regra
+ * interna) não é mencionado, para não soar estranho.
+ */
+export function mensagemFinalizarComRecepcao(primeiroNome?: string): string {
+  const oi = primeiroNome ? `Perfeito, *${primeiroNome}*!` : 'Perfeito!';
+  return [
+    `${oi} 💙`,
+    '',
+    'Para concluir o seu agendamento com esse convênio, vou te passar para a nossa recepção — é rapidinho.',
+    '',
+    'Já deixei aqui os detalhes do que você escolheu para agilizar. Em instantes alguém do time continua com você por aqui. 😊',
+  ].join('\n');
+}
+
 export function mensagemTransferenciaHumana(primeiroNome?: string): string {
   const oi = primeiroNome ? `Tudo bem, *${primeiroNome}*!` : 'Tudo bem!';
   return [

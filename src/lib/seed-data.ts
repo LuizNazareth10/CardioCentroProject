@@ -122,6 +122,15 @@ export const CONVENIOS_REQUEREM_AUTORIZACAO_IDS: string[] = CONVENIOS
   .filter((c) => NOMES_CONVENIOS_AUTORIZACAO.includes(c.nome))
   .map((c) => c.id);
 
+// Convênios que, por regra de negócio da clínica, NÃO são finalizados pelo
+// agente: assim que o paciente informa um destes, a conversa é transferida
+// para a recepção humana concluir. O motivo (regra interna) não é explicado
+// ao paciente — o transbordo acontece de forma natural. Ver `avancarAposConvenio`.
+const NOMES_CONVENIOS_TRANSBORDO = ['IPSEMG'];
+export const CONVENIOS_TRANSBORDO_IMEDIATO_IDS: string[] = CONVENIOS
+  .filter((c) => NOMES_CONVENIOS_TRANSBORDO.includes(c.nome))
+  .map((c) => c.id);
+
 // ids de exame usados nas janelas (atalhos legíveis)
 const ECO = 'eco-doppler';
 const CARO = 'duplex-carotidas';
@@ -179,9 +188,12 @@ export const MEDICOS: Medico[] = [
     examesHabilitados: [ECO, CARO, CARDIOPULM],
     duracoes: { [CARDIOPULM]: 30, [ECO]: 15, [CARO]: 15 },
     disponibilidade: [
-      { weekday: 1, inicio: '09:00', fim: '11:30', exames: [ECO, CARO, CARDIOPULM] },       // seg manhã
-      { weekday: 3, inicio: '09:00', fim: '11:15', exames: [ECO, CARO], quinzenal: true },  // qua manhã (quinzenal) — só eco/carótida
-      { weekday: 5, inicio: '09:00', fim: '11:30', exames: [ECO, CARO, CARDIOPULM] },       // sex manhã
+      // Regra da clínica: na seg e na sex, o Teste Cardiopulmonar tem PRIORIDADE.
+      // `exigeExame` faz o motor só oferecer estes horários se a sessão incluir
+      // o cardiopulmonar — eco/carótida entram junto com ele, nunca sozinhos.
+      { weekday: 1, inicio: '09:00', fim: '11:30', exames: [CARDIOPULM, ECO, CARO], exigeExame: CARDIOPULM }, // seg manhã
+      { weekday: 3, inicio: '09:00', fim: '11:15', exames: [ECO, CARO], quinzenal: true },                   // qua manhã (quinzenal) — só eco/carótida
+      { weekday: 5, inicio: '09:00', fim: '11:30', exames: [CARDIOPULM, ECO, CARO], exigeExame: CARDIOPULM }, // sex manhã
     ],
     ativo: true,
   },

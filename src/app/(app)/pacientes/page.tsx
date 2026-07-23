@@ -10,18 +10,37 @@ export default function PacientesPage() {
   const [q, setQ] = useState('');
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [carregandoMais, setCarregandoMais] = useState(false);
 
+  // Busca (e recarga ao limpar) — sempre começa da 1ª página. O `reqId`
+  // descarta respostas fora de ordem quando o usuário digita rápido.
   useEffect(() => {
+    const controlador = { atual: true };
     const id = setTimeout(async () => {
       setCarregando(true);
       const res = await fetch(`/api/pacientes?q=${encodeURIComponent(q)}`);
-      setPacientes((await res.json()).pacientes ?? []);
+      const json = await res.json();
+      if (!controlador.atual) return;
+      setPacientes(json.pacientes ?? []);
+      setCursor(json.proximoCursor ?? null);
       setCarregando(false);
-    }, 200);
-    return () => clearTimeout(id);
+    }, 250);
+    return () => { controlador.atual = false; clearTimeout(id); };
   }, [q]);
 
+  async function carregarMais() {
+    if (!cursor || carregandoMais) return;
+    setCarregandoMais(true);
+    const res = await fetch(`/api/pacientes?q=${encodeURIComponent(q)}&cursor=${encodeURIComponent(cursor)}`);
+    const json = await res.json();
+    setPacientes((atual) => [...atual, ...(json.pacientes ?? [])]);
+    setCursor(json.proximoCursor ?? null);
+    setCarregandoMais(false);
+  }
+
   const conv = (id?: string) => CONVENIOS.find((c) => c.id === id)?.nome ?? 'Particular';
+  const buscaNumerica = /^\s*\d/.test(q);
 
   return (
     <div>
@@ -31,8 +50,13 @@ export default function PacientesPage() {
       </header>
 
       <div className="mt-5">
-        <input className="input max-w-md" placeholder="Buscar por nome, CPF ou telefone…"
+        <input className="input max-w-md" placeholder="Buscar por nome (início), CPF ou telefone…"
           value={q} onChange={(e) => setQ(e.target.value)} />
+        {q && !buscaNumerica && (
+          <p className="mt-1.5 text-xs text-muted">
+            A busca por nome é pelo começo do nome (ex.: “ana”, “josé s”). Para telefone ou CPF, digite os números.
+          </p>
+        )}
       </div>
 
       <div className="mt-5 card divide-y divide-navy-100/70">
@@ -56,6 +80,14 @@ export default function PacientesPage() {
           ))
         )}
       </div>
+
+      {!carregando && cursor && (
+        <div className="mt-4 text-center">
+          <button className="btn-outline" disabled={carregandoMais} onClick={carregarMais}>
+            {carregandoMais ? 'Carregando…' : 'Carregar mais'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
