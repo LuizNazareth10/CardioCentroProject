@@ -12,19 +12,32 @@ export default function PacientesPage() {
   const [carregando, setCarregando] = useState(true);
   const [cursor, setCursor] = useState<string | null>(null);
   const [carregandoMais, setCarregandoMais] = useState(false);
+  const [erro, setErro] = useState('');
 
-  // Busca (e recarga ao limpar) — sempre começa da 1ª página. O `reqId`
+  // Busca (e recarga ao limpar) — sempre começa da 1ª página. O `controlador`
   // descarta respostas fora de ordem quando o usuário digita rápido.
+  // try/finally garante que o spinner SEMPRE termina, mesmo se a API falhar
+  // (antes, um erro deixava a tela presa em "Carregando…" para sempre).
   useEffect(() => {
     const controlador = { atual: true };
     const id = setTimeout(async () => {
       setCarregando(true);
-      const res = await fetch(`/api/pacientes?q=${encodeURIComponent(q)}`);
-      const json = await res.json();
-      if (!controlador.atual) return;
-      setPacientes(json.pacientes ?? []);
-      setCursor(json.proximoCursor ?? null);
-      setCarregando(false);
+      setErro('');
+      try {
+        const res = await fetch(`/api/pacientes?q=${encodeURIComponent(q)}`);
+        const json = await res.json().catch(() => ({}));
+        if (!controlador.atual) return;
+        if (!res.ok) throw new Error(json.erro || `Falha ao buscar (HTTP ${res.status}).`);
+        setPacientes(json.pacientes ?? []);
+        setCursor(json.proximoCursor ?? null);
+      } catch (e) {
+        if (!controlador.atual) return;
+        setPacientes([]);
+        setCursor(null);
+        setErro(e instanceof Error ? e.message : 'Falha ao carregar pacientes.');
+      } finally {
+        if (controlador.atual) setCarregando(false);
+      }
     }, 250);
     return () => { controlador.atual = false; clearTimeout(id); };
   }, [q]);
@@ -32,11 +45,14 @@ export default function PacientesPage() {
   async function carregarMais() {
     if (!cursor || carregandoMais) return;
     setCarregandoMais(true);
-    const res = await fetch(`/api/pacientes?q=${encodeURIComponent(q)}&cursor=${encodeURIComponent(cursor)}`);
-    const json = await res.json();
-    setPacientes((atual) => [...atual, ...(json.pacientes ?? [])]);
-    setCursor(json.proximoCursor ?? null);
-    setCarregandoMais(false);
+    try {
+      const res = await fetch(`/api/pacientes?q=${encodeURIComponent(q)}&cursor=${encodeURIComponent(cursor)}`);
+      const json = await res.json().catch(() => ({}));
+      setPacientes((atual) => [...atual, ...(json.pacientes ?? [])]);
+      setCursor(json.proximoCursor ?? null);
+    } finally {
+      setCarregandoMais(false);
+    }
   }
 
   const conv = (id?: string) => CONVENIOS.find((c) => c.id === id)?.nome ?? 'Particular';
@@ -58,6 +74,10 @@ export default function PacientesPage() {
           </p>
         )}
       </div>
+
+      {erro && (
+        <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-brand-red">{erro}</p>
+      )}
 
       <div className="mt-5 card divide-y divide-navy-100/70">
         {carregando ? (

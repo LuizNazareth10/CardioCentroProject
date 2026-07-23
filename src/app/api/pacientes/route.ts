@@ -9,8 +9,18 @@ export async function GET(req: NextRequest) {
   const busca = sp.get('q') || undefined;
   const cursor = sp.get('cursor') || undefined;
   const limite = Number(sp.get('limite')) || undefined;
-  const { pacientes, proximoCursor } = await listarPacientes({ busca, cursor, limite });
-  return NextResponse.json({ pacientes, proximoCursor });
+  try {
+    const { pacientes, proximoCursor } = await listarPacientes({ busca, cursor, limite });
+    return NextResponse.json({ pacientes, proximoCursor });
+  } catch (e) {
+    // sempre responde JSON (nunca deixa o cliente preso esperando): se algum
+    // índice faltar ou o Firestore falhar, o erro chega claro à tela.
+    console.error('[api/pacientes] erro ao listar:', e);
+    return NextResponse.json(
+      { erro: 'Não foi possível carregar os pacientes. Tente novamente em instantes.', pacientes: [] },
+      { status: 500 },
+    );
+  }
 }
 
 export async function POST(req: NextRequest) {

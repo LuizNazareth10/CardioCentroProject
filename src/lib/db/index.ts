@@ -62,29 +62,20 @@ export interface PaginaPacientes {
   proximoCursor: string | null;
 }
 
-/** cursor de paginação: par (nomeBusca, id), que é único e ordenável */
-function encodeCursor(p: Paciente): string {
-  return Buffer.from(JSON.stringify([p.nomeBusca ?? normalizarBusca(p.nome), p.id])).toString('base64url');
-}
-function decodeCursor(c?: string): [string, string] | null {
-  if (!c) return null;
-  try {
-    const v = JSON.parse(Buffer.from(c, 'base64url').toString('utf8'));
-    return Array.isArray(v) && v.length === 2 ? [String(v[0]), String(v[1])] : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
- * Lista pacientes PAGINADO. A busca é resolvida no banco:
- * - texto  → prefixo do nome normalizado
- * - número → prefixo do CPF ou do sufixo do telefone
+ * Lista pacientes PAGINADO.
  *
- * Limitação consciente: o Firestore não faz busca por SUBSTRING (only
- * prefixo). Buscar "silva" não acha "José Silva". É o preço de não ler
- * 19 mil documentos a cada tecla digitada; para busca por substring
- * seria preciso um serviço de busca (Algolia/Typesense) à parte.
+ * IMPORTANTE (robustez): TODAS as queries daqui usam ordenação/filtro por
+ * um ÚNICO campo, que o Firestore indexa AUTOMATICAMENTE — nenhuma depende
+ * de índice composto (que precisaria ser publicado à mão e, se faltar, faz
+ * a tela travar). Foi essa a causa da tela de Pacientes ficar "Carregando…".
+ *
+ * - lista base   → ordena pelo campo `id` (sempre presente, único).
+ * - busca nome   → prefixo de `nomeBusca` (requer o backfill dos campos).
+ * - busca número → prefixo de `cpfDigitos` ou `telefoneSufixo`.
+ *
+ * Limitação consciente: a busca por nome é por PREFIXO (começo do nome),
+ * não por substring. "silva" não acha "José Silva"; "josé s" acha.
  */
 export async function listarPacientes(opts?: {
   busca?: string;
@@ -98,13 +89,11 @@ export async function listarPacientes(opts?: {
     const filtrados = filtrarPacientesMemoria(memoria.pacientes, busca).sort((a, b) =>
       normalizarBusca(a.nome).localeCompare(normalizarBusca(b.nome)),
     );
-    const inicio = decodeCursor(opts?.cursor)
-      ? filtrados.findIndex((p) => p.id === decodeCursor(opts?.cursor)![1]) + 1
-      : 0;
+    const inicio = opts?.cursor ? filtrados.findIndex((p) => p.id === opts.cursor) + 1 : 0;
     const pagina = filtrados.slice(inicio, inicio + limite);
     return {
       pacientes: pagina,
-      proximoCursor: inicio + limite < filtrados.length && pagina.length ? encodeCursor(pagina[pagina.length - 1]) : null,
+      proximoCursor: inicio + limite < filtrados.length && pagina.length ? pagina[pagina.length - 1].id : null,
     };
   }
 
@@ -114,7 +103,7 @@ export async function listarPacientes(opts?: {
       const col = (await fs()).collection('pacientes');
       const digitos = soDigitos(busca);
 
-      // busca numérica: CPF ou telefone, por prefixo, no banco
+      // --- busca numérica: CPF ou telefone, por prefixo (campo único) ---
       if (busca && digitos.length >= 3 && digitos.length >= busca.replace(/\s/g, '').length - 2) {
         const [porCpf, porTelefone] = await Promise.all([
           col.orderBy('cpfDigitos').startAt(digitos).endAt(digitos + FIM_PREFIXO).limit(limite).get(),
@@ -128,23 +117,29 @@ export async function listarPacientes(opts?: {
         const pacientes = [...porId.values()]
           .sort((a, b) => (a.nomeBusca ?? '').localeCompare(b.nomeBusca ?? ''))
           .slice(0, limite);
-        // busca numérica não pagina (o resultado é naturalmente pequeno)
-        return { pacientes, proximoCursor: null };
+        return { pacientes, proximoCursor: null }; // busca numérica não pagina
       }
 
-      let q = col.orderBy('nomeBusca').orderBy('id');
+      // --- busca por nome: prefixo de nomeBusca (campo único) ---
       if (busca) {
         const alvo = normalizarBusca(busca);
-        q = q.startAt(alvo).endAt(alvo + FIM_PREFIXO);
+        const snap = await col
+          .orderBy('nomeBusca')
+          .startAt(alvo)
+          .endAt(alvo + FIM_PREFIXO)
+          .limit(limite)
+          .get();
+        return { pacientes: snap.docs.map((d) => d.data() as Paciente), proximoCursor: null };
       }
-      const cursor = decodeCursor(opts?.cursor);
-      if (cursor) q = q.startAfter(cursor[0], cursor[1]);
 
+      // --- lista base: ordena por `id` (campo único, índice automático) ---
+      let q = col.orderBy('id');
+      if (opts?.cursor) q = q.startAfter(opts.cursor);
       const snap = await q.limit(limite).get();
       const pacientes = snap.docs.map((d) => d.data() as Paciente);
       return {
         pacientes,
-        proximoCursor: pacientes.length === limite ? encodeCursor(pacientes[pacientes.length - 1]) : null,
+        proximoCursor: pacientes.length === limite ? pacientes[pacientes.length - 1].id : null,
       };
     },
     (r) => r.pacientes.length,
@@ -574,13 +569,17 @@ export async function registrarLeadWhatsapp(
 
   let existente: Lead | null = null;
   if (isFirestore) {
+    // filtra por campo ÚNICO (telefoneSufixo, índice automático) e refina
+    // origem/status em memória — evita depender de um índice composto.
     const snap = await (await fs())
       .collection('leads')
       .where('telefoneSufixo', '==', sufixo)
-      .where('origem', '==', 'whatsapp')
-      .limit(5)
+      .limit(10)
       .get();
-    existente = (snap.docs.map((d) => d.data() as Lead).find((l) => l.status !== 'arquivado') ?? null);
+    existente =
+      snap.docs
+        .map((d) => d.data() as Lead)
+        .find((l) => l.origem === 'whatsapp' && l.status !== 'arquivado') ?? null;
   } else {
     existente =
       memoria.leads.find(
