@@ -15,7 +15,7 @@ export function mensagemBoasVindasAgendamento(primeiroNome?: string): string {
     `Seja bem-vindo(a) à *${CONTATO.nomeClinica}* 💙`,
     `_${CONTATO.subtitulo}_`,
     '',
-    'Que bom te receber! Vou te ajudar a agendar seu exame com carinho e agilidade. ✨',
+    'Vou te ajudar a agendar seu exame com atenção e agilidade.',
   ].join('\n');
 }
 
@@ -27,9 +27,7 @@ export function mensagemMenuPrincipal(primeiroNome?: string): string {
     `Aqui é a *${CONTATO.nomeClinica}* 💙`,
     `_${CONTATO.subtitulo}_`,
     '',
-    'Que bom te receber! Estou aqui para te ajudar com carinho. ✨',
-    '',
-    'Como posso te ajudar hoje? 😊',
+    'Obrigada pelo contato! Como posso te ajudar hoje? 😊',
   ].join('\n');
 }
 
@@ -351,9 +349,9 @@ export function mensagemFinalizarComRecepcao(primeiroNome?: string): string {
   return [
     `${oi} 💙`,
     '',
-    'Para concluir o seu agendamento com esse convênio, vou te passar para a nossa recepção — é rapidinho.',
+    'Para concluir o seu agendamento com esse convênio, vou te passar para a nossa recepção.',
     '',
-    'Já deixei aqui os detalhes do que você escolheu para agilizar. Em instantes alguém do time continua com você por aqui. 😊',
+    'Já deixei aqui os detalhes do que você escolheu para agilizar. Uma atendente irá dar continuidade ao atendimento.',
   ].join('\n');
 }
 
@@ -362,7 +360,7 @@ export function mensagemTransferenciaHumana(primeiroNome?: string): string {
   return [
     `${oi} 💙`,
     '',
-    'Vou te transferir para a nossa recepção. Em instantes alguém do time assume por aqui.',
+    'Vou te transferir para a nossa recepção. Uma atendente irá dar continuidade ao atendimento.',
     '',
     `Se preferir falar agora, ligue para *${TELEFONE_FIXO_CLINICA}*.`,
   ].join('\n');

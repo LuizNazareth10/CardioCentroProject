@@ -56,3 +56,6 @@ Desktop.ini
 # Certificados e chaves
 *.pem
 *.key
+
+# QR code de pareamento do WhatsApp (teste local via deploy/)
+deploy/*.png

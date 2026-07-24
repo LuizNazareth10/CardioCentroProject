@@ -13,7 +13,9 @@
 
 services:
   evolution-api:
-    image: atendai/evolution-api:v2.1.1 # fixe a versão; não use :latest em produção
+    image: evoapicloud/evolution-api:v2.3.7 # fixe a versão; não use :latest em produção
+    # Nota: a imagem antiga (atendai/evolution-api) foi descontinuada no Docker
+    # Hub (pull access denied) — o projeto migrou para o org evoapicloud.
     container_name: evolution_api
     restart: always
     ports:
