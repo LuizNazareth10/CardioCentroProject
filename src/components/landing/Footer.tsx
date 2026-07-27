@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Phone, Mail, MapPin, ShieldCheck, MessageCircle } from 'lucide-react';
+import { Phone, Mail, MapPin, ShieldCheck, MessageCircle, LockKeyhole } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { nav, contato, whatsappLink } from './content';
 
@@ -55,9 +55,6 @@ export function Footer() {
                   <a href={item.href} className="transition-colors hover:text-cardio-400">{item.label}</a>
                 </li>
               ))}
-              <li>
-                <Link href="/login" className="transition-colors hover:text-cardio-400">Área da equipe</Link>
-              </li>
             </ul>
           </nav>
 
@@ -114,6 +111,14 @@ export function Footer() {
             </Link>
             <Link href="/termos" className="transition-colors hover:text-cardio-400">
               Termos de Uso
+            </Link>
+            <Link
+              href="/login"
+              className="grid h-8 w-8 place-items-center rounded-full text-white/35 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+              title="Acesso da equipe"
+              aria-label="Acesso da equipe"
+            >
+              <LockKeyhole className="h-3.5 w-3.5" aria-hidden />
             </Link>
           </nav>
           <p>Juiz de Fora · Minas Gerais</p>

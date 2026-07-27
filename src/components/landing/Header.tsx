@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Menu, X, CalendarCheck, LogIn, MessageCircle } from 'lucide-react';
+import { Menu, X, CalendarCheck, MessageCircle } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { nav, whatsappLink } from './content';
 
@@ -43,10 +43,6 @@ export function Header() {
         </nav>
 
         <div className="hidden shrink-0 items-center gap-2 lg:flex xl:gap-2.5">
-          <Link href="/login" className="header-cta-ghost">
-            <LogIn className="h-4 w-4 shrink-0" aria-hidden />
-            Área da equipe
-          </Link>
           <a
             href={whatsappLink}
             target="_blank"
@@ -89,14 +85,6 @@ export function Header() {
               ))}
             </nav>
             <div className="mt-4 flex flex-col gap-2.5">
-              <Link
-                href="/login"
-                className="header-cta-ghost w-full"
-                onClick={() => setOpen(false)}
-              >
-                <LogIn className="h-4 w-4 shrink-0" aria-hidden />
-                Área da equipe
-              </Link>
               <a
                 href={whatsappLink}
                 target="_blank"

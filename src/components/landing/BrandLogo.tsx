@@ -22,16 +22,18 @@ export function BrandLogo({
   const markSize = isHeader ? Math.max(size, 64) : size;
 
   return (
-    <div className={`flex items-center ${isHeader ? 'gap-3.5' : 'gap-3'}`}>
+    <div className={`flex items-center ${isHeader ? 'gap-2 sm:gap-3.5' : 'gap-3'}`}>
       <div
-        className="relative flex-none overflow-hidden rounded-full shadow-soft ring-2 ring-white/80"
-        style={{ width: markSize, height: markSize }}
+        className={`relative flex-none overflow-hidden rounded-full shadow-soft ring-2 ring-white/80 ${
+          isHeader ? 'h-12 w-12 sm:h-16 sm:w-16 lg:h-[68px] lg:w-[68px]' : ''
+        }`}
+        style={isHeader ? undefined : { width: markSize, height: markSize }}
       >
         <Image
           src={brandAssets.logo}
           alt="Cardiocentro"
           fill
-          sizes={`${markSize}px`}
+          sizes={isHeader ? '(max-width: 639px) 48px, 68px' : `${markSize}px`}
           className="object-cover object-center scale-[1.55]"
           priority={isHeader}
         />
@@ -39,17 +41,17 @@ export function BrandLogo({
       {variant === 'full' && (
         <div className="min-w-0 leading-tight">
           <div
-            className={`whitespace-nowrap font-brand font-extrabold tracking-tight ${title} ${
-              isHeader ? 'text-[2rem] leading-none xl:text-[2.25rem]' : 'text-[20px]'
+            className={`whitespace-nowrap font-brand font-extrabold tracking-normal ${title} ${
+              isHeader ? 'text-[1.55rem] leading-none sm:text-[2rem] xl:text-[2.25rem]' : 'text-[20px]'
             }`}
           >
             Cardio<span className="text-cardio">centro</span>
           </div>
           <div
-            className={`whitespace-nowrap font-semibold uppercase ${sub} ${
+            className={`whitespace-nowrap font-semibold uppercase tracking-normal ${sub} ${
               isHeader
-                ? 'mt-1 text-[10px] tracking-[0.14em] xl:text-[11px]'
-                : 'text-[9px] tracking-[0.16em]'
+                ? 'mt-1 text-[7px] sm:text-[10px] xl:text-[11px]'
+                : 'text-[9px]'
             }`}
           >
             Métodos diagnósticos em cardiologia

@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cronograma de treinamento | Cardiocentro</title>
+  <style>
+    :root {
+      --navy: #05132e;
+      --navy-soft: #eef2f7;
+      --red: #dd1724;
+      --red-soft: #fff0f1;
+      --green: #18794e;
+      --green-soft: #edf8f2;
+      --amber: #8a5700;
+      --amber-soft: #fff7e6;
+      --ink: #172033;
+      --muted: #5d6879;
+      --line: #d8dee8;
+      --paper: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: #dfe4ea; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #dfe4ea;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10.3pt;
+      line-height: 1.38;
+    }
+
+    .sheet {
+      position: relative;
+      width: 210mm;
+      min-height: 297mm;
+      margin: 10mm auto;
+      padding: 15mm 16mm 14mm;
+      overflow: hidden;
+      background: var(--paper);
+      box-shadow: 0 4mm 10mm rgba(5, 19, 46, 0.13);
+      page-break-after: always;
+    }
+    .sheet:last-child { page-break-after: auto; }
+    .sheet::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 4mm;
+      background: linear-gradient(90deg, var(--navy) 0 82%, var(--red) 82% 100%);
+    }
+
+    .page-footer {
+      position: absolute;
+      right: 16mm;
+      bottom: 7mm;
+      left: 16mm;
+      display: flex;
+      justify-content: space-between;
+      padding-top: 2.5mm;
+      border-top: 0.25mm solid var(--line);
+      color: var(--muted);
+      font-size: 7.8pt;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 3.5mm;
+      color: var(--navy);
+      font-size: 14pt;
+      font-weight: 800;
+    }
+    .brand img {
+      width: 12mm;
+      height: 12mm;
+      border-radius: 50%;
+    }
+    .brand span { color: var(--red); }
+
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      margin-bottom: 5mm;
+      color: var(--navy);
+      font-size: 27pt;
+      line-height: 1.08;
+    }
+    h2 {
+      margin-bottom: 2mm;
+      color: var(--navy);
+      font-size: 20pt;
+      line-height: 1.15;
+    }
+    h3 {
+      margin-bottom: 1.5mm;
+      color: var(--navy);
+      font-size: 11.5pt;
+    }
+    p { margin-bottom: 2.5mm; }
+
+    .eyebrow {
+      margin-bottom: 2mm;
+      color: var(--red);
+      font-size: 8.5pt;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+    }
+    .lead { color: var(--muted); font-size: 12pt; line-height: 1.48; }
+    .small { font-size: 8.5pt; }
+    .muted { color: var(--muted); }
+    .strong { color: var(--navy); font-weight: 800; }
+
+    .cover {
+      display: flex;
+      flex-direction: column;
+      min-height: 267mm;
+    }
+    .cover-top { display: flex; justify-content: space-between; align-items: center; }
+    .cover-code {
+      padding: 2mm 3.5mm;
+      border: 0.3mm solid var(--line);
+      color: var(--muted);
+      font-size: 8.5pt;
+      font-weight: 700;
+    }
+    .cover-main { margin: 34mm 0 0; max-width: 157mm; }
+    .cover-rule { width: 25mm; height: 1.2mm; margin: 7mm 0; background: var(--red); }
+    .cover-summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 3mm;
+      margin-top: 13mm;
+    }
+    .cover-stat { padding-top: 3mm; border-top: 0.6mm solid var(--navy); }
+    .cover-stat b { display: block; color: var(--navy); font-size: 16pt; }
+    .cover-stat span { color: var(--muted); font-size: 8.5pt; }
+    .cover-fields { margin-top: auto; }
+
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; margin-top: 5mm; }
+    .field { padding-bottom: 2mm; border-bottom: 0.3mm solid #7f8998; color: var(--muted); font-size: 8.5pt; }
+
+    .topline {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8mm;
+      margin-bottom: 5mm;
+    }
+    .day-chip {
+      flex: none;
+      min-width: 31mm;
+      padding: 2.5mm 3mm;
+      border-left: 1.3mm solid var(--red);
+      background: var(--red-soft);
+      color: var(--navy);
+      font-size: 8.5pt;
+      font-weight: 800;
+      text-align: right;
+    }
+
+    .objective {
+      margin: 4mm 0;
+      padding: 3.5mm 4mm;
+      border-left: 1.2mm solid var(--green);
+      background: var(--green-soft);
+    }
+    .objective b { color: var(--green); }
+
+    .timeline { margin-top: 4mm; border-top: 0.35mm solid var(--line); }
+    .timeline-row {
+      display: grid;
+      grid-template-columns: 23mm 1fr;
+      gap: 4mm;
+      padding: 3.1mm 0;
+      border-bottom: 0.25mm solid var(--line);
+    }
+    .time {
+      color: var(--red);
+      font-size: 9pt;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .timeline-row h3 { margin-bottom: 0.8mm; }
+    .timeline-row p { margin-bottom: 0; color: var(--muted); font-size: 9.1pt; }
+
+    .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin-top: 4mm; }
+    .box {
+      padding: 3.5mm 4mm;
+      border: 0.3mm solid var(--line);
+      background: #fff;
+      break-inside: avoid;
+    }
+    .box.navy { border-color: var(--navy); background: var(--navy-soft); }
+    .box.red { border-color: #f2b7bc; background: var(--red-soft); }
+    .box.amber { border-color: #efcf91; background: var(--amber-soft); }
+    .box.green { border-color: #abd7c2; background: var(--green-soft); }
+    .box p:last-child, .box ul:last-child { margin-bottom: 0; }
+
+    ul, ol { margin: 1.5mm 0 2mm; padding-left: 5.5mm; }
+    li { margin-bottom: 1.3mm; }
+    .tight li { margin-bottom: 0.7mm; }
+    .plain { padding-left: 0; list-style: none; }
+
+    .say {
+      margin-top: 1.5mm;
+      padding: 2.5mm 3mm;
+      border-left: 0.9mm solid var(--navy);
+      color: var(--navy);
+      background: #f5f7fa;
+      font-size: 8.9pt;
+      font-style: italic;
+    }
+
+    .checklist { margin: 1.5mm 0 0; padding: 0; list-style: none; }
+    .checklist li { position: relative; padding-left: 6mm; }
+    .checklist li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.6mm;
+      width: 3.3mm;
+      height: 3.3mm;
+      border: 0.35mm solid var(--navy);
+      background: #fff;
+    }
+
+    .table { width: 100%; border-collapse: collapse; margin-top: 3mm; }
+    .table th, .table td { padding: 2.5mm 2.8mm; border: 0.25mm solid var(--line); vertical-align: top; }
+    .table th { color: #fff; background: var(--navy); font-size: 8.5pt; text-align: left; }
+    .table td { font-size: 8.5pt; }
+    .table tr:nth-child(even) td { background: #f7f9fb; }
+
+    .steps { counter-reset: steps; margin: 2mm 0 0; padding: 0; list-style: none; }
+    .steps li { position: relative; min-height: 7mm; padding: 0 0 2.5mm 9mm; }
+    .steps li::before {
+      counter-increment: steps;
+      content: counter(steps);
+      position: absolute;
+      left: 0;
+      top: -0.4mm;
+      display: grid;
+      place-items: center;
+      width: 6mm;
+      height: 6mm;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--navy);
+      font-size: 8pt;
+      font-weight: 800;
+    }
+
+    .note-lines { margin-top: 3mm; }
+    .note-line { height: 8mm; border-bottom: 0.25mm solid #aeb6c2; }
+
+    .compact .timeline-row { padding: 2.6mm 0; }
+    .compact .columns { margin-top: 3mm; }
+    .compact .box { padding: 3mm 3.5mm; }
+    .quick .steps li { padding-bottom: 1.8mm; }
+    .quick .note-line { height: 5mm; }
+    .quick .table { margin-top: 4mm !important; }
+    .quick .field-row { margin-top: 5mm !important; }
+
+    .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2mm 4mm; }
+    .status { display: flex; align-items: center; gap: 2mm; font-size: 8.8pt; }
+    .dot { width: 3mm; height: 3mm; border-radius: 50%; flex: none; }
+    .blue { background: #2457a6; }
+    .green-dot { background: #159563; }
+    .red-dot { background: #dd1724; }
+    .amber-dot { background: #e39b13; }
+    .cyan { background: #2589a6; }
+    .gray { background: #9ba5b3; }
+
+    @page { size: A4; margin: 0; }
+    @media print {
+      html, body { background: #fff; }
+      body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .sheet {
+        min-height: 296mm;
+        height: 296mm;
+        margin: 0;
+        box-shadow: none;
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="sheet">
+    <div class="cover">
+      <div class="cover-top">
+        <div class="brand">
+          <img src="../public/img/CardiocentroLogo.jpeg" alt="" />
+          Cardio<span>centro</span>
+        </div>
+        <div class="cover-code">GUIA DO INSTRUTOR</div>
+      </div>
+
+      <div class="cover-main">
+        <div class="eyebrow">Treinamento da equipe de recepção</div>
+        <h1>Área restrita e atendimento pelo WhatsApp</h1>
+        <div class="cover-rule"></div>
+        <p class="lead">
+          Cronograma prático, com explicações simples e exercícios guiados para
+          que a equipe use o sistema com segurança e confiança.
+        </p>
+
+        <div class="cover-summary">
+          <div class="cover-stat"><b>5 dias</b><span>segunda a sexta-feira</span></div>
+          <div class="cover-stat"><b>30 min</b><span>por encontro</span></div>
+          <div class="cover-stat"><b>150 min</b><span>de treinamento total</span></div>
+        </div>
+      </div>
+
+      <div class="cover-fields">
+        <div class="box navy">
+          <strong>Semana:</strong> 27 a 31 de julho de 2026<br />
+          <strong>Formato:</strong> demonstração curta + prática acompanhada + revisão
+        </div>
+        <div class="field-row">
+          <div class="field">Instrutor(a):</div>
+          <div class="field">Horário diário:</div>
+        </div>
+        <div class="field-row">
+          <div class="field">Participante(s):</div>
+          <div class="field">Local:</div>
+        </div>
+      </div>
+    </div>
+    <footer class="page-footer"><span>Cardiocentro | Uso interno</span><span>1</span></footer>
+  </section>
+
+  <section class="sheet">
+    <div class="topline">
+      <div><div class="eyebrow">Antes de começar</div><h2>Visão geral da semana</h2></div>
+      <div class="day-chip">27 a 31/07<br />5 encontros</div>
+    </div>
+    <p class="lead">O treinamento avança em pequenas etapas. Primeiro a equipe entende a tela; depois pratica as tarefas que fará no dia a dia.</p>
+
+    <table class="table">
+      <thead><tr><th>Dia</th><th>Tema principal</th><th>Resultado esperado</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Segunda, 27/07</strong></td><td>Acesso, Painel e segurança</td><td>Entrar, reconhecer o menu e sair corretamente.</td></tr>
+        <tr><td><strong>Terça, 28/07</strong></td><td>Agenda e novo agendamento</td><td>Consultar horários e realizar um agendamento completo.</td></tr>
+        <tr><td><strong>Quarta, 29/07</strong></td><td>Cadastro e ficha do paciente</td><td>Buscar, cadastrar e corrigir dados cadastrais.</td></tr>
+        <tr><td><strong>Quinta, 30/07</strong></td><td>Agente e atendimentos do WhatsApp</td><td>Assumir uma conversa, responder e devolver ao agente.</td></tr>
+        <tr><td><strong>Sexta, 31/07</strong></td><td>Prática completa e revisão</td><td>Executar o fluxo sem ajuda e saber como agir em dúvidas.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="columns">
+      <div class="box green">
+        <h3>Como ensinar</h3>
+        <ol class="steps">
+          <li><strong>Explique uma coisa por vez.</strong> Use os mesmos nomes que aparecem nos botões.</li>
+          <li><strong>Mostre devagar.</strong> Diga em voz alta onde está clicando e por quê.</li>
+          <li><strong>Peça que a funcionária repita.</strong> Aprender fazendo é o centro do treinamento.</li>
+          <li><strong>Corrija com calma.</strong> Volte um passo e mostre novamente sem apressar.</li>
+        </ol>
+      </div>
+      <div class="box amber">
+        <h3>Preparação diária</h3>
+        <ul class="checklist tight">
+          <li>Computador ligado e internet funcionando.</li>
+          <li>Login da equipe disponível, sem dizer a senha em voz alta.</li>
+          <li>Um paciente fictício preparado para os exercícios.</li>
+          <li>Celular com WhatsApp para o teste de quinta-feira.</li>
+          <li>Esta folha e uma caneta para marcar dúvidas.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="box red" style="margin-top:4mm">
+      <h3>Regras que devem ser repetidas todos os dias</h3>
+      <div class="columns" style="margin-top:1mm">
+        <ul class="tight">
+          <li>Nunca compartilhar e-mail ou senha.</li>
+          <li>Confirmar nome e telefone antes de salvar.</li>
+          <li>Revisar data, horário, exame e convênio.</li>
+        </ul>
+        <ul class="tight">
+          <li>Não dar orientação médica ao paciente.</li>
+          <li>Não clicar duas vezes enquanto o sistema carrega.</li>
+          <li>Sair do sistema ao deixar o computador.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="box navy" style="margin-top:4mm">
+      <h3>Combinação com a equipe</h3>
+      <p>Durante a primeira semana, errar no exercício é permitido. Quando houver dúvida em um atendimento real, a funcionária deve parar, chamar o responsável e confirmar antes de salvar ou enviar uma mensagem.</p>
+    </div>
+    <footer class="page-footer"><span>Cardiocentro | Cronograma de treinamento</span><span>2</span></footer>
+  </section>
+
+  <section class="sheet">
+    <div class="topline">
+      <div><div class="eyebrow">Encontro 1</div><h2>Conhecendo a área restrita</h2></div>
+      <div class="day-chip">SEGUNDA<br />27/07 | 30 min</div>
+    </div>
+    <div class="objective"><b>Objetivo do dia:</b> cada participante deve conseguir entrar, identificar as cinco áreas do menu e sair do sistema sem ajuda.</div>
+
+    <div class="timeline">
+      <div class="timeline-row"><div class="time">0–5 min</div><div><h3>Acolhimento e propósito</h3><p>Explique que o sistema organiza agenda, pacientes e conversas do WhatsApp. Avise que ninguém precisa decorar tudo hoje.</p><div class="say">“Vamos aprender devagar. Eu mostro primeiro; depois cada uma repete comigo ao lado.”</div></div></div>
+      <div class="timeline-row"><div class="time">5–10 min</div><div><h3>Entrar com segurança</h3><p>Abra o endereço de login, preencha e-mail e senha e clique em <strong>Entrar</strong>. Mostre que senha é pessoal, não deve ficar anotada à vista e não deve ser enviada por WhatsApp.</p></div></div>
+      <div class="timeline-row"><div class="time">10–17 min</div><div><h3>Reconhecer as cinco áreas</h3><p>Apresente: <strong>Painel</strong> (resumo do dia), <strong>Agenda</strong> (horários), <strong>Novo agendamento</strong>, <strong>Pacientes</strong> e <strong>Atendimentos</strong> (conversas transferidas pelo agente).</p></div></div>
+      <div class="timeline-row"><div class="time">17–25 min</div><div><h3>Prática acompanhada</h3><p>Cada participante entra no sistema, abre cada item do menu, volta ao Painel e localiza “Exames de hoje”. Não faça por ela; aponte e deixe que clique.</p></div></div>
+      <div class="timeline-row"><div class="time">25–30 min</div><div><h3>Sair e revisar</h3><p>Mostre o nome da usuária no canto inferior esquerdo e o botão <strong>Sair</strong>. Peça que cada uma diga para que serve o Painel e faça a saída correta.</p></div></div>
+    </div>
+
+    <div class="columns">
+      <div class="box navy"><h3>Explique com palavras simples</h3><ul class="tight"><li><strong>Painel:</strong> fotografia do dia.</li><li><strong>Agenda:</strong> onde vemos horários livres e ocupados.</li><li><strong>Pacientes:</strong> fichário digital.</li><li><strong>Atendimentos:</strong> fila das conversas que precisam de uma pessoa.</li></ul></div>
+      <div class="box green"><h3>Verificação de aprendizagem</h3><ul class="checklist tight"><li>Entrou sem ajuda.</li><li>Encontrou a Agenda.</li><li>Encontrou os Atendimentos.</li><li>Voltou ao Painel.</li><li>Clicou em Sair.</li></ul></div>
+    </div>
+
+    <div class="box amber" style="margin-top:4mm"><h3>Atenção do instrutor</h3><p>Não apresente Simulador nem Configurações. Essas opções estão ocultas para deixar o início mais simples. Termine perguntando: “Qual parte ficou menos clara?”</p></div>
+    <footer class="page-footer"><span>Cardiocentro | Dia 1: acesso e orientação</span><span>3</span></footer>
+  </section>
+
+  <section class="sheet">
+    <div class="topline">
+      <div><div class="eyebrow">Encontro 2</div><h2>Agenda e novo agendamento</h2></div>
+      <div class="day-chip">TERÇA<br />28/07 | 30 min</div>
+    </div>
+    <div class="objective"><b>Objetivo do dia:</b> consultar uma data, reconhecer um horário livre e concluir um agendamento após revisar todos os dados.</div>
+
+    <div class="timeline">
+      <div class="timeline-row"><div class="time">0–4 min</div><div><h3>Revisão rápida</h3><p>Peça que uma participante entre no sistema e abra a Agenda. Relembre que o botão <strong>Hoje</strong> volta para a data atual.</p></div></div>
+      <div class="timeline-row"><div class="time">4–10 min</div><div><h3>Ler a Agenda</h3><p>Mostre a escolha de data, as colunas de médicos e aparelhos, os blocos ocupados e as áreas livres. Explique as cores usando a legenda da própria tela.</p></div></div>
+      <div class="timeline-row"><div class="time">10–22 min</div><div><h3>Fazer um agendamento completo</h3><p>Abra <strong>Novo agendamento</strong>. Busque o paciente por nome, CPF ou telefone. Se não existir, use <strong>Cadastro rápido</strong>. Escolha exame, convênio, preferência de médico e data; clique em <strong>Ver horários disponíveis</strong>.</p></div></div>
+      <div class="timeline-row"><div class="time">22–27 min</div><div><h3>Revisar antes de confirmar</h3><p>Selecione o horário e use a janela <strong>Confirmar agendamento</strong>. Leia em voz alta: paciente, telefone, convênio, exame, médico, data e horário. Só então confirme.</p></div></div>
+      <div class="timeline-row"><div class="time">27–30 min</div><div><h3>Alterar o andamento</h3><p>Na Agenda, clique em um bloco e mostre os estados: Agendado, Confirmado, Chegou, Em atendimento e Realizado. Explique que Cancelado só deve ser usado quando o paciente realmente desistiu.</p></div></div>
+    </div>
+
+    <div class="columns">
+      <div class="box navy"><h3>Sequência para repetir em voz alta</h3><ol class="steps"><li>Encontrar ou cadastrar o paciente.</li><li>Escolher exame e convênio.</li><li>Escolher data e horário.</li><li>Revisar todos os dados.</li><li>Confirmar uma única vez.</li></ol></div>
+      <div class="box"><h3>Cores da Agenda</h3><div class="status-grid"><div class="status"><span class="dot blue"></span>Agendado</div><div class="status"><span class="dot green-dot"></span>Confirmado</div><div class="status"><span class="dot red-dot"></span>Chegou</div><div class="status"><span class="dot amber-dot"></span>Em atendimento</div><div class="status"><span class="dot cyan"></span>Realizado</div><div class="status"><span class="dot gray"></span>Fora do horário</div></div></div>
+    </div>
+
+    <div class="box red" style="margin-top:4mm"><h3>Erros que devem ser evitados</h3><p>Não criar um segundo cadastro antes de buscar pelo telefone. Não prometer horário que ainda não foi confirmado. Não atualizar o status do paciente errado. Se a tela estiver carregando, aguarde.</p></div>
+    <footer class="page-footer"><span>Cardiocentro | Dia 2: agenda</span><span>4</span></footer>
+  </section>
+
+  <section class="sheet">
+    <div class="topline">
+      <div><div class="eyebrow">Encontro 3</div><h2>Pacientes e ficha cadastral</h2></div>
+      <div class="day-chip">QUARTA<br />29/07 | 30 min</div>
+    </div>
+    <div class="objective"><b>Objetivo do dia:</b> localizar uma pessoa, evitar cadastro duplicado, completar dados cadastrais e imprimir a ficha quando necessário.</div>
+
+    <div class="timeline">
+      <div class="timeline-row"><div class="time">0–4 min</div><div><h3>Revisar a diferença</h3><p><strong>Agendamento</strong> é a marcação de um exame. <strong>Paciente</strong> é a pessoa e sua ficha. Uma mesma pessoa pode ter vários agendamentos.</p></div></div>
+      <div class="timeline-row"><div class="time">4–10 min</div><div><h3>Buscar antes de cadastrar</h3><p>Abra <strong>Pacientes</strong>. Pesquise pelo início do nome, CPF ou telefone. Para nomes iguais, confira telefone e data de nascimento antes de abrir a ficha.</p></div></div>
+      <div class="timeline-row"><div class="time">10–17 min</div><div><h3>Cadastrar novo paciente</h3><p>Clique em <strong>Novo paciente</strong>. Preencha com atenção os campos obrigatórios. Leia nome e telefone para confirmar com a pessoa e clique em <strong>Salvar ficha</strong> apenas uma vez.</p></div></div>
+      <div class="timeline-row"><div class="time">17–24 min</div><div><h3>Consultar e corrigir dados</h3><p>Abra uma ficha e apresente as abas <strong>Ficha de identidade</strong>, <strong>Histórico</strong> e <strong>Triagens</strong>. Em identidade, use <strong>Editar dados</strong>, corrija somente o necessário e clique em <strong>Salvar</strong>.</p></div></div>
+      <div class="timeline-row"><div class="time">24–27 min</div><div><h3>Imprimir ficha</h3><p>Mostre <strong>Imprimir ficha</strong>. Confira se o paciente correto está aberto antes de imprimir e recolha a folha imediatamente, pois ela contém dados pessoais.</p></div></div>
+      <div class="timeline-row"><div class="time">27–30 min</div><div><h3>Exercício individual</h3><p>Peça que a participante busque o paciente fictício, confira dois dados, altere um campo combinado e retorne à lista.</p></div></div>
+    </div>
+
+    <div class="columns">
+      <div class="box green"><h3>Antes de salvar</h3><ul class="checklist tight"><li>Nome completo conferido.</li><li>Telefone/WhatsApp conferido.</li><li>Data de nascimento correta.</li><li>Convênio e carteirinha corretos.</li><li>Paciente não estava cadastrado antes.</li></ul></div>
+      <div class="box amber"><h3>Limite da recepção</h3><p>A recepção cuida de dados cadastrais e administrativos. Informações clínicas e triagens devem seguir a orientação definida pela clínica. Em dúvida, não invente nem complete por conta própria.</p></div>
+    </div>
+
+    <div class="box red" style="margin-top:4mm"><h3>Privacidade</h3><p>Não deixar ficha impressa sobre o balcão, não fotografar a tela e não comentar informações de pacientes com pessoas que não participam do atendimento.</p></div>
+    <footer class="page-footer"><span>Cardiocentro | Dia 3: pacientes</span><span>5</span></footer>
+  </section>
+
+  <section class="sheet compact">
+    <div class="topline">
+      <div><div class="eyebrow">Encontro 4</div><h2>Agente e WhatsApp</h2></div>
+      <div class="day-chip">QUINTA<br />30/07 | 30 min</div>
+    </div>
+    <div class="objective"><b>Objetivo do dia:</b> entender quando o agente atende sozinho, quando a recepção deve assumir e como devolver a conversa ao atendimento automático.</div>
+
+    <div class="timeline">
+      <div class="timeline-row"><div class="time">0–5 min</div><div><h3>Explicar o trabalho em conjunto</h3><p>O agente conversa com o paciente no WhatsApp e tenta resolver as solicitações previstas. Quando precisa de uma pessoa, a conversa aparece em <strong>Atendimentos</strong>.</p><div class="say">“O agente ajuda, mas a equipe continua responsável por conferir e cuidar das situações que chegam para uma pessoa.”</div></div></div>
+      <div class="timeline-row"><div class="time">5–10 min</div><div><h3>Entender a fila</h3><p>Abra <strong>Atendimentos</strong>. Mostre os estados <strong>Aguardando</strong>, <strong>Em atendimento</strong> e <strong>Resolvido</strong>. O número ao lado do menu indica conversas ainda pendentes.</p></div></div>
+      <div class="timeline-row"><div class="time">10–17 min</div><div><h3>Ler antes de assumir</h3><p>Selecione a conversa, confira nome e telefone e leia todo o histórico. Destaque a <strong>Nota interna</strong>: ela orienta a equipe e não foi enviada ao paciente. Clique em <strong>Assumir</strong>.</p></div></div>
+      <div class="timeline-row"><div class="time">17–23 min</div><div><h3>Responder com clareza</h3><p>Escreva uma mensagem curta, educada e completa. Releia antes de clicar em <strong>Enviar</strong>. Nunca dê diagnóstico, interpretação de exame ou orientação médica.</p></div></div>
+      <div class="timeline-row"><div class="time">23–27 min</div><div><h3>Encerrar corretamente</h3><p>Quando a questão estiver realmente concluída, clique em <strong>Marcar resolvido</strong>. Nesse momento, o agente volta a responder esse paciente automaticamente.</p></div></div>
+      <div class="timeline-row"><div class="time">27–30 min</div><div><h3>Teste no WhatsApp real</h3><p>Envie uma mensagem combinada pelo celular de teste. Observe o atendimento do agente e pratique uma transferência. Use apenas dados fictícios.</p></div></div>
+    </div>
+
+    <div class="columns">
+      <div class="box navy"><h3>Fluxo em quatro passos</h3><ol class="steps"><li>Ler o histórico e a nota interna.</li><li>Conferir se é a conversa correta.</li><li>Assumir e responder.</li><li>Marcar resolvido ao terminar.</li></ol></div>
+      <div class="box green"><h3>Modelo de resposta</h3><p>“Olá, Sra. Ana. Sou Maria, da recepção da Cardiocentro. Vou verificar essa informação para a senhora. Um momento, por favor.”</p><p class="small muted">Troque os nomes e diga apenas o que você realmente poderá fazer.</p></div>
+    </div>
+    <div class="box red" style="margin-top:4mm"><h3>Nunca fazer</h3><p>Não responder sem ler o histórico. Não enviar a nota interna ao paciente. Não marcar como resolvido enquanto faltar uma resposta. Não informar resultado, diagnóstico ou conduta médica.</p></div>
+    <footer class="page-footer"><span>Cardiocentro | Dia 4: WhatsApp</span><span>6</span></footer>
+  </section>
+
+  <section class="sheet">
+    <div class="topline">
+      <div><div class="eyebrow">Encontro 5</div><h2>Prática completa e revisão</h2></div>
+      <div class="day-chip">SEXTA<br />31/07 | 30 min</div>
+    </div>
+    <div class="objective"><b>Objetivo do dia:</b> cada participante deve executar o fluxo principal com pouca ou nenhuma ajuda e explicar como agir quando algo der errado.</div>
+
+    <div class="timeline">
+      <div class="timeline-row"><div class="time">0–5 min</div><div><h3>Perguntas de aquecimento</h3><p>Pergunte: Onde vemos os exames de hoje? Onde buscamos um paciente? Quando uma conversa aparece em Atendimentos? O que acontece após marcar resolvido?</p></div></div>
+      <div class="timeline-row"><div class="time">5–18 min</div><div><h3>Cenário completo, sem demonstrar antes</h3><p>Entregue o caso abaixo e deixe a participante trabalhar. Observe em silêncio. Só ajude se ela ficar parada ou estiver prestes a alterar dados errados.</p></div></div>
+      <div class="timeline-row"><div class="time">18–23 min</div><div><h3>Cenário de WhatsApp</h3><p>Abra uma conversa de teste transferida, leia o histórico, assuma, responda com educação e marque como resolvida.</p></div></div>
+      <div class="timeline-row"><div class="time">23–27 min</div><div><h3>O que fazer em caso de problema</h3><p>Ensine a parar, anotar o horário, a tela e o que estava tentando fazer, e chamar o responsável. Não repetir cliques nem criar outro cadastro para “tentar de novo”.</p></div></div>
+      <div class="timeline-row"><div class="time">27–30 min</div><div><h3>Fechamento e compromisso</h3><p>Revise as dúvidas anotadas. Combine quem será procurado em caso de problema e elogie avanços específicos. Registre abaixo o que precisa ser reforçado.</p></div></div>
+    </div>
+
+    <div class="box navy" style="margin-top:4mm">
+      <h3>Caso prático</h3>
+      <p><strong>Paciente fictícia:</strong> Ana Treinamento, telefone (32) 99999-0000, particular. Ela deseja um exame em data futura.</p>
+      <ol class="steps"><li>Buscar Ana pelo telefone e confirmar se já existe cadastro.</li><li>Cadastrar somente se ela não existir.</li><li>Escolher o exame indicado pelo instrutor e procurar horário.</li><li>Revisar paciente, exame, médico, data e horário.</li><li>Confirmar e localizar a marcação na Agenda.</li></ol>
+    </div>
+
+    <div class="columns">
+      <div class="box green"><h3>Resultado</h3><ul class="checklist tight"><li>Concluiu sem ajuda.</li><li>Concluiu com pouca ajuda.</li><li>Precisa repetir Agenda.</li><li>Precisa repetir Pacientes.</li><li>Precisa repetir WhatsApp.</li></ul></div>
+      <div class="box amber"><h3>Reforço combinado</h3><p>Data: ____/____/______ &nbsp; Horário: ________</p><p>Responsável: __________________________</p><p>Tema: ________________________________</p></div>
+    </div>
+    <footer class="page-footer"><span>Cardiocentro | Dia 5: consolidação</span><span>7</span></footer>
+  </section>
+
+  <section class="sheet compact quick">
+    <div class="topline">
+      <div><div class="eyebrow">Consulta rápida</div><h2>Roteiro para deixar ao lado do computador</h2></div>
+      <div class="day-chip">USO DIÁRIO<br />PASSO A PASSO</div>
+    </div>
+
+    <div class="columns">
+      <div class="box navy"><h3>Para agendar</h3><ol class="steps"><li>Abrir Novo agendamento.</li><li>Buscar nome, CPF ou telefone.</li><li>Evitar cadastro duplicado.</li><li>Escolher exame e convênio.</li><li>Escolher data e horário.</li><li>Revisar tudo e confirmar uma vez.</li></ol></div>
+      <div class="box green"><h3>Para atender no WhatsApp</h3><ol class="steps"><li>Abrir Atendimentos.</li><li>Selecionar quem está Aguardando.</li><li>Ler todo o histórico e a nota interna.</li><li>Clicar em Assumir.</li><li>Revisar e enviar a resposta.</li><li>Marcar resolvido ao terminar.</li></ol></div>
+    </div>
+
+    <div class="box red" style="margin-top:4mm">
+      <h3>PARE e chame o responsável quando...</h3>
+      <ul class="checklist">
+        <li>O sistema mostrar erro ou não terminar de carregar.</li>
+        <li>Houver dois cadastros que parecem ser da mesma pessoa.</li>
+        <li>O paciente pedir resultado, diagnóstico ou orientação médica.</li>
+        <li>O horário, exame, médico ou convênio estiver diferente do combinado.</li>
+        <li>Você não souber se deve assumir ou encerrar uma conversa.</li>
+      </ul>
+    </div>
+
+    <div class="box amber" style="margin-top:4mm">
+      <h3>Ao pedir ajuda, informe</h3>
+      <p>1. Qual tela estava aberta. &nbsp; 2. O horário do problema. &nbsp; 3. O que tentou fazer. &nbsp; 4. Qual mensagem apareceu.</p>
+      <p class="small muted">Evite enviar dados completos do paciente em grupos ou mensagens pessoais. Use somente o necessário para identificar o problema com o responsável autorizado.</p>
+    </div>
+
+    <h3 style="margin-top:6mm">Registro do instrutor</h3>
+    <div class="note-lines">
+      <div class="note-line"></div><div class="note-line"></div><div class="note-line"></div><div class="note-line"></div>
+    </div>
+
+    <table class="table" style="margin-top:6mm">
+      <thead><tr><th>Participante</th><th>Concluiu o treinamento</th><th>Assinatura</th></tr></thead>
+      <tbody><tr><td>&nbsp;</td><td>Sim ( &nbsp; ) &nbsp; Reforço ( &nbsp; )</td><td></td></tr><tr><td>&nbsp;</td><td>Sim ( &nbsp; ) &nbsp; Reforço ( &nbsp; )</td><td></td></tr><tr><td>&nbsp;</td><td>Sim ( &nbsp; ) &nbsp; Reforço ( &nbsp; )</td><td></td></tr></tbody>
+    </table>
+
+    <div class="field-row" style="margin-top:8mm"><div class="field">Assinatura do(a) instrutor(a)</div><div class="field">Data de conclusão</div></div>
+    <footer class="page-footer"><span>Cardiocentro | Guia rápido e registro</span><span>8</span></footer>
+  </section>
+  <script>
+    const query = new URLSearchParams(location.search);
+    const previewPage = Number(query.get('page'));
+    const allSheets = [...document.querySelectorAll('.sheet')];
+    if (previewPage) {
+      allSheets.forEach((sheet, index) => {
+        sheet.style.display = index === previewPage - 1 ? 'block' : 'none';
+      });
+      document.documentElement.style.background = '#ffffff';
+      document.body.style.background = '#ffffff';
+      const visible = allSheets[previewPage - 1];
+      if (visible) {
+        visible.style.margin = '0';
+        visible.style.boxShadow = 'none';
+      }
+      requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, 0)));
+    }
+    if (query.has('metrics')) {
+      document.body.innerHTML = `<pre id="metrics">${allSheets.map((sheet, index) =>
+        `page ${index + 1}: offset=${sheet.offsetHeight} scroll=${sheet.scrollHeight}`
+      ).join('\n')}</pre>`;
+    }
+  </script>
+</body>
+</html>
