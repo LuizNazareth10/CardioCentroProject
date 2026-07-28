@@ -114,20 +114,37 @@ export function medicoUltimaConsulta(historico: Agendamento[], nomeMedico: (id: 
   return nomeMedico(consultas[0].medicoId);
 }
 
-/** Médico do próximo agendamento futuro (quem vai executar o exame). */
-export function medicoExecutanteFuturo(historico: Agendamento[], nomeMedico: (id: string) => string): string {
-  const agora = Date.now();
-  const futuros = historico
-    .filter(
-      (h) =>
-        h.status !== 'cancelado' &&
-        h.status !== 'faltou' &&
-        !['mapa', 'holter'].includes(h.medicoId) &&
-        new Date(h.inicio).getTime() >= agora,
-    )
+/**
+ * Médico executante sincronizado com o exame em destaque na ficha:
+ *  - se há agendamento futuro → médico desse exame (vai realizar);
+ *  - senão → médico do último exame já ocorrido (realizou).
+ * MAPA/Holter não têm médico — caem no próximo exame médico disponível.
+ * Zero escritas no Firestore: deriva dos agendamentos já gravados.
+ */
+export function medicoExecutanteDoExame(
+  historico: Agendamento[],
+  nomeMedico: (id: string) => string,
+  agoraISO: string = new Date().toISOString(),
+): string {
+  const agoraMs = new Date(agoraISO).getTime();
+  const validos = historico.filter(
+    (h) => h.status !== 'cancelado' && h.status !== 'faltou' && !['mapa', 'holter'].includes(h.medicoId),
+  );
+  const futuros = validos
+    .filter((h) => new Date(h.inicio).getTime() >= agoraMs)
     .sort((a, b) => a.inicio.localeCompare(b.inicio));
-  if (futuros.length === 0) return '—';
-  return nomeMedico(futuros[0].medicoId);
+  if (futuros.length > 0) return nomeMedico(futuros[0].medicoId);
+
+  const passados = validos
+    .filter((h) => new Date(h.inicio).getTime() < agoraMs)
+    .sort((a, b) => b.inicio.localeCompare(a.inicio));
+  if (passados.length > 0) return nomeMedico(passados[0].medicoId);
+  return '—';
+}
+
+/** @deprecated use medicoExecutanteDoExame */
+export function medicoExecutanteFuturo(historico: Agendamento[], nomeMedico: (id: string) => string): string {
+  return medicoExecutanteDoExame(historico, nomeMedico);
 }
 
 export interface ExameMaisRecente {

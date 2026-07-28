@@ -5,7 +5,7 @@ import type { Agendamento, Paciente, Triagem } from '@/lib/types';
 import { CONVENIOS, EXAMES, MEDICOS } from '@/lib/seed-data';
 import { STATUS_AGENDAMENTO_BADGE, STATUS_AGENDAMENTO_LABEL } from '@/lib/status-agendamento';
 import { fmtData, fmtHora, idade, iniciais } from '@/lib/format';
-import { FichaIdentidadePrint, medicoUltimaConsulta, medicoExecutanteFuturo, exameMaisRecente, type ExameMaisRecente } from '@/components/FichaIdentidadePrint';
+import { FichaIdentidadePrint, medicoUltimaConsulta, medicoExecutanteDoExame, exameMaisRecente, type ExameMaisRecente } from '@/components/FichaIdentidadePrint';
 import { Printer } from 'lucide-react';
 import { DataPagina } from '@/components/DataPagina';
 
@@ -51,8 +51,8 @@ export default function PacientePage({ params }: { params: { id: string } }) {
   const nomeMedico = (i: string) => MEDICOS.find((m) => m.id === i)?.nome ?? i;
 
   const medicoResp = medicoUltimaConsulta(historico, nomeMedico);
-  const medicoExec = medicoExecutanteFuturo(historico, nomeMedico);
   const exameRecente = exameMaisRecente(historico, nomeExame);
+  const medicoExec = medicoExecutanteDoExame(historico, nomeMedico);
 
   return (
     <div>
