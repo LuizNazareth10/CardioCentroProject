@@ -7,6 +7,7 @@ import type { Paciente, SlotDisponivel, TipoAparelho } from '@/lib/types';
 import type { ItemProposta, Proposta } from '@/lib/scheduling/engine';
 import { fmtData, fmtHora } from '@/lib/format';
 import { hhmmToMin, toISO } from '@/lib/scheduling/time';
+import { DataPagina } from '@/components/DataPagina';
 
 type Passo = 1 | 2 | 3;
 
@@ -33,6 +34,7 @@ function AgendarConteudo() {
   const aparelhoForcado = (searchParams.get('aparelho') || '') as TipoAparelho | '';
   const dataForcada = searchParams.get('data') || '';
   const horaForcada = searchParams.get('hora') || '';
+  const excecaoForcada = searchParams.get('excecao') === '1';
   const slotForcado = !!((medicoForcadoId || aparelhoForcado) && dataForcada && horaForcada);
   const medicoForcado = MEDICOS.find((m) => m.id === medicoForcadoId);
   const aparelhoCfg = aparelhoForcado ? APARELHOS[aparelhoForcado] : null;
@@ -52,6 +54,7 @@ function AgendarConteudo() {
   const [erro, setErro] = useState('');
   const [avisoExame, setAvisoExame] = useState('');
   const [pendente, setPendente] = useState<Array<{ exameId: string; medicoId: string; inicio: string; fim: string }> | null>(null);
+  const [observacao, setObservacao] = useState('');
   const [modoPaciente, setModoPaciente] = useState<'buscar' | 'cadastrar'>('buscar');
   const [novoPaciente, setNovoPaciente] = useState({
     nome: '', telefone: '', convenioId: 'particular',
@@ -210,6 +213,7 @@ function AgendarConteudo() {
       pacienteId: paciente.id, pacienteNome: paciente.nome,
       medicoId: i.medicoId, exameId: i.exameId, convenioId,
       inicio: i.inicio, fim: i.fim, status: 'agendado', origem: 'sistema',
+      ...(observacao.trim() ? { observacao: observacao.trim().slice(0, 280) } : {}),
     }));
     const res = await fetch('/api/agendamentos', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -239,12 +243,17 @@ function AgendarConteudo() {
   return (
     <div className="max-w-3xl">
       <h1 className="font-serif text-3xl font-bold tracking-tight text-navy-900">Novo agendamento</h1>
+      <DataPagina />
       <Stepper passo={passo} />
 
       {slotForcado && passo !== 3 && (
-        <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-cardio/30 bg-cardio/5 px-4 py-3 text-sm">
+        <div className={`mt-4 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm ${excecaoForcada ? 'border-amber-300 bg-amber-50' : 'border-cardio/30 bg-cardio/5'}`}>
           <div className="text-navy-900">
-            Horário selecionado: <strong>{fmtData(dataForcada + 'T00:00')} às {horaForcada}</strong> — {prestadorForcado}
+            {excecaoForcada ? (
+              <>Exceção · horário fora da janela: <strong>{fmtData(dataForcada + 'T00:00')} às {horaForcada}</strong> — {prestadorForcado}</>
+            ) : (
+              <>Horário selecionado: <strong>{fmtData(dataForcada + 'T00:00')} às {horaForcada}</strong> — {prestadorForcado}</>
+            )}
           </div>
           <button className="text-xs font-semibold text-brand-red hover:underline" onClick={() => router.push('/agenda')}>
             Trocar horário
@@ -531,6 +540,8 @@ function AgendarConteudo() {
               convenioNome={CONVENIOS.find((c) => c.id === convenioId)?.nome ?? convenioId}
               nomeExame={nomeExame}
               nomeMedico={nomeMedico}
+              observacao={observacao}
+              onObservacao={setObservacao}
               carregando={carregando}
               onConfirmar={confirmarAgendamento}
               onCancelar={() => setPendente(null)}
@@ -542,12 +553,14 @@ function AgendarConteudo() {
   );
 }
 
-function ModalConfirmacao({ paciente, itens, convenioNome, nomeExame, nomeMedico, carregando, onConfirmar, onCancelar }: {
+function ModalConfirmacao({ paciente, itens, convenioNome, nomeExame, nomeMedico, observacao, onObservacao, carregando, onConfirmar, onCancelar }: {
   paciente: Paciente;
   itens: Array<{ exameId: string; medicoId: string; inicio: string; fim: string }>;
   convenioNome: string;
   nomeExame: (id: string) => string;
   nomeMedico: (id: string) => string;
+  observacao: string;
+  onObservacao: (v: string) => void;
   carregando: boolean;
   onConfirmar: () => void;
   onCancelar: () => void;
@@ -577,6 +590,18 @@ function ModalConfirmacao({ paciente, itens, convenioNome, nomeExame, nomeMedico
             </li>
           ))}
         </ul>
+
+        <div className="mt-4">
+          <label className="label">Observação (opcional)</label>
+          <textarea
+            className="input min-h-[72px] resize-y"
+            value={observacao}
+            onChange={(e) => onObservacao(e.target.value)}
+            maxLength={280}
+            placeholder="Ex.: paciente criança, cadeirante, alergia, prioridade…"
+          />
+          <p className="mt-1 text-[11px] text-muted">Aparece na agenda junto ao horário.</p>
+        </div>
 
         <div className="mt-6 flex gap-3">
           <button type="button" className="btn-ghost flex-1" disabled={carregando} onClick={onCancelar}>

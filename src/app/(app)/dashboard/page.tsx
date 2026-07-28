@@ -1,30 +1,42 @@
 import Link from 'next/link';
-import { contarPacientes, listarAgendamentos } from '@/lib/db';
+import { listarAgendamentos } from '@/lib/db';
 import { EXAMES, MEDICOS } from '@/lib/seed-data';
-import { fmtHora, hojeJF, fmtDataExtenso } from '@/lib/format';
+import { fmtHora, hojeJF } from '@/lib/format';
+import { weekdayOf, semanaQuinzenalAtiva } from '@/lib/scheduling/time';
+import { DataPagina } from '@/components/DataPagina';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Dashboard() {
   const hoje = hojeJF();
-  // só os agendamentos de HOJE (query indexada) + a CONTAGEM de pacientes
-  // por agregação — não mais a leitura das duas coleções inteiras.
-  const [doDiaBruto, totalPacientes] = await Promise.all([
-    listarAgendamentos({ de: `${hoje}T00:00:00-03:00`, ate: `${hoje}T23:59:59-03:00` }),
-    contarPacientes(),
-  ]);
+  const doDiaBruto = await listarAgendamentos({
+    de: `${hoje}T00:00:00-03:00`,
+    ate: `${hoje}T23:59:59-03:00`,
+  });
   const doDia = doDiaBruto
     .filter((a) => a.status !== 'cancelado')
     .sort((a, b) => a.inicio.localeCompare(b.inicio));
+
+  const wd = weekdayOf(hoje);
+  const semanaAtiva = semanaQuinzenalAtiva(hoje);
+  const medicosHoje = MEDICOS.filter(
+    (m) =>
+      m.ativo &&
+      m.disponibilidade.some((j) => j.weekday === wd && (!j.quinzenal || semanaAtiva)),
+  );
+
+  const confirmados = doDia.filter((a) => a.status === 'confirmado' || a.status === 'chegou' || a.status === 'em_atendimento').length;
+  const naClinica = doDia.filter((a) => a.status === 'chegou' || a.status === 'em_atendimento').length;
+  const pendentes = doDia.filter((a) => a.status === 'agendado').length;
 
   const nomeExame = (id: string) => EXAMES.find((e) => e.id === id)?.nome ?? id;
   const nomeMedico = (id: string) => MEDICOS.find((m) => m.id === id)?.nome ?? id;
 
   const stats = [
     { label: 'Exames hoje', valor: doDia.length, cor: 'text-navy-700' },
-    { label: 'Pacientes cadastrados', valor: totalPacientes, cor: 'text-navy-700' },
-    { label: 'Médicos ativos', valor: MEDICOS.filter((m) => m.ativo).length, cor: 'text-brand-red' },
-    { label: 'Exames disponíveis', valor: EXAMES.filter((e) => e.ativo).length, cor: 'text-brand-red' },
+    { label: 'Médicos na clínica', valor: medicosHoje.length, cor: 'text-navy-700' },
+    { label: 'Confirmados / na clínica', valor: `${confirmados}${naClinica > 0 ? ` · ${naClinica} aqui` : ''}`, cor: 'text-brand-red' },
+    { label: 'Aguardando confirmação', valor: pendentes, cor: 'text-brand-red' },
   ];
 
   return (
@@ -32,7 +44,7 @@ export default async function Dashboard() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-serif text-3xl font-bold tracking-tight text-navy-900">Painel</h1>
-          <p className="text-sm capitalize text-muted">{fmtDataExtenso(hoje)}</p>
+          <DataPagina data={hoje} />
         </div>
         <Link href="/agendar" className="btn-red">+ Novo agendamento</Link>
       </header>
@@ -42,6 +54,11 @@ export default async function Dashboard() {
           <div key={s.label} className="card p-5">
             <div className={`text-3xl font-extrabold ${s.cor}`}>{s.valor}</div>
             <div className="mt-1 text-sm text-muted">{s.label}</div>
+            {s.label === 'Médicos na clínica' && medicosHoje.length > 0 && (
+              <div className="mt-2 truncate text-[11px] text-muted">
+                {medicosHoje.map((m) => m.nome.replace(/^Dr[a]?\.\s*/, '')).join(' · ')}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -62,6 +79,9 @@ export default async function Dashboard() {
                 <div className="flex-1">
                   <div className="text-sm font-semibold text-ink">{a.pacienteNome}</div>
                   <div className="text-xs text-muted">{nomeExame(a.exameId)} · {nomeMedico(a.medicoId)}</div>
+                  {a.observacao && (
+                    <div className="mt-0.5 text-xs font-medium text-amber-800">Obs.: {a.observacao}</div>
+                  )}
                 </div>
                 <span className={`badge ${a.origem === 'whatsapp' ? 'bg-green-50 text-green-700' : 'bg-navy-50 text-navy-700'}`}>
                   {a.origem === 'whatsapp' ? 'WhatsApp' : 'Sistema'}

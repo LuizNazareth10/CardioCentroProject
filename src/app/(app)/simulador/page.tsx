@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { DataPagina } from '@/components/DataPagina';
 
 type Botao = { id: string; titulo: string };
 type SecaoLista = { titulo: string; itens: Array<{ id: string; titulo: string; descricao?: string }> };
@@ -88,7 +89,8 @@ export default function SimuladorPage() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-serif text-3xl font-bold tracking-tight text-navy-900">Simulador do WhatsApp</h1>
-          <p className="text-sm text-muted">Teste o agente exatamente como o paciente veria — sem precisar da Meta.</p>
+          <DataPagina />
+          <p className="mt-1 text-sm text-muted">Teste o agente exatamente como o paciente veria — sem precisar da Meta.</p>
         </div>
         <button className="btn-outline" onClick={reiniciar}>↻ Novo paciente</button>
       </header>

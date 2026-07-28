@@ -5,8 +5,9 @@ import type { Agendamento, Paciente, Triagem } from '@/lib/types';
 import { CONVENIOS, EXAMES, MEDICOS } from '@/lib/seed-data';
 import { STATUS_AGENDAMENTO_BADGE, STATUS_AGENDAMENTO_LABEL } from '@/lib/status-agendamento';
 import { fmtData, fmtHora, idade, iniciais } from '@/lib/format';
-import { FichaIdentidadePrint, medicoUltimaConsulta, exameMaisRecente, type ExameMaisRecente } from '@/components/FichaIdentidadePrint';
+import { FichaIdentidadePrint, medicoUltimaConsulta, medicoExecutanteFuturo, exameMaisRecente, type ExameMaisRecente } from '@/components/FichaIdentidadePrint';
 import { Printer } from 'lucide-react';
+import { DataPagina } from '@/components/DataPagina';
 
 type Aba = 'identidade' | 'historico' | 'triagens';
 
@@ -50,11 +51,19 @@ export default function PacientePage({ params }: { params: { id: string } }) {
   const nomeMedico = (i: string) => MEDICOS.find((m) => m.id === i)?.nome ?? i;
 
   const medicoResp = medicoUltimaConsulta(historico, nomeMedico);
+  const medicoExec = medicoExecutanteFuturo(historico, nomeMedico);
   const exameRecente = exameMaisRecente(historico, nomeExame);
 
   return (
     <div>
-      <FichaIdentidadePrint paciente={paciente} convenio={conv} medicoResponsavel={medicoResp} exameRecente={exameRecente} />
+      <DataPagina />
+      <FichaIdentidadePrint
+        paciente={paciente}
+        convenio={conv}
+        medicoSolicitante={medicoResp}
+        medicoExecutante={medicoExec}
+        exameRecente={exameRecente}
+      />
 
       {/* cabeçalho do paciente */}
       <div className="card p-5">
@@ -87,7 +96,8 @@ export default function PacientePage({ params }: { params: { id: string } }) {
           <IdentidadeView
             paciente={paciente}
             convenio={conv}
-            medicoResponsavel={medicoResp}
+            medicoSolicitante={medicoResp}
+            medicoExecutante={medicoExec}
             exameRecente={exameRecente}
             onAtualizado={carregar}
           />
@@ -127,10 +137,11 @@ export default function PacientePage({ params }: { params: { id: string } }) {
   );
 }
 
-function IdentidadeView({ paciente, convenio, medicoResponsavel, exameRecente, onAtualizado }: {
+function IdentidadeView({ paciente, convenio, medicoSolicitante, medicoExecutante, exameRecente, onAtualizado }: {
   paciente: Paciente;
   convenio: string;
-  medicoResponsavel: string;
+  medicoSolicitante: string;
+  medicoExecutante: string;
   exameRecente: ExameMaisRecente | null;
   onAtualizado: () => void;
 }) {
@@ -300,7 +311,8 @@ function IdentidadeView({ paciente, convenio, medicoResponsavel, exameRecente, o
               <Bloco titulo="Data de cadastro" texto={fmtData(paciente.criadoEm)} />
               <Bloco titulo="Convênio" texto={convenio} />
               <Bloco titulo="Carteirinha" texto={paciente.carteirinha} />
-              <Bloco titulo="Médico solicitante" texto={medicoResponsavel} />
+              <Bloco titulo="Médico solicitante" texto={medicoSolicitante} />
+              <Bloco titulo="Médico executante" texto={medicoExecutante} />
               <Bloco titulo="Peso" texto={paciente.fichaMedica?.pesoKg ? `${paciente.fichaMedica.pesoKg} kg` : undefined} />
               <Bloco titulo="Altura" texto={paciente.fichaMedica?.alturaCm ? `${paciente.fichaMedica.alturaCm} cm` : undefined} />
               <Bloco titulo="Registro nº" texto={paciente.id} />

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { Conversa, StatusAtendimento } from '@/lib/types';
+import { DataPagina } from '@/components/DataPagina';
 
 const STATUS_META: Record<StatusAtendimento, { label: string; cls: string }> = {
   aguardando: { label: 'Aguardando', cls: 'bg-amber-50 text-amber-700' },
@@ -50,7 +51,8 @@ export default function AtendimentosPage() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-serif text-3xl font-bold tracking-tight text-navy-900">Atendimentos</h1>
-          <p className="text-sm text-muted">
+          <DataPagina />
+          <p className="mt-1 text-sm text-muted">
             Conversas do WhatsApp transferidas para a recepção
             {aguardando > 0 && <span className="ml-2 badge bg-amber-50 text-amber-700">{aguardando} aguardando</span>}
           </p>

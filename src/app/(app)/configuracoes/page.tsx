@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { ClinicConfig, ExameOverride, ModoAgente } from '@/lib/clinic-config';
 import type { Exame } from '@/lib/types';
+import { DataPagina } from '@/components/DataPagina';
 
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -73,7 +74,8 @@ export default function ConfiguracoesPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-serif text-3xl font-bold tracking-tight text-navy-900">Configurações</h1>
-          <p className="text-sm text-muted">Médicos, exames, convênios e contato da clínica.</p>
+          <DataPagina />
+          <p className="mt-1 text-sm text-muted">Médicos, exames, convênios e contato da clínica.</p>
         </div>
         <button type="button" className="btn-red" disabled={salvando || !config.editavel} onClick={salvar}>
           {salvando ? 'Salvando…' : 'Salvar alterações'}

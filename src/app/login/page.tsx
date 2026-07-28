@@ -2,11 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { Eye, EyeOff } from 'lucide-react';
 import { LogoLockup } from '@/components/Logo';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
+  const [mostrarSenha, setMostrarSenha] = useState(false);
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
 
@@ -79,8 +81,24 @@ export default function LoginPage() {
             </div>
             <div>
               <label className="label">Senha</label>
-              <input className="input" type="password" value={senha}
-                onChange={(e) => setSenha(e.target.value)} required />
+              <div className="relative">
+                <input
+                  className="input pr-11"
+                  type={mostrarSenha ? 'text' : 'password'}
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setMostrarSenha((v) => !v)}
+                  className="absolute inset-y-0 right-0 grid w-11 place-items-center text-muted hover:text-navy-700"
+                  aria-label={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {mostrarSenha ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+                </button>
+              </div>
             </div>
             {erro && <p className="text-sm font-medium text-brand-red">{erro}</p>}
             <button type="submit" className="btn-primary w-full" disabled={carregando}>

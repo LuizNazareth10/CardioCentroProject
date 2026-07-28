@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CONVENIOS } from '@/lib/seed-data';
+import { DataPagina } from '@/components/DataPagina';
 
 const FATORES: Array<{ key: string; label: string }> = [
   { key: 'hipertensao', label: 'Hipertensão (HAS)' },
@@ -55,7 +56,8 @@ export default function NovoPaciente() {
   return (
     <form onSubmit={salvar} className="max-w-3xl">
       <h1 className="font-serif text-3xl font-bold tracking-tight text-navy-900">Novo paciente</h1>
-      <p className="text-sm text-muted">Ficha médica inicial — padrão cardiologia.</p>
+      <DataPagina />
+      <p className="mt-1 text-sm text-muted">Ficha médica inicial — padrão cardiologia.</p>
 
       <section className="mt-5 card p-5">
         <h2 className="mb-4 font-bold text-navy-900">Dados pessoais</h2>

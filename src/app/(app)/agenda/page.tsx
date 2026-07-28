@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { APARELHOS, MEDICOS, EXAMES } from '@/lib/seed-data';
 import type { Agendamento, Medico, StatusAgendamento, TipoAparelho, Weekday } from '@/lib/types';
 import { hhmmToMin, minToHHMM, semanaQuinzenalAtiva, weekdayOf } from '@/lib/scheduling/time';
-import { fmtDataExtenso, hojeJF } from '@/lib/format';
+import { hojeJF } from '@/lib/format';
+import { DataPagina } from '@/components/DataPagina';
 import { STATUS_AGENDAMENTO_COR, STATUS_AGENDAMENTO_LABEL } from '@/lib/status-agendamento';
 
 const GRID = 15;
@@ -161,10 +162,11 @@ function AgendaConteudo() {
   const spanDe = (ag: Agendamento) =>
     Math.max(1, (hhmmToMin(ag.fim.slice(11, 16)) - hhmmToMin(ag.inicio.slice(11, 16))) / GRID);
 
-  function abrir(medicoOuAparelho: { medico?: string; aparelho?: TipoAparelho }, t: number) {
+  function abrir(medicoOuAparelho: { medico?: string; aparelho?: TipoAparelho }, t: number, excecao = false) {
     const p = new URLSearchParams({ data, hora: minToHHMM(t) });
     if (medicoOuAparelho.medico) p.set('medico', medicoOuAparelho.medico);
     if (medicoOuAparelho.aparelho) p.set('aparelho', medicoOuAparelho.aparelho);
+    if (excecao) p.set('excecao', '1');
     router.push(`/agendar?${p.toString()}`);
   }
 
@@ -183,11 +185,16 @@ function AgendaConteudo() {
       onClick={() => setAcaoAg(ag)}
       className={`absolute inset-x-0.5 overflow-hidden rounded-lg px-2 py-2 text-left text-white shadow-soft transition hover:brightness-110 ${STATUS_AGENDAMENTO_COR[ag.status]} ${destaqueId === ag.id ? 'ring-2 ring-cardio ring-offset-2 animate-pulse' : ''}`}
       style={{ height: `calc(${span * ROW_H}px - 4px)` }}
-      title={`${rotuloPaciente(ag.pacienteId)} · ${ag.pacienteNome} · ${nomeExame(ag.exameId)} (${STATUS_AGENDAMENTO_LABEL[ag.status]})`}
+      title={`${rotuloPaciente(ag.pacienteId)} · ${ag.pacienteNome} · ${nomeExame(ag.exameId)}${ag.observacao ? ` · Obs.: ${ag.observacao}` : ''} (${STATUS_AGENDAMENTO_LABEL[ag.status]})`}
     >
       <div className="truncate text-[11px] font-bold leading-snug">{ag.pacienteNome}</div>
       <div className="truncate text-[9px] font-semibold uppercase tracking-wide text-white/80">{rotuloPaciente(ag.pacienteId)}</div>
       <div className={`text-[10px] leading-snug text-white/75 ${span >= 2 ? 'line-clamp-2' : 'truncate'}`}>{nomeExame(ag.exameId)}</div>
+      {ag.observacao && (
+        <div className={`mt-0.5 text-[10px] font-semibold leading-snug text-amber-100 ${span >= 2 ? 'line-clamp-2' : 'truncate'}`}>
+          Obs.: {ag.observacao}
+        </div>
+      )}
     </button>
   );
 
@@ -201,7 +208,7 @@ function AgendaConteudo() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-serif text-3xl font-bold tracking-tight text-navy-900">Agenda</h1>
-          <p className="text-sm capitalize text-muted">{fmtDataExtenso(data)}</p>
+          <DataPagina data={data} />
         </div>
         <div className="flex items-center gap-2">
           <button className="btn-outline" aria-label="Dia anterior" onClick={() => setData(shift(data, -1))}>←</button>
@@ -227,7 +234,7 @@ function AgendaConteudo() {
         <span className="flex items-center gap-1.5"><i className="h-3.5 w-3.5 rounded bg-danger" /> Chegou</span>
         <span className="flex items-center gap-1.5"><i className="h-3.5 w-3.5 rounded bg-warning" /> Em atendimento</span>
         <span className="flex items-center gap-1.5"><i className="h-3.5 w-3.5 rounded bg-info" /> Realizado</span>
-        <span className="flex items-center gap-1.5"><i className="slot-bloqueado h-3.5 w-3.5 rounded ring-1 ring-inset ring-navy-100" /> Bloqueado · fora do horário</span>
+        <span className="flex items-center gap-1.5"><i className="slot-bloqueado h-3.5 w-3.5 rounded ring-1 ring-inset ring-navy-100" /> Bloqueado · clique p/ liberar exceção</span>
         <span className="flex items-center gap-1.5"><i className="h-3.5 w-3.5 rounded bg-cardio" /> Agora</span>
       </div>
 
@@ -295,15 +302,40 @@ function AgendaConteudo() {
                     {colunas.map((c) => {
                       const cellCls = `min-w-0 border-l border-navy-100/60`;
                       if (c.tipo === 'medico') {
-                        if (!c.atende) return <div key={c.key} className={`slot-off-dia ${cellCls}`} />;
+                        if (!c.atende) {
+                          return (
+                            <CelulaExcecao
+                              key={c.key}
+                              className={`slot-off-dia ${cellCls}`}
+                              onClick={() => abrir({ medico: c.medico.id }, t, true)}
+                              titulo={`Liberar horário com ${c.medico.nome} às ${minToHHMM(t)} (médico sem atendimento neste dia)`}
+                            />
+                          );
+                        }
                         const { ag, dentro } = celulaMedico(c.medico, t);
                         if (ag && !ehInicio(ag, t)) return <div key={c.key} className={cellCls} />;
                         if (ag) return <div key={c.key} className={`relative ${cellCls} p-0.5`}>{blocoOcupado(ag, spanDe(ag))}</div>;
                         return dentro
                           ? <CelulaLivre key={c.key} onClick={() => abrir({ medico: c.medico.id }, t)} titulo={`Agendar com ${c.medico.nome} às ${minToHHMM(t)}`} />
-                          : <div key={c.key} className={`slot-bloqueado ${cellCls}`} title="Fora do horário de atendimento" />;
+                          : (
+                            <CelulaExcecao
+                              key={c.key}
+                              className={`slot-bloqueado ${cellCls}`}
+                              onClick={() => abrir({ medico: c.medico.id }, t, true)}
+                              titulo={`Liberar horário com ${c.medico.nome} às ${minToHHMM(t)} (fora da janela)`}
+                            />
+                          );
                       }
-                      if (!c.slots.has(t)) return <div key={c.key} className={`slot-bloqueado ${cellCls}`} title="Sem coleta neste horário" />;
+                      if (!c.slots.has(t)) {
+                        return (
+                          <CelulaExcecao
+                            key={c.key}
+                            className={`slot-bloqueado ${cellCls}`}
+                            onClick={() => abrir({ aparelho: c.aparelho }, t, true)}
+                            titulo={`Liberar coleta ${c.nome} às ${minToHHMM(t)} (fora dos horários fixos)`}
+                          />
+                        );
+                      }
                       const ag = apptAparelho(c.aparelho, t);
                       if (ag) return <div key={c.key} className={`relative ${cellCls} p-0.5`}>{blocoOcupado(ag, 1)}</div>;
                       return <CelulaLivre key={c.key} onClick={() => abrir({ aparelho: c.aparelho }, t)} titulo={`Agendar ${c.nome} às ${minToHHMM(t)}`} />;
@@ -335,6 +367,20 @@ function CelulaLivre({ onClick, titulo }: { onClick: () => void; titulo: string 
   );
 }
 
+/** Horário rachurado / fora da janela — clique libera exceção sem mudar o visual padrão. */
+function CelulaExcecao({ onClick, titulo, className }: { onClick: () => void; titulo: string; className: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={titulo}
+      className={`group relative h-full w-full transition-colors hover:brightness-[0.97] ${className}`}
+    >
+      <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-bold text-navy-500 opacity-0 transition-opacity group-hover:opacity-100">+</span>
+    </button>
+  );
+}
+
 function PopoverAcao({ ag, nomeExame, onFechar, onStatus, onFicha }: {
   ag: Agendamento; nomeExame: (id: string) => string; onFechar: () => void;
   onStatus: (id: string, s: StatusAgendamento) => void; onFicha: () => void;
@@ -355,6 +401,11 @@ function PopoverAcao({ ag, nomeExame, onFechar, onStatus, onFicha }: {
         <div className="text-xs text-muted">
           {nomeExame(ag.exameId)} · {ag.inicio.slice(11, 16)}–{ag.fim.slice(11, 16)}
         </div>
+        {ag.observacao && (
+          <div className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+            Obs.: {ag.observacao}
+          </div>
+        )}
         <span className="badge mt-2 bg-navy-50 text-navy-700">{STATUS_AGENDAMENTO_LABEL[ag.status]}</span>
 
         <div className="mt-4 space-y-1.5">
