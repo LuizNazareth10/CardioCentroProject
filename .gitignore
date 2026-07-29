@@ -59,3 +59,5 @@ Desktop.ini
 
 # QR code de pareamento do WhatsApp (teste local via deploy/)
 deploy/*.png
+.vercel
+.env*
