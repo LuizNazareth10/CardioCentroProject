@@ -56,6 +56,12 @@ export async function POST(req: NextRequest) {
 }
 
 // PATCH /api/agendamentos  { id, status } — muda o status (confirmar/realizado/faltou/cancelar)
+//
+// Dois status carimbam a HORA EXATA do clique, para a clínica medir espera e
+// duração real do atendimento: "chegou" grava `chegouEm` e "realizado" grava
+// `finalizadoEm`. O carimbo é do servidor (não do relógio do navegador) e
+// sobrescreve em caso de reclique — que é como a recepção corrige um marco
+// registrado fora de hora.
 export async function PATCH(req: NextRequest) {
   if (!(await lerSessao())) return NextResponse.json({ erro: 'não autorizado' }, { status: 401 });
   const body = await req.json();
@@ -63,6 +69,20 @@ export async function PATCH(req: NextRequest) {
   const status = body.status as StatusAgendamento;
   if (!id) return NextResponse.json({ erro: 'id obrigatório' }, { status: 400 });
   if (!STATUS_VALIDOS.includes(status)) return NextResponse.json({ erro: 'status inválido' }, { status: 400 });
-  await atualizarAgendamento(id, { status });
+
+  const patch: Partial<Agendamento> = { status };
+  const agora = agoraJF();
+  if (status === 'chegou') patch.chegouEm = agora;
+  if (status === 'realizado') patch.finalizadoEm = agora;
+
+  await atualizarAgendamento(id, patch);
   return NextResponse.json({ ok: true });
+}
+
+/** "agora" no fuso da clínica, no mesmo formato ISO dos demais campos. */
+function agoraJF(): string {
+  const d = new Date();
+  const data = d.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  const hora = d.toLocaleTimeString('en-GB', { timeZone: 'America/Sao_Paulo', hour12: false });
+  return `${data}T${hora}-03:00`;
 }

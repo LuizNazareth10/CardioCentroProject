@@ -119,6 +119,21 @@ export interface Agendamento {
   criadoEm: string;
   /** ISO datetime de quando o lembrete de confirmação (1 dia antes) foi enviado pelo agente */
   lembreteEnviadoEm?: string;
+
+  // ---- marcos de tempo do dia do exame (registrados pela recepção) ----
+  // Gravados no momento EXATO do clique na agenda, para a clínica medir
+  // espera e duração real do atendimento. Reclicar o mesmo botão sobrescreve
+  // (serve como correção quando a recepção marca fora de hora).
+  /** ISO datetime do clique em "Paciente chegou" (vermelho) */
+  chegouEm?: string;
+  /** ISO datetime do clique em "Finalizar atendimento" (azul) */
+  finalizadoEm?: string;
+
+  // ---- rastro de remarcação ----
+  /** ISO datetime da última remarcação (o registro é movido, não duplicado) */
+  remarcadoEm?: string;
+  /** início que este agendamento tinha ANTES da última remarcação */
+  inicioAnterior?: string;
 }
 
 // ---------- Cadastro de paciente / prontuário ----------

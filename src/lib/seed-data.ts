@@ -131,6 +131,27 @@ export const CONVENIOS_TRANSBORDO_IMEDIATO_IDS: string[] = CONVENIOS
   .filter((c) => NOMES_CONVENIOS_TRANSBORDO.includes(c.nome))
   .map((c) => c.id);
 
+// Planos que a clínica NÃO atende DENTRO de um convênio que, no geral, é
+// aceito. O agente avisa antes de fechar o convênio e pergunta se é o caso —
+// se for (ou se o paciente não souber), a conversa vai para a recepção, para
+// não agendar alguém que seria recusado na chegada.
+const RESTRICOES_DE_PLANO: Array<{ convenio: string; planos: string[] }> = [
+  { convenio: 'Unimed', planos: ['Unimed Mix', 'Unimed Fácil'] },
+  { convenio: 'Bradesco', planos: ['Bradesco Sistel'] },
+];
+
+/** id do convênio → planos não atendidos dentro dele */
+export const PLANOS_NAO_ATENDIDOS: Record<string, string[]> = Object.fromEntries(
+  RESTRICOES_DE_PLANO
+    .map((r) => [CONVENIOS.find((c) => c.nome === r.convenio)?.id, r.planos] as const)
+    .filter((par): par is readonly [string, string[]] => Boolean(par[0])),
+);
+
+/** texto pronto das restrições, para o contexto da IA responder dúvidas soltas */
+export const RESUMO_PLANOS_NAO_ATENDIDOS: string = RESTRICOES_DE_PLANO
+  .map((r) => `${r.convenio}: NÃO atendemos ${r.planos.join(' nem ')} (os demais planos ${r.convenio} são atendidos)`)
+  .join('. ');
+
 // ids de exame usados nas janelas (atalhos legíveis)
 const ECO = 'eco-doppler';
 const CARO = 'duplex-carotidas';

@@ -1,12 +1,23 @@
-import { APARELHOS, CONVENIOS, CONVENIOS_REQUEREM_AUTORIZACAO_IDS, CONVENIOS_TRANSBORDO_IMEDIATO_IDS, EXAMES, MEDICOS } from '../seed-data';
+import { APARELHOS, CONVENIOS, CONVENIOS_REQUEREM_AUTORIZACAO_IDS, CONVENIOS_TRANSBORDO_IMEDIATO_IDS, EXAMES, MEDICOS, PLANOS_NAO_ATENDIDOS } from '../seed-data';
 import { atualizarAgendamento, criarAgendamentos, criarPaciente, listarAgendamentos, obterPacientePorTelefone, registrarLeadWhatsapp, registrarMensagem } from '../db';
 import { gerarSlots, gerarSlotsAparelho, proporSessao } from '../scheduling/engine';
+import { aplicarRemarcacao, planejarRemarcacao } from '../scheduling/remarcar';
 import { fmtData, fmtDiaCurto, fmtHora } from '../format';
 import { baixarMidia, enviarBotoes, enviarLista, enviarTexto } from './client';
 import {
   mensagemAgendamentoCancelado,
   mensagemAgendamentoConfirmado,
+  mensagemAvisoPlanoNaoAtendido,
   mensagemBoasVindasAgendamento,
+  mensagemBuscandoNovosHorarios,
+  mensagemConfirmarRemarcacao,
+  mensagemMenuComAgendamento,
+  mensagemPlanoNaoAtendidoTransbordo,
+  mensagemRemarcacaoConfirmada,
+  mensagemRemarcacaoFalhou,
+  mensagemRemarcacaoMantida,
+  mensagemResumoRemarcacao,
+  mensagemSemAgendamentoParaRemarcar,
   mensagemConfirmacaoLembreteRecebida,
   mensagemConfirmarPedidoMedico,
   mensagemConvenioNaoEncontrado,
@@ -39,7 +50,7 @@ import {
   mensagemUrgencia,
   montarOrientacoesExames,
 } from './messages';
-import { carregarSessao, limparSessao, salvarSessao, type ConversaState } from './session';
+import { carregarSessao, limparSessao, salvarSessao, type AgendamentoFuturoState, type ConversaState } from './session';
 import { interpretar, lerPedidoMedico } from './ai';
 import { nomeExameDisplay, nomeExameLista, descricaoExameLista } from '../exames-display';
 
@@ -122,6 +133,7 @@ export async function processarMensagem(
   if (['menu', 'oi', 'olá', 'ola', 'início', 'inicio', 'começar', 'comecar'].includes(vlow)) {
     s.etapa = 'menu'; s.examesSelecionados = []; s.medicoPreferidoId = undefined;
     s.opcoes = undefined; s.propostas = undefined; s.aguardandoConvenio = undefined;
+    s.remarcandoId = undefined; s.planoConfirmado = undefined;
   }
 
   switch (s.etapa) {
@@ -132,6 +144,7 @@ export async function processarMensagem(
         return enviarListaExames(from);
       }
       if (e.valor === 'falar_humano') return falarComHumano(from);
+      if (e.valor === 'remarcar') return iniciarRemarcacao(from, s);
       // confirmação dos exames lidos de um pedido médico (imagem)
       if (e.valor === 'img_sim' && s.examesSelecionados.length) {
         s.etapa = 'escolhendo_medico'; await salvarSessao(from, s);
@@ -161,6 +174,12 @@ export async function processarMensagem(
     case 'aguardando_documentos':
       return tratarDocumentosAutorizacao(from, s);
 
+    case 'confirmando_plano':
+      return tratarConfirmacaoPlano(from, s, e);
+
+    case 'confirmando_remarcacao':
+      return tratarConfirmacaoRemarcacao(from, s, e);
+
     case 'confirmando':
       return tratarConfirmacao(from, s, e);
 
@@ -170,8 +189,22 @@ export async function processarMensagem(
 }
 
 // -------- MENU --------
+// O menu é o ponto em que o agente "reconhece" o número: carrega do banco o
+// próximo exame marcado para aquele telefone e, se existir, muda a saudação e
+// oferece REMARCAR. Antes o paciente precisava ligar para a clínica.
 async function menuPrincipal(from: string, s: ConversaState) {
-  s.etapa = 'menu'; await salvarSessao(from, s);
+  s.etapa = 'menu';
+  const futuro = await carregarAgendamentoFuturo(from, s);
+  await salvarSessao(from, s);
+
+  if (futuro) {
+    return enviarBotoes(from, mensagemMenuComAgendamento(primeiroNome(s), futuro.resumo), [
+      { id: 'remarcar', titulo: 'Remarcar horário' },
+      { id: 'agendar', titulo: 'Marcar outro exame' },
+      { id: 'falar_humano', titulo: 'Falar c/ atendente' },
+    ]);
+  }
+
   await enviarBotoes(
     from,
     mensagemMenuPrincipal(primeiroNome(s)),
@@ -180,6 +213,153 @@ async function menuPrincipal(from: string, s: ConversaState) {
       { id: 'falar_humano', titulo: 'Falar c/ atendente' },
     ],
   );
+}
+
+// -------- AGENDAMENTO FUTURO (estado do número) --------
+
+/** status que ainda "valem" — um exame já realizado/cancelado não é remarcável */
+const STATUS_REMARCAVEIS = ['agendado', 'confirmado'];
+
+/**
+ * Lê do banco o próximo exame marcado deste telefone e guarda o resumo na
+ * sessão. Quando a sessão já tem um agendamento futuro válido (ainda no
+ * futuro), reaproveita — evita reler o banco a cada mensagem.
+ *
+ * Quando os exames foram marcados JUNTOS (mesmo `grupoId`), a âncora é o mais
+ * cedo e o resumo lista todos: é a sessão inteira que será movida.
+ */
+async function carregarAgendamentoFuturo(
+  from: string,
+  s: ConversaState,
+): Promise<AgendamentoFuturoState | null> {
+  const agora = agoraJF();
+  if (s.agendamentoFuturo && s.agendamentoFuturo.inicio > agora) return s.agendamentoFuturo;
+  if (s.futuroVerificado && !s.agendamentoFuturo) return null;
+  s.futuroVerificado = true;
+
+  const pac = await acharPacientePorTelefone(from);
+  if (!pac) { s.agendamentoFuturo = undefined; return null; }
+  s.pacienteId = pac.id;
+  if (!s.nome) s.nome = pac.nome;
+
+  const ags = await listarAgendamentos({ pacienteId: pac.id });
+  const futuros = ags
+    .filter((a) => STATUS_REMARCAVEIS.includes(a.status) && a.inicio > agora)
+    .sort((a, b) => a.inicio.localeCompare(b.inicio));
+  const ancora = futuros[0];
+  if (!ancora) { s.agendamentoFuturo = undefined; return null; }
+
+  // exames marcados na MESMA sessão andam juntos
+  const sessao = ancora.grupoId ? futuros.filter((a) => a.grupoId === ancora.grupoId) : [ancora];
+  const nomes = sessao.map((a) => nomeExame(a.exameId)).join(' + ');
+  const futuro: AgendamentoFuturoState = {
+    id: ancora.id,
+    inicio: ancora.inicio,
+    exameIds: sessao.map((a) => a.exameId),
+    resumo: `📅 *${nomes}*\n${fmtData(ancora.inicio)} às ${fmtHora(ancora.inicio)}`,
+  };
+  s.agendamentoFuturo = futuro;
+  return futuro;
+}
+
+// -------- REMARCAÇÃO (paciente pede outro horário) --------
+
+async function iniciarRemarcacao(from: string, s: ConversaState) {
+  const futuro = await carregarAgendamentoFuturo(from, s);
+  if (!futuro) {
+    s.etapa = 'menu'; await salvarSessao(from, s);
+    return enviarBotoes(from, mensagemSemAgendamentoParaRemarcar(), [
+      { id: 'agendar', titulo: 'Agendar exame' },
+      { id: 'falar_humano', titulo: 'Falar c/ atendente' },
+    ]);
+  }
+  s.etapa = 'confirmando_remarcacao'; await salvarSessao(from, s);
+  return enviarBotoes(from, mensagemConfirmarRemarcacao(futuro.resumo), [
+    { id: 'remarcar_sim', titulo: 'Ver novos horários' },
+    { id: 'remarcar_nao', titulo: 'Manter como está' },
+  ]);
+}
+
+/**
+ * O paciente confirmou que quer trocar de horário. Daqui em diante o fluxo é
+ * o MESMO do agendamento normal (mesmos exames, mesma busca de slots) — a
+ * única diferença é `remarcandoId`, que faz a confirmação final MOVER o
+ * registro em vez de criar um novo.
+ */
+async function tratarConfirmacaoRemarcacao(from: string, s: ConversaState, e: Entrada) {
+  const vlow = e.valor.trim().toLowerCase();
+  if (e.valor === 'remarcar_nao' || /^(n[ãa]o|manter|deixa)/.test(vlow)) {
+    s.etapa = 'menu'; s.remarcandoId = undefined; await salvarSessao(from, s);
+    return enviarTexto(from, mensagemRemarcacaoMantida());
+  }
+  if (e.valor === 'remarcar_sim' || /^(sim|quero|pode|vamos|ver)/.test(vlow)) {
+    const futuro = s.agendamentoFuturo ?? (await carregarAgendamentoFuturo(from, s));
+    if (!futuro) { s.etapa = 'menu'; await salvarSessao(from, s); return menuPrincipal(from, s); }
+    s.remarcandoId = futuro.id;
+    s.examesSelecionados = [...futuro.exameIds];
+    s.medicoPreferidoId = undefined; // sem preferência abre mais opções de horário
+    await salvarSessao(from, s);
+    await enviarTexto(from, mensagemBuscandoNovosHorarios());
+    return calcularEoferecer(from, s);
+  }
+  return rotearIA(from, s, e.valor);
+}
+
+/** resumo "Exame — 12/08 às 14:00" de uma proposta escolhida */
+function rotuloProposta(itens: Array<{ exameId: string; inicio: string }>): string {
+  const nomes = itens.map((i) => nomeExame(i.exameId)).join(' + ');
+  const ini = itens[0].inicio;
+  return `${nomes} — ${fmtData(ini)} às ${fmtHora(ini)}`;
+}
+
+async function mostrarConfirmacaoRemarcacao(from: string, s: ConversaState) {
+  s.etapa = 'confirmando'; await salvarSessao(from, s);
+  const escolhida = s.opcoes![0];
+  const de = s.agendamentoFuturo
+    ? `${fmtData(s.agendamentoFuturo.inicio)} às ${fmtHora(s.agendamentoFuturo.inicio)}`
+    : 'horário atual';
+  await enviarBotoes(
+    from,
+    mensagemResumoRemarcacao(de, rotuloProposta(escolhida.itens)),
+    [{ id: 'confirmar_sim', titulo: 'Confirmar ✅' }, { id: 'confirmar_nao', titulo: 'Voltar' }],
+  );
+}
+
+/**
+ * Aplica a remarcação usando o MESMO motor da área restrita
+ * (lib/scheduling/remarcar.ts): o registro é movido, a sessão inteira anda
+ * junta e o conflito é revalidado no momento de gravar.
+ */
+async function efetivarRemarcacao(from: string, s: ConversaState) {
+  const escolhida = s.opcoes![0];
+  const destino = escolhida.itens[0];
+  // passa as posições EXATAS calculadas pelo motor (respeitam janela do médico
+  // e a duração dele para cada exame) em vez de deixar o motor de remarcação
+  // deslocar às cegas.
+  const resultado = await planejarRemarcacao(s.remarcandoId!, {
+    inicio: destino.inicio,
+    medicoId: destino.medicoId,
+    colocacoes: escolhida.itens.map((i) => ({
+      exameId: i.exameId,
+      medicoId: i.medicoId,
+      inicio: i.inicio,
+      fim: i.fim,
+    })),
+  });
+
+  if (!resultado.ok) {
+    // alguém ocupou o horário entre a sugestão e a confirmação
+    await enviarTexto(from, mensagemRemarcacaoFalhou());
+    // força releitura do estado real do banco na próxima consulta
+    s.agendamentoFuturo = undefined; s.futuroVerificado = false;
+    await salvarSessao(from, s);
+    return calcularEoferecer(from, s);
+  }
+
+  await aplicarRemarcacao(resultado.plano);
+  const nome = s.nome?.split(' ')[0] ?? 'Paciente';
+  await limparSessao(from);
+  await enviarTexto(from, mensagemRemarcacaoConfirmada(nome, fmtData(destino.inicio), fmtHora(destino.inicio)));
 }
 
 // -------- EXAMES --------
@@ -393,6 +573,9 @@ async function tratarHorario(from: string, s: ConversaState, e: Entrada) {
     const escolhida = s.propostas?.[idx];
     if (escolhida) {
       s.opcoes = [{ rotulo: escolhida.rotulo, itens: escolhida.itens }]; // mantém apenas a escolhida
+      // REMARCANDO: paciente e convênio já são conhecidos (o agendamento já
+      // existe) — pula a identificação e vai direto para a confirmação.
+      if (s.remarcandoId) return mostrarConfirmacaoRemarcacao(from, s);
       s.etapa = 'identificacao'; await salvarSessao(from, s);
       // tenta achar paciente pelo telefone
       const pac = await acharPacientePorTelefone(from);
@@ -438,13 +621,17 @@ async function tratarIdentificacao(from: string, s: ConversaState, e: Entrada) {
     return enviarTexto(from, mensagemConvenioOutro());
   }
   if (e.valor.startsWith('conv:')) {
-    s.convenioId = e.valor.slice(5); s.aguardandoConvenio = false; await salvarSessao(from, s);
+    s.convenioId = e.valor.slice(5); s.aguardandoConvenio = false;
+    s.planoConfirmado = false; // convênio novo → o aviso de plano vale de novo
+    await salvarSessao(from, s);
     return avancarAposConvenio(from, s);
   }
   // texto livre: tenta casar com um convênio da lista completa
   const c = acharConvenio(e.valor);
   if (c) {
-    s.convenioId = c.id; s.aguardandoConvenio = false; await salvarSessao(from, s);
+    s.convenioId = c.id; s.aguardandoConvenio = false;
+    s.planoConfirmado = false;
+    await salvarSessao(from, s);
     return avancarAposConvenio(from, s);
   }
   if (s.aguardandoConvenio) {
@@ -464,12 +651,33 @@ function convenioExigeTransbordo(convenioId?: string): boolean {
   return !!convenioId && CONVENIOS_TRANSBORDO_IMEDIATO_IDS.includes(convenioId);
 }
 
+/** planos não atendidos DENTRO de um convênio aceito (ex.: Unimed Mix) */
+function planosNaoAtendidos(convenioId?: string): string[] {
+  return (convenioId && PLANOS_NAO_ATENDIDOS[convenioId]) || [];
+}
+
+function nomeConvenio(convenioId?: string): string {
+  return CONVENIOS.find((c) => c.id === convenioId)?.nome ?? convenioId ?? '';
+}
+
 /** após saber o convênio: transborda (se exigido), pede documentos, ou confirma */
 async function avancarAposConvenio(from: string, s: ConversaState) {
   // regra de negócio: alguns convênios (ex.: IPSEMG) não são fechados pelo
   // agente — a recepção conclui. Transbordo natural, sem explicar o motivo.
   if (convenioExigeTransbordo(s.convenioId)) {
     return transbordarParaFinalizarConvenio(from, s);
+  }
+
+  // a operadora é aceita, mas alguns planos dela não (ex.: Unimed Mix/Fácil,
+  // Bradesco Sistel). Perguntamos ANTES de marcar — descobrir isso só na
+  // recepção, no dia do exame, seria péssimo para o paciente.
+  const planos = planosNaoAtendidos(s.convenioId);
+  if (planos.length && !s.planoConfirmado) {
+    s.etapa = 'confirmando_plano'; await salvarSessao(from, s);
+    return enviarBotoes(from, mensagemAvisoPlanoNaoAtendido(nomeConvenio(s.convenioId), planos), [
+      { id: 'plano_ok', titulo: 'Não é esse plano' },
+      { id: 'plano_restrito', titulo: 'É esse / não sei' },
+    ]);
   }
   if (convenioRequerAutorizacao(s.convenioId) && (s.docsAutorizacaoRecebidos ?? 0) < 2) {
     return pedirDocumentosAutorizacao(from, s);
@@ -532,6 +740,40 @@ async function pedirDocumentosAutorizacao(from: string, s: ConversaState) {
   await enviarTexto(from, mensagemPedirDocumentosAutorizacao(nomeConvenio));
 }
 
+/**
+ * Resposta ao aviso de plano não atendido.
+ *
+ * A ordem dos testes importa: "não sei" começa com "não", mas significa
+ * INCERTEZA (vai para a recepção), não "não é esse plano". Por isso a
+ * incerteza é avaliada antes da negativa.
+ */
+async function tratarConfirmacaoPlano(from: string, s: ConversaState, e: Entrada) {
+  const v = e.valor.trim();
+  const vlow = normalizarTexto(v);
+  const planos = planosNaoAtendidos(s.convenioId);
+  const convenio = nomeConvenio(s.convenioId);
+
+  const incerto = /naosei|nsei|naotenhocerteza|acho|talvez|nomeio|nãosei/.test(vlow);
+  const afirmativo = /^(sim|e|eh|isso|exato|correto)/.test(vlow);
+  const negativo = /^(nao|outro|diferente)/.test(vlow);
+
+  if (e.valor === 'plano_ok' || (negativo && !incerto)) {
+    s.planoConfirmado = true; await salvarSessao(from, s);
+    return avancarAposConvenio(from, s);
+  }
+
+  if (e.valor === 'plano_restrito' || incerto || afirmativo) {
+    await enviarTexto(from, mensagemPlanoNaoAtendidoTransbordo(convenio, planos));
+    return falarComHumano(from);
+  }
+
+  // resposta que não dá para classificar → repete a pergunta com os botões
+  return enviarBotoes(from, mensagemAvisoPlanoNaoAtendido(convenio, planos), [
+    { id: 'plano_ok', titulo: 'Não é esse plano' },
+    { id: 'plano_restrito', titulo: 'É esse / não sei' },
+  ]);
+}
+
 /** texto/botão recebido enquanto aguardamos as fotos — só reforça o pedido */
 async function tratarDocumentosAutorizacao(from: string, s: ConversaState) {
   const nomeConvenio = CONVENIOS.find((c) => c.id === s.convenioId)?.nome ?? '';
@@ -582,10 +824,18 @@ async function mostrarConfirmacao(from: string, s: ConversaState) {
 
 async function tratarConfirmacao(from: string, s: ConversaState, e: Entrada) {
   if (e.valor === 'confirmar_nao' || /n[ãa]o|cancel/i.test(e.valor)) {
+    // numa remarcação, "não" significa desistir da MUDANÇA — o agendamento
+    // original continua de pé; não é o mesmo que cancelar um agendamento novo.
+    if (s.remarcandoId) {
+      s.remarcandoId = undefined; s.etapa = 'menu'; s.opcoes = undefined; s.propostas = undefined;
+      await salvarSessao(from, s);
+      return enviarTexto(from, mensagemRemarcacaoMantida());
+    }
     await limparSessao(from);
     return enviarTexto(from, mensagemAgendamentoCancelado());
   }
   if (e.valor === 'confirmar_sim' || /sim|confirm/i.test(e.valor)) {
+    if (s.remarcandoId) return efetivarRemarcacao(from, s);
     const escolhida = s.opcoes![0];
     // garante paciente
     let pacienteId = s.pacienteId;
@@ -628,7 +878,7 @@ async function tratarConfirmacao(from: string, s: ConversaState, e: Entrada) {
     await enviarPosConfirmacao(from, s.nome?.split(' ')[0] ?? 'Paciente', primeiro.inicio, exameIds);
     return;
   }
-  return mostrarConfirmacao(from, s);
+  return s.remarcandoId ? mostrarConfirmacaoRemarcacao(from, s) : mostrarConfirmacao(from, s);
 }
 
 // -------- IA / utilidades --------
@@ -640,6 +890,9 @@ async function rotearIA(from: string, s: ConversaState, texto: string) {
     return falarComHumano(from);
   }
   if (intent.acao === 'humano') return falarComHumano(from);
+  // "quero trocar o horário": só faz sentido se este número tiver exame marcado;
+  // iniciarRemarcacao já trata o caso de não haver nenhum.
+  if (intent.acao === 'remarcar') return iniciarRemarcacao(from, s);
   if (intent.acao === 'menu') { s.etapa = 'menu'; return menuPrincipal(from, s); }
   if (intent.acao === 'duvida') {
     await enviarTexto(from, intent.resposta ?? 'Posso te ajudar a agendar um exame. Quer ver as opções?');

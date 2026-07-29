@@ -108,6 +108,42 @@ export function mensagemConvenioNaoEncontrado(texto: string): string {
   ].join('\n');
 }
 
+// ─── Planos não atendidos dentro de um convênio aceito ──────────
+
+/** lista "*A* e *B*" / "*A*, *B* e *C*" em negrito do WhatsApp */
+function listarEmNegrito(itens: string[]): string {
+  const marcados = itens.map((p) => `*${p}*`);
+  if (marcados.length <= 1) return marcados[0] ?? '';
+  return `${marcados.slice(0, -1).join(', ')} e ${marcados[marcados.length - 1]}`;
+}
+
+/**
+ * Aviso ANTES de fechar o convênio: a clínica aceita a operadora, mas não
+ * alguns planos dela. Melhor descobrir agora do que o paciente ser recusado
+ * na recepção no dia do exame.
+ */
+export function mensagemAvisoPlanoNaoAtendido(convenio: string, planos: string[]): string {
+  return [
+    `Antes de seguirmos com o *${convenio}*, preciso confirmar um detalhe importante: 📋`,
+    '',
+    `Não atendemos ${listarEmNegrito(planos)}.`,
+    `Os demais planos ${convenio} são atendidos normalmente.`,
+    '',
+    'O seu plano é um desses?',
+  ].join('\n');
+}
+
+/** o plano do paciente é um dos não atendidos (ou ele não tem certeza) */
+export function mensagemPlanoNaoAtendidoTransbordo(convenio: string, planos: string[]): string {
+  return [
+    `Entendi! 💙`,
+    '',
+    `Como não atendemos ${listarEmNegrito(planos)}, prefiro confirmar isso com a nossa recepção antes de marcar — assim você não corre o risco de vir até aqui e não conseguir realizar o exame.`,
+    '',
+    `Se preferir adiantar, você também pode ligar para *${TELEFONE_FIXO_CLINICA}*.`,
+  ].join('\n');
+}
+
 // ─── Confirmação ────────────────────────────────────────────────
 
 export function mensagemResumoAgendamento(paciente: string, convenio: string, linhas: string): string {
@@ -148,6 +184,94 @@ export function mensagemAgendamentoConfirmado(primeiroNome: string, data: string
   ].join('\n');
 }
 
+// ─── Remarcação (paciente pede outro horário) ───────────────────
+
+/**
+ * Saudação de quem JÁ tem exame marcado. O agente reconhece o número, carrega
+ * o agendamento futuro e oferece remarcar — antes ele mandava ligar para a
+ * clínica, o que jogava trabalho para a recepção sem necessidade.
+ */
+export function mensagemMenuComAgendamento(primeiroNome: string | undefined, resumo: string): string {
+  const oi = primeiroNome ? `Olá, *${primeiroNome}*! 👋` : 'Olá! 👋';
+  return [
+    oi,
+    '',
+    `Aqui é a *${CONTATO.nomeClinica}* 💙`,
+    '',
+    'Vi aqui que você já tem exame marcado:',
+    resumo,
+    '',
+    'Como posso te ajudar? 😊',
+  ].join('\n');
+}
+
+export function mensagemConfirmarRemarcacao(resumo: string): string {
+  return [
+    '🔁 *Remarcar exame*',
+    SEP,
+    resumo,
+    SEP,
+    '',
+    'Quer que eu procure um novo horário para você?',
+    '',
+    '_O horário atual só é liberado depois que você escolher e confirmar o novo._',
+  ].join('\n');
+}
+
+export function mensagemRemarcacaoMantida(): string {
+  return [
+    'Combinado, seu horário continua o mesmo. 💙',
+    '',
+    'Se mudar de ideia, é só me chamar aqui.',
+  ].join('\n');
+}
+
+export function mensagemBuscandoNovosHorarios(): string {
+  return 'Certo! Vou procurar os horários livres para esse exame… 🔎';
+}
+
+export function mensagemResumoRemarcacao(de: string, para: string): string {
+  return [
+    '🔁 *Confirme a remarcação*',
+    SEP,
+    `*De:* ~${de}~`,
+    `*Para:* ${para}`,
+    SEP,
+    '',
+    'Confirma a mudança?',
+  ].join('\n');
+}
+
+export function mensagemRemarcacaoConfirmada(primeiroNome: string, data: string, hora: string): string {
+  return [
+    `Pronto, *${primeiroNome}*! Seu exame foi remarcado. ✅`,
+    '',
+    `📅 Novo horário: *${data}* às *${hora}*`,
+    '',
+    `📍 *${CONTATO.enderecoCompleto}*`,
+    '',
+    'O horário anterior foi liberado. Te esperamos! 💙',
+  ].join('\n');
+}
+
+export function mensagemRemarcacaoFalhou(): string {
+  return [
+    'Esse horário acabou de ser ocupado. 😕',
+    '',
+    'Vou te mostrar as opções que ainda estão livres…',
+  ].join('\n');
+}
+
+export function mensagemSemAgendamentoParaRemarcar(): string {
+  return [
+    'Não encontrei nenhum exame marcado no seu número. 🤔',
+    '',
+    'Se você marcou com outro telefone, posso te passar para a recepção — responda *atendente*.',
+    '',
+    'Ou, se preferir, posso agendar um exame novo agora mesmo.',
+  ].join('\n');
+}
+
 // ─── Lembretes pós-confirmação ───────────────────────────────────
 
 export function mensagemLembretesGerais(): string {
@@ -159,8 +283,11 @@ export function mensagemLembretesGerais(): string {
     'No dia do exame, é *obrigatório* trazer o pedido médico (papel ou digital).',
     'Precisamos dele para o encaminhamento ao convênio e demais procedimentos administrativos.',
     '',
-    '📞 *Cancelar ou remarcar*',
-    `Caso precise cancelar ou remarcar, ligue para nosso telefone fixo:`,
+    '🔁 *Precisa mudar o horário?*',
+    'É só me mandar uma mensagem aqui que eu remarco para você.',
+    '',
+    '📞 *Cancelar*',
+    `Para cancelar, ligue para nosso telefone fixo:`,
     `☎️ *${TELEFONE_FIXO_CLINICA}*`,
     '',
     '_Horário de atendimento telefônico: seg–qui 08h–18h · sex 08h–17h._',

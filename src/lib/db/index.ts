@@ -362,6 +362,30 @@ export async function listarAgendamentosDoMedico(
   );
 }
 
+/** Um agendamento pelo id (leitura direta pelo doc — 1 leitura). */
+export async function obterAgendamento(id: string): Promise<Agendamento | null> {
+  if (isFirestore) {
+    const doc = await (await fs()).collection('agendamentos').doc(id).get();
+    return doc.exists ? (doc.data() as Agendamento) : null;
+  }
+  return memoria.agendamentos.find((a) => a.id === id) ?? null;
+}
+
+/**
+ * Exames marcados JUNTOS numa mesma sessão (mesmo `grupoId`). Igualdade num
+ * campo único (índice automático) e ordenação em memória — um grupo tem
+ * poucos itens. Usado pela remarcação, que move a sessão inteira.
+ */
+export async function listarAgendamentosDoGrupo(grupoId: string): Promise<Agendamento[]> {
+  if (isFirestore) {
+    const snap = await (await fs()).collection('agendamentos').where('grupoId', '==', grupoId).get();
+    return snap.docs.map((d) => d.data() as Agendamento).sort((a, b) => a.inicio.localeCompare(b.inicio));
+  }
+  return memoria.agendamentos
+    .filter((a) => a.grupoId === grupoId)
+    .sort((a, b) => a.inicio.localeCompare(b.inicio));
+}
+
 /** Contagem por agregação — 1 leitura em vez da coleção inteira. */
 export async function contarAgendamentos(filtro?: { de?: string; ate?: string }): Promise<number> {
   if (!isFirestore) {

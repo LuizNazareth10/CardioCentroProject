@@ -1,4 +1,4 @@
-import { CONTATO, CONVENIOS, EXAMES, MEDICOS } from '../seed-data';
+import { CONTATO, CONVENIOS, EXAMES, MEDICOS, RESUMO_PLANOS_NAO_ATENDIDOS } from '../seed-data';
 import { mensagemDuvidaFallback } from './messages';
 
 // =============================================================
@@ -10,7 +10,7 @@ import { mensagemDuvidaFallback } from './messages';
 // =============================================================
 
 export interface Intencao {
-  acao: 'agendar' | 'menu' | 'humano' | 'duvida' | 'urgencia';
+  acao: 'agendar' | 'remarcar' | 'menu' | 'humano' | 'duvida' | 'urgencia';
   exames: string[]; // ids de EXAMES
   medicoMencionado?: string;
   resposta?: string; // resposta livre para "duvida"
@@ -32,8 +32,10 @@ Tom: profissional, acolhedor e objetivo. Nunca robótico ou burocrático. Emojis
 # Contexto da clínica
 - Endereço: ${CONTATO.enderecoCompleto}.
 - Horário: segunda a quinta 08h–18h, sexta 08h–17h. Fechado aos fins de semana.
-- Telefone fixo (cancelar/remarcar/laudos): ${CONTATO.telefoneFixo}. Cancelamento e remarcação são feitos SOMENTE por telefone.
+- Telefone fixo (cancelamento/laudos): ${CONTATO.telefoneFixo}. Cancelamento é feito por telefone.
+- REMARCAÇÃO você resolve aqui mesmo: se o paciente quiser trocar o horário de um exame já marcado, classifique como "remarcar".
 - Convênios aceitos: ${listaConvenios}. Também atende particular.
+- ATENÇÃO — planos NÃO atendidos dentro de convênios aceitos: ${RESUMO_PLANOS_NAO_ATENDIDOS}. Se o paciente citar um desses planos, seja claro que não atendemos aquele plano específico e classifique como "humano".
 - No dia do exame é OBRIGATÓRIO trazer o pedido médico (papel ou digital), documento com foto e carteirinha do convênio.
 - Prazo de laudo: varia por exame; a equipe informa no dia do atendimento (NUNCA prometa prazo específico).
 
@@ -52,8 +54,9 @@ ${listaMedicos}
 5. Não invente informações (preços, prazos, promoções). O que não souber → "humano".
 
 Responda SOMENTE com um JSON válido, sem texto fora dele, no formato:
-{"acao":"agendar|menu|humano|duvida|urgencia","exames":["id",...],"medicoMencionado":"...|null","resposta":"texto curto se acao=duvida, senão null"}
+{"acao":"agendar|remarcar|menu|humano|duvida|urgencia","exames":["id",...],"medicoMencionado":"...|null","resposta":"texto curto se acao=duvida, senão null"}
 - "agendar": paciente quer marcar um ou mais exames (preencha "exames" com os ids).
+- "remarcar": paciente quer MUDAR o horário de um exame que já está marcado ("preciso adiar", "posso trocar o dia?", "não vou conseguir nesse horário").
 - "menu": paciente quer ver as opções/voltar ao início.
 - "humano": paciente quer falar com uma pessoa OU caso das regras 3/5.
 - "urgencia": sintomas agudos acontecendo agora (regra 2).
@@ -142,6 +145,11 @@ function fallbackPorPalavras(texto: string): Intencao {
     return { acao: 'urgencia', exames: [] };
   }
   if (/(atendente|humano|pessoa|recep)/.test(t)) return { acao: 'humano', exames: [] };
+  // remarcar vem antes de "agendar": "quero trocar o horário do meu exame"
+  // também casa com as palavras de agendamento
+  if (/(remarc|reagend|adiar|antecipar|mudar (o )?(hor[áa]rio|dia|data)|trocar (o )?(hor[áa]rio|dia|data)|outro (hor[áa]rio|dia))/.test(t)) {
+    return { acao: 'remarcar', exames: [] };
+  }
   if (/(menu|opç|come|in[ií]cio|voltar)/.test(t)) return { acao: 'menu', exames: [] };
   const exames = EXAMES.filter((e) => {
     const nome = e.nome.toLowerCase();

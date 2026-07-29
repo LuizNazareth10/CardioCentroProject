@@ -18,6 +18,8 @@ export type EtapaConversa =
   | 'escolhendo_horario'
   | 'identificacao'
   | 'aguardando_documentos' // convênio com autorização: aguarda foto da carteirinha + pedido médico
+  | 'confirmando_plano' // convênio aceito, mas com planos não atendidos: confirma qual é o plano
+  | 'confirmando_remarcacao' // paciente com exame marcado: confirma que quer trocar de horário
   | 'confirmando'
   | 'humano'; // handoff: o agente para de processar, a recepção assume
 
@@ -47,7 +49,40 @@ export interface ConversaState {
   aguardandoConvenio?: boolean;
   // nº de fotos recebidas (carteirinha + pedido médico) p/ convênios com autorização — precisa de 2
   docsAutorizacaoRecebidos?: number;
+  /** paciente já confirmou que o plano dele NÃO é um dos não atendidos (ver PLANOS_NAO_ATENDIDOS) */
+  planoConfirmado?: boolean;
+
+  // ---- REMARCAÇÃO ----
+  /**
+   * Agendamento futuro que o agente reconheceu para este número. Fica no
+   * estado para não reler o banco a cada mensagem; é recarregado sempre que
+   * o paciente volta ao menu.
+   */
+  agendamentoFuturo?: AgendamentoFuturoState;
+  /**
+   * Já consultamos o banco por agendamentos futuros nesta sessão. Evita
+   * reler a cada volta ao menu quando o paciente NÃO tem exame marcado —
+   * sem isso, quem só tira dúvidas geraria duas leituras por mensagem.
+   * Um agendamento criado no meio da conversa não escapa: ao confirmar, a
+   * sessão é limpa e a próxima começa do zero.
+   */
+  futuroVerificado?: boolean;
+  /** id do agendamento sendo remarcado — enquanto setado, o fluxo de horário MOVE em vez de criar */
+  remarcandoId?: string;
+
   atualizadoEm: number;
+}
+
+/** resumo do próximo exame marcado, carregado do banco pelo telefone */
+export interface AgendamentoFuturoState {
+  /** id do agendamento âncora (o mais cedo da sessão) */
+  id: string;
+  /** ISO do início */
+  inicio: string;
+  /** exames da sessão (1 ou vários marcados juntos) */
+  exameIds: string[];
+  /** texto pronto para exibir ao paciente (ex.: "Ecocardiograma — 12/08 às 14:00") */
+  resumo: string;
 }
 
 const TTL = 30 * 60 * 1000; // 30 min
