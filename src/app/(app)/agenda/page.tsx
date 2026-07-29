@@ -19,6 +19,13 @@ import { STATUS_AGENDAMENTO_COR, STATUS_AGENDAMENTO_LABEL } from '@/lib/status-a
 // por hora — um bloco de 15min continua ocupando 54px (3 linhas de 18px).
 const GRID = 5;
 const ROW_H = 18;
+// Tamanho do "quadrado" de marcação: livre/bloqueado só é clicável de 15 em
+// 15 minutos (regra de negócio — não dá pra marcar de 5 em 5). A grade fina
+// (GRID) serve só para os agendamentos JÁ existentes conseguirem ancorar em
+// horários quebrados; construção de novo agendamento continua em blocos de
+// 15min, do mesmo tamanho visual de antes.
+const GRID_CLIQUE = 15;
+const LINHAS_POR_CLIQUE = GRID_CLIQUE / GRID; // 3
 const COL_HORA = 72;
 const COL_LARGURA = 158;
 
@@ -186,12 +193,57 @@ function AgendaConteudo() {
     );
     return { ag, dentro };
   }
-  const apptAparelho = (tipo: TipoAparelho, t: number) =>
-    ags.find((a) => a.exameId === tipo && a.status !== 'cancelado' && hhmmToMin(a.inicio.slice(11, 16)) === t);
+  /** agendamento de aparelho que COBRE o minuto t (início pode não ser exatamente t) */
+  const apptAparelhoContendo = (tipo: TipoAparelho, t: number) =>
+    ags.find(
+      (a) => a.exameId === tipo && a.status !== 'cancelado' &&
+        hhmmToMin(a.inicio.slice(11, 16)) <= t && t < hhmmToMin(a.fim.slice(11, 16)),
+    );
 
   const ehInicio = (ag: Agendamento, t: number) => hhmmToMin(ag.inicio.slice(11, 16)) === t;
   const spanDe = (ag: Agendamento) =>
     Math.max(1, (hhmmToMin(ag.fim.slice(11, 16)) - hhmmToMin(ag.inicio.slice(11, 16))) / GRID);
+
+  // -------- segmentação livre/bloqueado em blocos de 15min --------
+  // Com a grade fina (5min) para ancorar horários quebrados, uma célula
+  // livre/bloqueada "normal" (múltiplo de 15) viraria 3 sub-linhas
+  // independentes — cada uma clicável, quebrando a regra de só marcar de 15
+  // em 15 e deixando o "+" minúsculo. Aqui a gente re-agrupa: percorre as
+  // linhas da coluna e funde sequências do MESMO estado em blocos de até
+  // LINHAS_POR_CLIQUE linhas (o que sobrar antes de um agendamento "torto"
+  // vira um bloco menor, do tamanho que couber — nunca maior que 15min).
+  type EstadoCelula = 'ag' | 'livre' | 'bloqueado' | 'off-dia';
+
+  function estadoLinha(c: Coluna, t: number): EstadoCelula {
+    if (c.tipo === 'medico') {
+      if (!c.atende) return 'off-dia';
+      const { ag, dentro } = celulaMedico(c.medico, t);
+      if (ag) return 'ag';
+      return dentro ? 'livre' : 'bloqueado';
+    }
+    if (apptAparelhoContendo(c.aparelho, t)) return 'ag';
+    return c.slots.has(t) ? 'livre' : 'bloqueado';
+  }
+
+  function segmentarLivreBloqueado(c: Coluna): Map<number, { estado: EstadoCelula; span: number }> {
+    const segs = new Map<number, { estado: EstadoCelula; span: number }>();
+    let i = 0;
+    while (i < linhas.length) {
+      const e = estadoLinha(c, linhas[i]);
+      if (e === 'ag') { i++; continue; }
+      let span = 1;
+      while (span < LINHAS_POR_CLIQUE && i + span < linhas.length && estadoLinha(c, linhas[i + span]) === e) span++;
+      segs.set(linhas[i], { estado: e, span });
+      i += span;
+    }
+    return segs;
+  }
+
+  const segmentosPorColuna = useMemo(
+    () => new Map(colunas.map((c) => [c.key, segmentarLivreBloqueado(c)])),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [colunas, ags, data],
+  );
 
   /**
    * Clique num horário vago. Em operação normal abre o fluxo de novo
@@ -431,44 +483,52 @@ function AgendaConteudo() {
 
                     {colunas.map((c) => {
                       const cellCls = `min-w-0 border-l border-navy-100/60`;
+                      const seg = segmentosPorColuna.get(c.key)?.get(t);
+
                       if (c.tipo === 'medico') {
+                        const { ag, dentro } = c.atende ? celulaMedico(c.medico, t) : { ag: undefined, dentro: false };
+                        if (ag && !ehInicio(ag, t)) return <div key={c.key} className={cellCls} />;
+                        if (ag) return <div key={c.key} className={`relative ${cellCls} p-0.5`}>{blocoOcupado(ag, spanDe(ag))}</div>;
+                        if (!seg) return <div key={c.key} className={cellCls} />; // absorvido por um bloco de 15min anterior
                         if (!c.atende) {
                           return (
                             <CelulaExcecao
                               key={c.key}
-                              className={`slot-off-dia ${cellCls}`}
+                              span={seg.span}
+                              className="slot-off-dia"
                               onClick={() => abrir({ medico: c.medico.id }, t, true)}
                               titulo={`Liberar horário com ${c.medico.nome} às ${minToHHMM(t)} (médico sem atendimento neste dia)`}
                             />
                           );
                         }
-                        const { ag, dentro } = celulaMedico(c.medico, t);
-                        if (ag && !ehInicio(ag, t)) return <div key={c.key} className={cellCls} />;
-                        if (ag) return <div key={c.key} className={`relative ${cellCls} p-0.5`}>{blocoOcupado(ag, spanDe(ag))}</div>;
                         return dentro
-                          ? <CelulaLivre key={c.key} onClick={() => abrir({ medico: c.medico.id }, t)} titulo={`Agendar com ${c.medico.nome} às ${minToHHMM(t)}`} />
+                          ? <CelulaLivre key={c.key} span={seg.span} onClick={() => abrir({ medico: c.medico.id }, t)} titulo={`Agendar com ${c.medico.nome} às ${minToHHMM(t)}`} />
                           : (
                             <CelulaExcecao
                               key={c.key}
-                              className={`slot-bloqueado ${cellCls}`}
+                              span={seg.span}
+                              className="slot-bloqueado"
                               onClick={() => abrir({ medico: c.medico.id }, t, true)}
                               titulo={`Liberar horário com ${c.medico.nome} às ${minToHHMM(t)} (fora da janela)`}
                             />
                           );
                       }
-                      if (!c.slots.has(t)) {
-                        return (
+
+                      const agAparelho = apptAparelhoContendo(c.aparelho, t);
+                      if (agAparelho && !ehInicio(agAparelho, t)) return <div key={c.key} className={cellCls} />;
+                      if (agAparelho) return <div key={c.key} className={`relative ${cellCls} p-0.5`}>{blocoOcupado(agAparelho, spanDe(agAparelho))}</div>;
+                      if (!seg) return <div key={c.key} className={cellCls} />;
+                      return seg.estado === 'livre'
+                        ? <CelulaLivre key={c.key} span={seg.span} onClick={() => abrir({ aparelho: c.aparelho }, t)} titulo={`Agendar ${c.nome} às ${minToHHMM(t)}`} />
+                        : (
                           <CelulaExcecao
                             key={c.key}
-                            className={`slot-bloqueado ${cellCls}`}
+                            span={seg.span}
+                            className="slot-bloqueado"
                             onClick={() => abrir({ aparelho: c.aparelho }, t, true)}
                             titulo={`Liberar coleta ${c.nome} às ${minToHHMM(t)} (fora dos horários fixos)`}
                           />
                         );
-                      }
-                      const ag = apptAparelho(c.aparelho, t);
-                      if (ag) return <div key={c.key} className={`relative ${cellCls} p-0.5`}>{blocoOcupado(ag, 1)}</div>;
-                      return <CelulaLivre key={c.key} onClick={() => abrir({ aparelho: c.aparelho }, t)} titulo={`Agendar ${c.nome} às ${minToHHMM(t)}`} />;
                     })}
                   </div>
                 );
@@ -512,31 +572,44 @@ function nomePrestador(id: string): string {
 }
 
 // célula de horário LIVRE: faixa verde sempre visível + "+" ao passar o mouse
-function CelulaLivre({ onClick, titulo }: { onClick: () => void; titulo: string }) {
+/**
+ * `span` = quantas linhas da grade fina (5min) esse quadrado cobre — normalmente
+ * LINHAS_POR_CLIQUE (15min inteiros), ou menos quando um agendamento em
+ * horário quebrado corta o espaço disponível antes de completar 15min. O
+ * wrapper ocupa só a linha em que começa; o botão estica por cima via
+ * position:absolute, igual ao bloco de agendamento ocupado.
+ */
+function CelulaLivre({ onClick, titulo, span = 1 }: { onClick: () => void; titulo: string; span?: number }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={titulo}
-      className="slot-livre group relative min-w-0 border-l border-navy-100/60 transition-colors"
-    >
-      <span className="pointer-events-none absolute inset-1 rounded-md opacity-0 ring-1 ring-inset ring-success/50 transition-opacity group-hover:opacity-100" />
-      <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-bold text-success opacity-0 transition-opacity group-hover:opacity-100">+</span>
-    </button>
+    <div className="relative min-w-0 border-l border-navy-100/60">
+      <button
+        type="button"
+        onClick={onClick}
+        title={titulo}
+        style={{ height: span * ROW_H }}
+        className="slot-livre group absolute inset-x-0 top-0 transition-colors"
+      >
+        <span className="pointer-events-none absolute inset-1 rounded-md opacity-0 ring-1 ring-inset ring-success/50 transition-opacity group-hover:opacity-100" />
+        <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-bold text-success opacity-0 transition-opacity group-hover:opacity-100">+</span>
+      </button>
+    </div>
   );
 }
 
 /** Horário rachurado / fora da janela — clique libera exceção sem mudar o visual padrão. */
-function CelulaExcecao({ onClick, titulo, className }: { onClick: () => void; titulo: string; className: string }) {
+function CelulaExcecao({ onClick, titulo, className, span = 1 }: { onClick: () => void; titulo: string; className: string; span?: number }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={titulo}
-      className={`group relative h-full w-full transition-colors hover:brightness-[0.97] ${className}`}
-    >
-      <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-bold text-navy-500 opacity-0 transition-opacity group-hover:opacity-100">+</span>
-    </button>
+    <div className="relative min-w-0 border-l border-navy-100/60">
+      <button
+        type="button"
+        onClick={onClick}
+        title={titulo}
+        style={{ height: span * ROW_H }}
+        className={`group absolute inset-x-0 top-0 transition-colors hover:brightness-[0.97] ${className}`}
+      >
+        <span className="pointer-events-none absolute inset-0 grid place-items-center text-sm font-bold text-navy-500 opacity-0 transition-opacity group-hover:opacity-100">+</span>
+      </button>
+    </div>
   );
 }
 
