@@ -9,8 +9,16 @@ import { fmtData, fmtHora, hojeJF } from '@/lib/format';
 import { DataPagina } from '@/components/DataPagina';
 import { STATUS_AGENDAMENTO_COR, STATUS_AGENDAMENTO_LABEL } from '@/lib/status-agendamento';
 
-const GRID = 15;
-const ROW_H = 54; // px por linha de 15min — mais espaço para ler o bloco
+// Grade de 5 em 5 minutos (não 15): alguns médicos começam o turno em
+// horários que não são múltiplos de 15 (ex.: Dr. Daher às sextas, 13:40 —
+// ver seed-data.ts). Com passo de 15, esse horário nunca cai numa linha da
+// grade e o bloco do agendamento não tem onde "ancorar" (ehInicio nunca
+// bate) — ele simplesmente some da tela mesmo existindo no banco. Todos os
+// horários usados hoje são múltiplos de 5, então esse passo cobre 100% dos
+// casos. ROW_H foi dividido por 3 (54→18) para manter a MESMA altura visual
+// por hora — um bloco de 15min continua ocupando 54px (3 linhas de 18px).
+const GRID = 5;
+const ROW_H = 18;
 const COL_HORA = 72;
 const COL_LARGURA = 158;
 
