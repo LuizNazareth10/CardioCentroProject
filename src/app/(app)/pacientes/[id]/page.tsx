@@ -5,7 +5,17 @@ import type { Agendamento, Paciente, Triagem } from '@/lib/types';
 import { CONVENIOS, EXAMES, MEDICOS } from '@/lib/seed-data';
 import { STATUS_AGENDAMENTO_BADGE, STATUS_AGENDAMENTO_LABEL } from '@/lib/status-agendamento';
 import { fmtData, fmtHora, idade, iniciais } from '@/lib/format';
-import { FichaIdentidadePrint, medicoUltimaConsulta, medicoExecutanteDoExame, exameMaisRecente, type ExameMaisRecente } from '@/components/FichaIdentidadePrint';
+import { FichaIdentidadePrint } from '@/components/FichaIdentidadePrint';
+import {
+  corpoDoFormulario,
+  exameMaisRecente,
+  medicoExecutanteDoExame,
+  montarFichaIdentidade,
+  valoresIniciais,
+  type CampoFicha,
+  type ChaveEditavel,
+  type ExameMaisRecente,
+} from '@/lib/ficha-identidade';
 import { Printer } from 'lucide-react';
 import { DataPagina } from '@/components/DataPagina';
 
@@ -50,7 +60,6 @@ export default function PacientePage({ params }: { params: { id: string } }) {
   const nomeExame = (i: string) => EXAMES.find((e) => e.id === i)?.nome ?? i;
   const nomeMedico = (i: string) => MEDICOS.find((m) => m.id === i)?.nome ?? i;
 
-  const medicoResp = medicoUltimaConsulta(historico, nomeMedico);
   const exameRecente = exameMaisRecente(historico, nomeExame);
   const medicoExec = medicoExecutanteDoExame(historico, nomeMedico);
 
@@ -60,7 +69,6 @@ export default function PacientePage({ params }: { params: { id: string } }) {
       <FichaIdentidadePrint
         paciente={paciente}
         convenio={conv}
-        medicoSolicitante={medicoResp}
         medicoExecutante={medicoExec}
         exameRecente={exameRecente}
       />
@@ -71,7 +79,10 @@ export default function PacientePage({ params }: { params: { id: string } }) {
           <div className="grid h-14 w-14 place-items-center rounded-2xl bg-navy-700 text-lg font-bold text-white">{iniciais(paciente.nome)}</div>
           <div className="flex-1">
             <h1 className="font-serif text-2xl font-bold tracking-tight text-navy-900">{paciente.nome}</h1>
-            <div className="text-sm text-muted">{paciente.telefone} · {idade(paciente.dataNascimento)} · {paciente.sexo === 'F' ? 'Feminino' : paciente.sexo === 'M' ? 'Masculino' : '—'}</div>
+            <div className="text-sm text-muted">
+              {paciente.telefone} · {idade(paciente.dataNascimento)} ·{' '}
+              {paciente.sexo === 'F' ? 'Feminino' : paciente.sexo === 'M' ? 'Masculino' : paciente.sexo === 'O' ? 'Outro' : '—'}
+            </div>
           </div>
           <div className="text-right">
             <span className="badge bg-navy-50 text-navy-700">{conv}</span>
@@ -96,7 +107,6 @@ export default function PacientePage({ params }: { params: { id: string } }) {
           <IdentidadeView
             paciente={paciente}
             convenio={conv}
-            medicoSolicitante={medicoResp}
             medicoExecutante={medicoExec}
             exameRecente={exameRecente}
             onAtualizado={carregar}
@@ -137,10 +147,16 @@ export default function PacientePage({ params }: { params: { id: string } }) {
   );
 }
 
-function IdentidadeView({ paciente, convenio, medicoSolicitante, medicoExecutante, exameRecente, onAtualizado }: {
+/**
+ * Ficha de identidade: leitura, edição e impressão mostram EXATAMENTE os
+ * mesmos campos, na mesma ordem — todos vêm de `montarFichaIdentidade`
+ * (lib/ficha-identidade.ts). Campos derivados do histórico (idade, data de
+ * cadastro, médico executante, exame em destaque, registro) não têm editor e
+ * seguem em leitura mesmo com a ficha aberta para edição.
+ */
+function IdentidadeView({ paciente, convenio, medicoExecutante, exameRecente, onAtualizado }: {
   paciente: Paciente;
   convenio: string;
-  medicoSolicitante: string;
   medicoExecutante: string;
   exameRecente: ExameMaisRecente | null;
   onAtualizado: () => void;
@@ -148,35 +164,12 @@ function IdentidadeView({ paciente, convenio, medicoSolicitante, medicoExecutant
   const [editando, setEditando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
-  const [dados, setDados] = useState({
-    cpf: paciente.cpf ?? '',
-    dataNascimento: paciente.dataNascimento ?? '',
-    sexo: paciente.sexo ?? '',
-    telefone: paciente.telefone,
-    email: paciente.email ?? '',
-    endereco: paciente.endereco ?? '',
-    convenioId: paciente.convenioId ?? 'particular',
-    carteirinha: paciente.carteirinha ?? '',
-    pesoKg: paciente.fichaMedica?.pesoKg?.toString() ?? '',
-    alturaCm: paciente.fichaMedica?.alturaCm?.toString() ?? '',
-    observacoesGerais: paciente.fichaMedica?.observacoesGerais ?? '',
-  });
+  const [dados, setDados] = useState(() => valoresIniciais(paciente));
 
-  useEffect(() => {
-    setDados({
-      cpf: paciente.cpf ?? '',
-      dataNascimento: paciente.dataNascimento ?? '',
-      sexo: paciente.sexo ?? '',
-      telefone: paciente.telefone,
-      email: paciente.email ?? '',
-      endereco: paciente.endereco ?? '',
-      convenioId: paciente.convenioId ?? 'particular',
-      carteirinha: paciente.carteirinha ?? '',
-      pesoKg: paciente.fichaMedica?.pesoKg?.toString() ?? '',
-      alturaCm: paciente.fichaMedica?.alturaCm?.toString() ?? '',
-      observacoesGerais: paciente.fichaMedica?.observacoesGerais ?? '',
-    });
-  }, [paciente]);
+  useEffect(() => { setDados(valoresIniciais(paciente)); }, [paciente]);
+
+  const secoes = montarFichaIdentidade(paciente, { convenio, medicoExecutante, exameRecente });
+  const set = (chave: ChaveEditavel, v: string) => setDados((d) => ({ ...d, [chave]: v }));
 
   async function salvar() {
     setSalvando(true);
@@ -185,21 +178,7 @@ function IdentidadeView({ paciente, convenio, medicoSolicitante, medicoExecutant
       const res = await fetch(`/api/pacientes/${paciente.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cpf: dados.cpf,
-          dataNascimento: dados.dataNascimento,
-          sexo: dados.sexo || undefined,
-          telefone: dados.telefone,
-          email: dados.email,
-          endereco: dados.endereco,
-          convenioId: dados.convenioId,
-          carteirinha: dados.carteirinha,
-          fichaMedica: {
-            pesoKg: dados.pesoKg ? Number(dados.pesoKg) : undefined,
-            alturaCm: dados.alturaCm ? Number(dados.alturaCm) : undefined,
-            observacoesGerais: dados.observacoesGerais || undefined,
-          },
-        }),
+        body: JSON.stringify(corpoDoFormulario(dados)),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -215,7 +194,11 @@ function IdentidadeView({ paciente, convenio, medicoSolicitante, medicoExecutant
     }
   }
 
-  const sexoLabel = paciente.sexo === 'F' ? 'Feminino' : paciente.sexo === 'M' ? 'Masculino' : '—';
+  function cancelar() {
+    setDados(valoresIniciais(paciente));
+    setEditando(false);
+    setErro('');
+  }
 
   return (
     <div>
@@ -232,7 +215,7 @@ function IdentidadeView({ paciente, convenio, medicoSolicitante, medicoExecutant
             <button type="button" className="btn-primary" onClick={() => setEditando(true)}>Editar dados</button>
           ) : (
             <>
-              <button type="button" className="btn-ghost" onClick={() => setEditando(false)}>Cancelar</button>
+              <button type="button" className="btn-ghost" onClick={cancelar}>Cancelar</button>
               <button type="button" className="btn-red" disabled={salvando} onClick={salvar}>{salvando ? 'Salvando…' : 'Salvar'}</button>
             </>
           )}
@@ -241,102 +224,61 @@ function IdentidadeView({ paciente, convenio, medicoSolicitante, medicoExecutant
       {erro && <p className="mb-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-brand-red">{erro}</p>}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="card p-5 space-y-4">
-          <h3 className="font-bold text-navy-900">Dados pessoais</h3>
-          {editando ? (
-            <>
-              <CampoInput label="Data de nascimento" type="date" value={dados.dataNascimento} onChange={(v) => setDados({ ...dados, dataNascimento: v })} />
-              <CampoInput label="Identidade / CPF" value={dados.cpf} onChange={(v) => setDados({ ...dados, cpf: v })} />
-              <div>
-                <label className="label">Sexo</label>
-                <select className="input" value={dados.sexo} onChange={(e) => setDados({ ...dados, sexo: e.target.value })}>
-                  <option value="">Não informado</option>
-                  <option value="F">Feminino</option>
-                  <option value="M">Masculino</option>
-                </select>
-              </div>
-              <CampoInput label="Telefone" value={dados.telefone} onChange={(v) => setDados({ ...dados, telefone: v })} />
-              <CampoInput label="E-mail" value={dados.email} onChange={(v) => setDados({ ...dados, email: v })} />
-              <CampoInput label="Endereço completo" value={dados.endereco} onChange={(v) => setDados({ ...dados, endereco: v })} />
-            </>
-          ) : (
-            <>
-              <Bloco titulo="Data de nascimento" texto={paciente.dataNascimento ? fmtData(paciente.dataNascimento + 'T12:00') : undefined} />
-              <Bloco titulo="Identidade / CPF" texto={paciente.cpf} />
-              <Bloco titulo="Idade / Sexo" texto={`${idade(paciente.dataNascimento)} · ${sexoLabel}`} />
-              <Bloco titulo="Telefone" texto={paciente.telefone} />
-              <Bloco titulo="E-mail" texto={paciente.email} />
-              <Bloco titulo="Endereço completo" texto={paciente.endereco} />
-            </>
-          )}
-        </div>
-
-        <div className="card p-5 space-y-4">
-          <h3 className="font-bold text-navy-900">Cadastro e antropometria</h3>
-          {/* Exame mais recente (derivado do histórico): próximo agendado se
-              houver, senão o último realizado. Somente leitura nos dois modos. */}
-          <div className="rounded-xl bg-navy-50 px-3 py-2">
-            <div className="text-xs font-semibold uppercase tracking-wide text-muted">
-              {exameRecente?.futuro ? 'Próximo exame agendado' : 'Último exame realizado'}
-            </div>
-            <div className="text-sm font-medium text-navy-900">
-              {exameRecente ? `${exameRecente.nome} — ${fmtData(exameRecente.quando)}` : '—'}
-            </div>
+        {secoes.map((secao) => (
+          <div key={secao.titulo} className="card p-5 space-y-4">
+            <h3 className="font-bold text-navy-900">{secao.titulo}</h3>
+            {secao.campos.map((campo) =>
+              editando && campo.editor ? (
+                <CampoEdicao key={campo.chave} campo={campo} valor={dados[campo.chave as ChaveEditavel] ?? ''} onChange={set} />
+              ) : (
+                <Bloco key={campo.chave} titulo={campo.label} texto={campo.valor} />
+              ),
+            )}
           </div>
-          {editando ? (
-            <>
-              <div>
-                <label className="label">Convênio</label>
-                <select className="input" value={dados.convenioId} onChange={(e) => setDados({ ...dados, convenioId: e.target.value })}>
-                  {CONVENIOS.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                </select>
-              </div>
-              <CampoInput label="Carteirinha" value={dados.carteirinha} onChange={(v) => setDados({ ...dados, carteirinha: v })} />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <CampoInput label="Peso (kg)" type="number" value={dados.pesoKg} onChange={(v) => setDados({ ...dados, pesoKg: v })} />
-                <CampoInput label="Altura (cm)" type="number" value={dados.alturaCm} onChange={(v) => setDados({ ...dados, alturaCm: v })} />
-              </div>
-              <div>
-                <label className="label">Observação</label>
-                <textarea
-                  className="input min-h-[100px] resize-y"
-                  value={dados.observacoesGerais}
-                  onChange={(e) => setDados({ ...dados, observacoesGerais: e.target.value })}
-                  placeholder="Informações relevantes para a equipe…"
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              <Bloco titulo="Data de cadastro" texto={fmtData(paciente.criadoEm)} />
-              <Bloco titulo="Convênio" texto={convenio} />
-              <Bloco titulo="Carteirinha" texto={paciente.carteirinha} />
-              <Bloco titulo="Médico solicitante" texto={medicoSolicitante} />
-              <Bloco titulo="Médico executante" texto={medicoExecutante} />
-              <Bloco titulo="Peso" texto={paciente.fichaMedica?.pesoKg ? `${paciente.fichaMedica.pesoKg} kg` : undefined} />
-              <Bloco titulo="Altura" texto={paciente.fichaMedica?.alturaCm ? `${paciente.fichaMedica.alturaCm} cm` : undefined} />
-              <Bloco titulo="Registro nº" texto={paciente.id} />
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-wide text-muted">Observação</div>
-                <div className="whitespace-pre-wrap text-sm text-ink/85">
-                  {paciente.fichaMedica?.observacoesGerais || '—'}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+        ))}
       </div>
     </div>
   );
 }
 
-function CampoInput({ label, value, onChange, type = 'text' }: {
-  label: string; value: string; onChange: (v: string) => void; type?: string;
+/** input da ficha, escolhido pelo `editor` do campo (uma só definição p/ todas as telas) */
+function CampoEdicao({ campo, valor, onChange }: {
+  campo: CampoFicha;
+  valor: string;
+  onChange: (chave: ChaveEditavel, v: string) => void;
 }) {
+  const chave = campo.chave as ChaveEditavel;
+  const label = campo.label + (campo.obrigatorio ? ' *' : '');
+  const comum = {
+    className: 'input',
+    value: valor,
+    placeholder: campo.placeholder,
+    required: campo.obrigatorio,
+  };
   return (
     <div>
       <label className="label">{label}</label>
-      <input className="input" type={type} value={value} onChange={(e) => onChange(e.target.value)} />
+      {campo.editor === 'textarea' ? (
+        <textarea {...comum} className="input min-h-[100px] resize-y" onChange={(e) => onChange(chave, e.target.value)} />
+      ) : campo.editor === 'sexo' ? (
+        <select className="input" value={valor} onChange={(e) => onChange(chave, e.target.value)}>
+          <option value="">Não informado</option>
+          <option value="F">Feminino</option>
+          <option value="M">Masculino</option>
+          <option value="O">Outro</option>
+        </select>
+      ) : campo.editor === 'convenio' ? (
+        <select className="input" value={valor} onChange={(e) => onChange(chave, e.target.value)}>
+          {CONVENIOS.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+        </select>
+      ) : (
+        <input
+          {...comum}
+          type={campo.editor === 'data' ? 'date' : campo.editor === 'numero' ? 'number' : campo.editor === 'email' ? 'email' : campo.editor === 'telefone' ? 'tel' : 'text'}
+          step={campo.chave === 'pesoKg' ? '0.1' : undefined}
+          onChange={(e) => onChange(chave, e.target.value)}
+        />
+      )}
     </div>
   );
 }
@@ -474,5 +416,11 @@ function Metric({ label, valor, trend }: { label: string; valor: string; trend?:
   );
 }
 function Bloco({ titulo, texto }: { titulo: string; texto?: string }) {
-  return <div><div className="text-xs font-semibold uppercase tracking-wide text-muted">{titulo}</div><div className="text-sm text-ink/85">{texto || '—'}</div></div>;
+  return (
+    <div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted">{titulo}</div>
+      {/* pre-wrap para a observação manter as quebras de linha digitadas */}
+      <div className="whitespace-pre-wrap text-sm text-ink/85">{texto?.trim() || '—'}</div>
+    </div>
+  );
 }

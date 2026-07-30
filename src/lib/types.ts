@@ -43,6 +43,21 @@ export interface JanelaDisponibilidade {
   exigeExame?: string;
 }
 
+/**
+ * Exames que um médico executa JUNTOS, no MESMO horário, numa duração menor
+ * que a soma das partes.
+ *
+ * Regra real da clínica: o Dr. Ricardo Daher, ao fazer ecocardiograma e
+ * duplex de carótidas no mesmo paciente em sequência, leva 15min pelos dois
+ * (e não 15 + 15). Vale só para ele — por isso mora no médico, não no exame.
+ */
+export interface CombinacaoExames {
+  /** ids dos exames que ocupam o mesmo intervalo (2 ou mais) */
+  exames: string[];
+  /** duração do conjunto inteiro, em minutos */
+  duracaoMin: number;
+}
+
 /** Médico da clínica */
 export interface Medico {
   id: string;
@@ -56,6 +71,8 @@ export interface Medico {
   examesHabilitados: string[];
   /** duração (min) por exame PARA ESTE médico; fallback = Exame.duracaoMin */
   duracoes?: Record<string, number>;
+  /** exames que este médico faz no MESMO horário (ver CombinacaoExames) */
+  combinacoes?: CombinacaoExames[];
   /** grade fixa semanal de atendimento */
   disponibilidade: JanelaDisponibilidade[];
   ativo: boolean;
@@ -162,10 +179,18 @@ export interface Paciente {
   // ser editados à mão. Ver `derivarCamposBusca` em lib/db/index.ts.
   /** nome em minúsculas e sem acentos, para busca por prefixo */
   nomeBusca?: string;
+  /**
+   * palavras do nome (e seus prefixos) + pares de palavras em ordem
+   * alfabética — permite achar "Luiz Gustavo Ferreira" digitando só
+   * "luiz ferreira", numa consulta `array-contains`. Ver lib/busca.ts.
+   */
+  nomeTokens?: string[];
   /** só os dígitos do CPF, para busca exata */
   cpfDigitos?: string;
   /** últimos 8 dígitos do telefone (tolera DDI/DDD/9º dígito) */
   telefoneSufixo?: string;
+  /** todos os dígitos do telefone, para busca por prefixo (a partir do DDD) */
+  telefoneDigitos?: string;
 }
 
 /** Conteúdo clínico da ficha (padrão cardiologia) */

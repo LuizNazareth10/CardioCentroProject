@@ -3,8 +3,8 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { APARELHOS, CONVENIOS, EXAMES, MEDICOS } from '@/lib/seed-data';
-import type { Paciente, SlotDisponivel, TipoAparelho } from '@/lib/types';
-import type { ItemProposta, Proposta } from '@/lib/scheduling/engine';
+import type { Medico, Paciente, SlotDisponivel, TipoAparelho } from '@/lib/types';
+import { blocosDaSessao, combinacaoAplicavel, type ItemProposta, type Proposta } from '@/lib/scheduling/engine';
 import { fmtData, fmtHora } from '@/lib/format';
 import { hhmmToMin, toISO } from '@/lib/scheduling/time';
 import { DataPagina } from '@/components/DataPagina';
@@ -60,8 +60,22 @@ function AgendarConteudo() {
     nome: '', telefone: '', convenioId: 'particular',
   });
   const [erroCadastro, setErroCadastro] = useState('');
+  // exames que o médico faz no MESMO horário (regra do Dr. Daher: eco +
+  // carótida em 15min). Ligado por padrão — é como ele atende de verdade.
+  const [combinar, setCombinar] = useState(true);
 
   const modoAparelho = !!aparelhoCfg || exames.some((id) => EXAMES.find((e) => e.id === id)?.aparelho);
+
+  // Médico da marcação: o do slot clicado na agenda, ou o de preferência. Sem
+  // nenhum dos dois, quem combinaria esses exames é o primeiro médico ativo
+  // que os faz juntos — é ele que o motor vai priorizar na busca.
+  const medicoDaSessao: Medico | undefined = medicoForcado ?? MEDICOS.find((m) => m.id === medicoPref);
+  const medicoDaCombinacao =
+    medicoDaSessao ?? MEDICOS.find((m) => m.ativo && combinacaoAplicavel(m, exames));
+  const combinacaoDisponivel =
+    !modoAparelho && exames.length > 1 && medicoDaCombinacao
+      ? combinacaoAplicavel(medicoDaCombinacao, exames)
+      : null;
 
   useEffect(() => {
     if (busca.trim().length < 2) { setResultados([]); return; }
@@ -136,26 +150,34 @@ function AgendarConteudo() {
     return medicoForcado?.duracoes?.[exameId] ?? exame.duracaoMin;
   }
 
+  /** blocos de tempo da sessão — exames combinados ocupam UM bloco só */
+  function blocosDaMarcacao() {
+    const examesSeq = exames.map((id) => EXAMES.find((e) => e.id === id)!).filter(Boolean);
+    const medico = medicoForcado ?? medicoDaCombinacao;
+    if (!aparelhoCfg && medico) return blocosDaSessao(medico, examesSeq, combinar);
+    return examesSeq.map((e) => ({ exames: [e], duracaoMin: aparelhoCfg?.duracaoMin ?? e.duracaoMin }));
+  }
+
+  const duracaoTotalSessao = blocosDaMarcacao().reduce((s, b) => s + b.duracaoMin, 0);
+
   function montarPropostaDoSlot() {
     if (!medicoForcado && !aparelhoCfg) return;
     const prestadorId = medicoForcado?.id ?? aparelhoForcado;
     const prestadorNome = prestadorForcado;
+    const blocos = blocosDaMarcacao();
     let cursor = hhmmToMin(horaForcada);
-    const itens: ItemProposta[] = exames.map((id) => {
-      const exame = EXAMES.find((e) => e.id === id)!;
-      const dur = duracaoNoSlot(id);
-      const item: ItemProposta = {
-        exameId: exame.id,
-        exameNome: exame.nome,
-        medicoId: prestadorId,
-        medicoNome: prestadorNome,
-        inicio: toISO(dataForcada, cursor),
-        fim: toISO(dataForcada, cursor + dur),
-      };
-      cursor += dur;
-      return item;
-    });
-    setProposta({ mesmoMedico: true, itens });
+    const itens: ItemProposta[] = [];
+    for (const bloco of blocos) {
+      // exames do mesmo bloco recebem início e fim IGUAIS — é isso que faz
+      // eco + carótida do Dr. Daher caírem no mesmo horário da agenda
+      const inicio = toISO(dataForcada, cursor);
+      const fim = toISO(dataForcada, cursor + bloco.duracaoMin);
+      for (const e of bloco.exames) {
+        itens.push({ exameId: e.id, exameNome: e.nome, medicoId: prestadorId, medicoNome: prestadorNome, inicio, fim });
+      }
+      cursor += bloco.duracaoMin;
+    }
+    setProposta({ mesmoMedico: true, combinada: blocos.some((b) => b.exames.length > 1), itens });
     setSlots([]);
     setPasso(3);
   }
@@ -171,6 +193,7 @@ function AgendarConteudo() {
 
     const params = new URLSearchParams({ exames: exames.join(','), data, dias: modoAparelho ? '42' : '28' });
     if (medicoPref && !modoAparelho) params.set('medico', medicoPref);
+    if (!combinar) params.set('combinar', '0');
 
     try {
       const res = await fetch(`/api/disponibilidade?${params}`);
@@ -282,7 +305,7 @@ function AgendarConteudo() {
 
           {modoPaciente === 'buscar' ? (
             <>
-              <label className="label mt-4">Buscar paciente (nome, CPF ou telefone)</label>
+              <label className="label mt-4">Buscar paciente (nome, CPF, telefone ou data de nascimento)</label>
               <input className="input" autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Digite para buscar…" />
               <div className="mt-3 divide-y divide-navy-100/70">
                 {resultados.map((p) => (
@@ -290,7 +313,11 @@ function AgendarConteudo() {
                     className="flex w-full items-center justify-between py-3 text-left hover:bg-navy-50/50 rounded-lg px-2">
                     <div>
                       <div className="text-sm font-semibold text-ink">{p.nome}</div>
-                      <div className="text-xs text-muted">{p.telefone}</div>
+                      <div className="text-xs text-muted">
+                        {[p.telefone, p.dataNascimento ? fmtData(p.dataNascimento + 'T12:00') : null, p.cpf]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </div>
                     </div>
                     <span className="text-sm text-navy-700">Selecionar →</span>
                   </button>
@@ -389,8 +416,7 @@ function AgendarConteudo() {
             {exames.length > 0 && !aparelhoCfg && (
               <div className="mt-4">
                 <div className="text-xs font-semibold text-muted mb-2">
-                  Sessão ({exames.length} exame{exames.length > 1 ? 's' : ''} ·{' '}
-                  {exames.reduce((s, id) => s + (slotForcado ? duracaoNoSlot(id) : EXAMES.find((e) => e.id === id)?.duracaoMin ?? 0), 0)}min)
+                  Sessão ({exames.length} exame{exames.length > 1 ? 's' : ''} · {duracaoTotalSessao}min)
                 </div>
                 <ul className="space-y-1.5">
                   {exames.map((id, i) => (
@@ -400,6 +426,29 @@ function AgendarConteudo() {
                     </li>
                   ))}
                 </ul>
+
+                {/* Combinação do médico: exames feitos no MESMO horário. Hoje
+                    só o Dr. Daher trabalha assim (eco + carótida em 15min) —
+                    a opção só aparece quando ele é o médico da marcação. */}
+                {combinacaoDisponivel && medicoDaCombinacao && (
+                  <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-xl border border-cardio/30 bg-cardio/5 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 accent-brand-red"
+                      checked={combinar}
+                      onChange={(e) => setCombinar(e.target.checked)}
+                    />
+                    <span className="text-xs text-navy-900">
+                      <strong>Fazer no mesmo horário</strong> — {medicoDaCombinacao.nome} realiza{' '}
+                      {combinacaoDisponivel.exames.map(nomeExame).join(' e ')} juntos, em{' '}
+                      {combinacaoDisponivel.duracaoMin} min no total.
+                      <span className="mt-0.5 block text-muted">
+                        Desmarque para reservar um horário separado para cada exame.
+                      </span>
+                    </span>
+                  </label>
+                )}
+
                 {exames.length > 1 && !slotForcado && !modoAparelho && (
                   <p className="mt-2 text-xs text-navy-600">⚡ O sistema prioriza marcar todos com o <strong>mesmo médico</strong>, em sequência.</p>
                 )}
@@ -495,15 +544,18 @@ function AgendarConteudo() {
                 )}
               </div>
               <ul className="mt-4 space-y-2">
-                {proposta.itens.map((it, i) => (
-                  <li key={i} className="flex items-center justify-between rounded-xl border border-navy-100 px-4 py-3">
+                {agruparPorHorario(proposta.itens).map((g, i) => (
+                  <li key={i} className="flex items-center justify-between gap-3 rounded-xl border border-navy-100 px-4 py-3">
                     <div>
-                      <div className="text-sm font-semibold text-ink">{it.exameNome}</div>
-                      <div className="text-xs text-muted">{it.medicoNome}</div>
+                      <div className="text-sm font-semibold text-ink">{g.itens.map((it) => it.exameNome).join(' + ')}</div>
+                      <div className="text-xs text-muted">
+                        {g.itens[0].medicoNome}
+                        {g.itens.length > 1 && ' · os dois no mesmo horário'}
+                      </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm font-bold text-navy-700">{fmtHora(it.inicio)}–{fmtHora(it.fim)}</div>
-                      <div className="text-xs text-muted">{fmtData(it.inicio)}</div>
+                      <div className="text-sm font-bold text-navy-700">{fmtHora(g.inicio)}–{fmtHora(g.fim)}</div>
+                      <div className="text-xs text-muted">{fmtData(g.inicio)}</div>
                     </div>
                   </li>
                 ))}
@@ -553,6 +605,24 @@ function AgendarConteudo() {
   );
 }
 
+/**
+ * Agrupa itens que ocupam o MESMO intervalo com o mesmo prestador — exames
+ * combinados (eco + carótida do Dr. Daher) viram uma linha só em vez de dois
+ * itens repetindo o mesmo horário.
+ */
+function agruparPorHorario<T extends { inicio: string; fim: string; medicoId: string }>(itens: T[]) {
+  const grupos: Array<{ inicio: string; fim: string; medicoId: string; itens: T[] }> = [];
+  for (const it of itens) {
+    const ultimo = grupos[grupos.length - 1];
+    if (ultimo && ultimo.inicio === it.inicio && ultimo.fim === it.fim && ultimo.medicoId === it.medicoId) {
+      ultimo.itens.push(it);
+    } else {
+      grupos.push({ inicio: it.inicio, fim: it.fim, medicoId: it.medicoId, itens: [it] });
+    }
+  }
+  return grupos;
+}
+
 function ModalConfirmacao({ paciente, itens, convenioNome, nomeExame, nomeMedico, observacao, onObservacao, carregando, onConfirmar, onCancelar }: {
   paciente: Paciente;
   itens: Array<{ exameId: string; medicoId: string; inicio: string; fim: string }>;
@@ -577,15 +647,18 @@ function ModalConfirmacao({ paciente, itens, convenioNome, nomeExame, nomeMedico
         </div>
 
         <ul className="mt-4 space-y-2">
-          {itens.map((it, i) => (
-            <li key={i} className="flex items-center justify-between rounded-xl border border-navy-100 px-4 py-3">
+          {agruparPorHorario(itens).map((g, i) => (
+            <li key={i} className="flex items-center justify-between gap-3 rounded-xl border border-navy-100 px-4 py-3">
               <div>
-                <div className="text-sm font-semibold text-ink">{nomeExame(it.exameId)}</div>
-                <div className="text-xs text-muted">{nomeMedico(it.medicoId)}</div>
+                <div className="text-sm font-semibold text-ink">{g.itens.map((it) => nomeExame(it.exameId)).join(' + ')}</div>
+                <div className="text-xs text-muted">
+                  {nomeMedico(g.medicoId)}
+                  {g.itens.length > 1 && ' · os dois no mesmo horário'}
+                </div>
               </div>
               <div className="text-right">
-                <div className="text-sm font-bold text-navy-700">{fmtHora(it.inicio)}–{fmtHora(it.fim)}</div>
-                <div className="text-xs text-muted">{fmtData(it.inicio)}</div>
+                <div className="text-sm font-bold text-navy-700">{fmtHora(g.inicio)}–{fmtHora(g.fim)}</div>
+                <div className="text-xs text-muted">{fmtData(g.inicio)}</div>
               </div>
             </li>
           ))}

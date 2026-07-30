@@ -1,6 +1,6 @@
-import type { Agendamento, AparelhoConfig, Exame, Medico, SlotDisponivel, Weekday } from '../types';
+import type { Agendamento, AparelhoConfig, CombinacaoExames, Exame, Medico, SlotDisponivel, Weekday } from '../types';
 import {
-  GRID_MIN, addDays, ceilToGrid, fromISO, hhmmToMin, semanaQuinzenalAtiva, toISO, weekdayOf,
+  GRID_MIN, addDays, fromISO, hhmmToMin, pisoDaGrade, semanaQuinzenalAtiva, toISO, weekdayOf,
 } from './time';
 
 // ============================================================
@@ -11,7 +11,8 @@ import {
 //     capacidade por slot (1 aparelho por horário).
 // Regras gerais:
 //  - exames começam em múltiplos de 15min
-//  - um médico/aparelho nunca tem dois exames sobrepostos
+//  - um médico/aparelho nunca tem dois exames sobrepostos, EXCETO os que ele
+//    executa juntos (ver `combinacoes` do médico / blocosDaSessao)
 //  - exames consecutivos são priorizados com o MESMO médico
 // ============================================================
 
@@ -33,11 +34,71 @@ interface BuscaOpts {
    * o próprio exame sendo gerado.
    */
   examesSessao?: string[];
+  /**
+   * Aplicar as combinações do médico (exames feitos no mesmo horário, ex.:
+   * eco + carótida do Dr. Daher em 15min). Default true — é o comportamento
+   * real dele. A recepção pode desligar na tela de marcação quando, naquele
+   * caso, quiser os exames em horários separados.
+   */
+  combinar?: boolean;
 }
 
 /** duração (min) de um exame PARA ESTE médico (override do padrão) */
 export function duracaoDoMedico(medico: Medico, exame: Exame): number {
   return medico.duracoes?.[exame.id] ?? exame.duracaoMin;
+}
+
+/** Um trecho de tempo da sessão: 1 exame, ou vários que ocorrem JUNTOS. */
+export interface BlocoSessao {
+  exames: Exame[];
+  duracaoMin: number;
+}
+
+/** o médico faz TODOS estes exames juntos? devolve a combinação que se aplica */
+export function combinacaoAplicavel(medico: Medico, exameIds: string[]): CombinacaoExames | null {
+  const presentes = new Set(exameIds);
+  return (
+    (medico.combinacoes ?? [])
+      .filter((c) => c.exames.length >= 2 && c.exames.every((id) => presentes.has(id)))
+      // a combinação mais abrangente primeiro (cobre mais exames no mesmo bloco)
+      .sort((a, b) => b.exames.length - a.exames.length)[0] ?? null
+  );
+}
+
+/**
+ * Divide a sessão nos blocos de tempo que ela realmente ocupa na agenda
+ * deste médico. Exames de uma combinação viram UM bloco só, no lugar do
+ * primeiro deles; o resto continua um bloco por exame, em sequência.
+ *
+ * Ex.: [eco, carótida] com o Dr. Daher → 1 bloco de 15min com os dois.
+ *      [eco, carótida, ergométrico] → bloco de 15min (eco+caró) + 15min (ergo).
+ */
+export function blocosDaSessao(medico: Medico, examesSeq: Exame[], combinar = true): BlocoSessao[] {
+  const combinacao = combinar ? combinacaoAplicavel(medico, examesSeq.map((e) => e.id)) : null;
+  if (!combinacao) {
+    return examesSeq.map((e) => ({ exames: [e], duracaoMin: duracaoDoMedico(medico, e) }));
+  }
+  const noBloco = new Set(combinacao.exames);
+  const blocos: BlocoSessao[] = [];
+  let emitido = false;
+  for (const e of examesSeq) {
+    if (noBloco.has(e.id)) {
+      if (emitido) continue; // os demais exames do bloco já entraram nele
+      emitido = true;
+      blocos.push({
+        exames: examesSeq.filter((x) => noBloco.has(x.id)),
+        duracaoMin: combinacao.duracaoMin,
+      });
+      continue;
+    }
+    blocos.push({ exames: [e], duracaoMin: duracaoDoMedico(medico, e) });
+  }
+  return blocos;
+}
+
+/** minutos que a sessão ocupa na agenda do médico (já com as combinações) */
+export function duracaoDaSessao(medico: Medico, examesSeq: Exame[], combinar = true): number {
+  return blocosDaSessao(medico, examesSeq, combinar).reduce((s, b) => s + b.duracaoMin, 0);
 }
 
 /** o médico oferece este exame nesta janela? (respeita exames da janela) */
@@ -121,7 +182,7 @@ export function gerarSlots(
   );
 
   const slots: SlotDisponivel[] = [];
-  const piso = naoAntesDe ? fromISO(naoAntesDe) : null;
+  const piso = naoAntesDe ? pisoDaGrade(naoAntesDe) : null;
 
   for (let d = 0; d < dias && slots.length < limite; d++) {
     const date = addDays(dataInicio, d);
@@ -139,7 +200,7 @@ export function gerarSlots(
         const janFim = hhmmToMin(j.fim);
         for (let start = janInicio; start + dur <= janFim; start += GRID_MIN) {
           const end = start + dur;
-          if (piso && date === piso.date && start < ceilToGrid(piso.min)) continue;
+          if (piso && date === piso.date && start < piso.min) continue;
           if (piso && date < piso.date) continue;
           if (!ocup.some(([o1, o2]) => sobrepoe(start, end, o1, o2))) {
             slots.push({
@@ -168,7 +229,7 @@ export function gerarSlotsAparelho(
   opts: { dataInicio: string; dias?: number; naoAntesDe?: string; limite?: number },
 ): SlotDisponivel[] {
   const { dataInicio, dias = 14, naoAntesDe, limite = 60 } = opts;
-  const piso = naoAntesDe ? fromISO(naoAntesDe) : null;
+  const piso = naoAntesDe ? pisoDaGrade(naoAntesDe) : null;
   const slots: SlotDisponivel[] = [];
 
   for (let d = 0; d < dias && slots.length < limite; d++) {
@@ -180,7 +241,7 @@ export function gerarSlotsAparelho(
 
     for (const hhmm of horarios) {
       const start = hhmmToMin(hhmm);
-      if (piso && date === piso.date && start < ceilToGrid(piso.min)) continue;
+      if (piso && date === piso.date && start < piso.min) continue;
       if (piso && date < piso.date) continue;
 
       const ocupados = agendamentos.filter(
@@ -218,13 +279,16 @@ export interface ItemProposta {
 export interface Proposta {
   /** true se todos os exames ficaram com o mesmo médico, em sequência */
   mesmoMedico: boolean;
+  /** true se algum exame divide o MESMO horário com outro (combinação do médico) */
+  combinada?: boolean;
   itens: ItemProposta[];
 }
 
 /**
  * Para uma sequência de exames consecutivos (uma "sessão"), tenta encaixar
  * TODOS com o MESMO médico, num bloco contíguo dentro de UMA janela que
- * ofereça todos os exames. Fallback: distribui exame a exame preservando a
+ * ofereça todos os exames. Exames que o médico faz juntos (combinação)
+ * recebem o MESMO horário. Fallback: distribui exame a exame preservando a
  * ordem cronológica.
  */
 export function proporSessao(
@@ -233,8 +297,8 @@ export function proporSessao(
   agendamentos: Agendamento[],
   opts: BuscaOpts,
 ): Proposta | null {
-  const { dataInicio, dias = 14, medicoPreferidoId, naoAntesDe } = opts;
-  const piso = naoAntesDe ? fromISO(naoAntesDe) : null;
+  const { dataInicio, dias = 14, medicoPreferidoId, naoAntesDe, combinar = true } = opts;
+  const piso = naoAntesDe ? pisoDaGrade(naoAntesDe) : null;
   const idsSessao = examesSeq.map((e) => e.id);
 
   // 1) tenta o mesmo médico para o bloco inteiro
@@ -248,7 +312,8 @@ export function proporSessao(
   for (let d = 0; d < dias; d++) {
     const date = addDays(dataInicio, d);
     for (const medico of candidatos) {
-      const duracaoTotal = examesSeq.reduce((s, e) => s + duracaoDoMedico(medico, e), 0);
+      const blocos = blocosDaSessao(medico, examesSeq, combinar);
+      const duracaoTotal = blocos.reduce((s, b) => s + b.duracaoMin, 0);
       const ocup = ocupacoesDoDia(medico.id, date, agendamentos);
       // só janelas que ofereçam TODOS os exames da sessão E estejam liberadas
       // para ela (regra `exigeExame`: cardiopulmonar prioritário na seg/sex)
@@ -259,24 +324,29 @@ export function proporSessao(
         const janInicio = hhmmToMin(j.inicio);
         const janFim = hhmmToMin(j.fim);
         for (let start = janInicio; start + duracaoTotal <= janFim; start += GRID_MIN) {
-          if (piso && date === piso.date && start < ceilToGrid(piso.min)) continue;
+          if (piso && date === piso.date && start < piso.min) continue;
           if (piso && date < piso.date) continue;
           if (!ocup.some(([o1, o2]) => sobrepoe(start, start + duracaoTotal, o1, o2))) {
             let cursor = start;
-            const itens: ItemProposta[] = examesSeq.map((e) => {
-              const dur = duracaoDoMedico(medico, e);
-              const item: ItemProposta = {
-                exameId: e.id,
-                exameNome: e.nome,
-                medicoId: medico.id,
-                medicoNome: medico.nome,
-                inicio: toISO(date, cursor),
-                fim: toISO(date, cursor + dur),
-              };
-              cursor += dur;
-              return item;
-            });
-            return { mesmoMedico: true, itens };
+            const itens: ItemProposta[] = [];
+            for (const bloco of blocos) {
+              const inicio = toISO(date, cursor);
+              const fim = toISO(date, cursor + bloco.duracaoMin);
+              // exames do mesmo bloco compartilham início e fim — é o que faz
+              // eco + carótida do Dr. Daher caírem no mesmo quadrado da agenda
+              for (const e of bloco.exames) {
+                itens.push({
+                  exameId: e.id,
+                  exameNome: e.nome,
+                  medicoId: medico.id,
+                  medicoNome: medico.nome,
+                  inicio,
+                  fim,
+                });
+              }
+              cursor += bloco.duracaoMin;
+            }
+            return { mesmoMedico: true, combinada: blocos.some((b) => b.exames.length > 1), itens };
           }
         }
       }
@@ -310,7 +380,9 @@ export function proporSessao(
     cursorISO = s.fim;
   }
   const mesmo = itens.every((i) => i.medicoId === itens[0].medicoId);
-  return { mesmoMedico: mesmo, itens };
+  // aqui cada exame foi encaixado sozinho, em horários distintos — nunca
+  // combinado (combinar exige a janela contígua do passo 1)
+  return { mesmoMedico: mesmo, combinada: false, itens };
 }
 
 /** converte itens de proposta em "agendamentos" temporários p/ checagem de conflito */

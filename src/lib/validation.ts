@@ -165,49 +165,46 @@ export function sanitizarLeadFormulario(raw: Record<string, unknown>): LeadEntra
   };
 }
 
-/** Atualização parcial de cadastro / antropometria na ficha de identidade. */
+/**
+ * Atualização parcial da ficha de identidade.
+ *
+ * Campo AUSENTE = não mexe. Campo presente e em branco = APAGA (é assim que
+ * a recepção corrige um e-mail ou um endereço digitado errado). Nome e
+ * telefone fogem à regra: são obrigatórios, então em branco é ignorado.
+ */
 export function sanitizarPacientePatch(raw: Record<string, unknown>): Partial<PacienteEntrada> {
   const patch: Partial<PacienteEntrada> = {};
-  if ('cpf' in raw) {
-    const cpf = str(raw.cpf, 20);
-    if (cpf !== undefined) patch.cpf = cpf;
-  }
-  if ('dataNascimento' in raw) {
-    const dataNascimento = str(raw.dataNascimento, 10);
-    if (dataNascimento !== undefined) patch.dataNascimento = dataNascimento;
-  }
+  /** texto opcional: aceita apagar (string vazia) */
+  const opcional = (campo: 'cpf' | 'dataNascimento' | 'email' | 'endereco' | 'carteirinha' | 'convenioId', max: number) => {
+    if (campo in raw) patch[campo] = str(raw[campo], max) ?? '';
+  };
+  /** texto obrigatório: em branco não sobrescreve o que já está gravado */
+  const obrigatorio = (campo: 'nome' | 'telefone', max: number) => {
+    const v = str(raw[campo], max);
+    if (v) patch[campo] = v;
+  };
+
+  obrigatorio('nome', 120);
+  obrigatorio('telefone', 30);
+  opcional('cpf', 20);
+  opcional('dataNascimento', 10);
+  opcional('email', 120);
+  opcional('endereco', 200);
+  opcional('carteirinha', 60);
+  opcional('convenioId', 60);
   if ('sexo' in raw) {
     patch.sexo = raw.sexo === 'M' || raw.sexo === 'F' || raw.sexo === 'O' ? (raw.sexo as Sexo) : undefined;
   }
-  if ('telefone' in raw) {
-    const telefone = str(raw.telefone, 30);
-    if (telefone) patch.telefone = telefone;
-  }
-  if ('email' in raw) {
-    const email = str(raw.email, 120);
-    if (email !== undefined) patch.email = email;
-  }
-  if ('endereco' in raw) {
-    const endereco = str(raw.endereco, 200);
-    if (endereco !== undefined) patch.endereco = endereco;
-  }
-  if ('carteirinha' in raw) {
-    const carteirinha = str(raw.carteirinha, 60);
-    if (carteirinha !== undefined) patch.carteirinha = carteirinha;
-  }
-  if ('convenioId' in raw) {
-    const convenioId = str(raw.convenioId, 60);
-    if (convenioId !== undefined) patch.convenioId = convenioId;
-  }
+
   if (raw.fichaMedica && typeof raw.fichaMedica === 'object') {
     const fm = raw.fichaMedica as Record<string, unknown>;
+    const antro: Partial<FichaMedica> = {};
+    // peso/altura só mudam com número válido — em branco mantém o último valor
     const pesoKg = num(fm.pesoKg, LIMITES.pesoKg);
     const alturaCm = num(fm.alturaCm, LIMITES.alturaCm);
-    const observacoesGerais = str(fm.observacoesGerais, 2000);
-    const antro: Partial<FichaMedica> = {};
     if (pesoKg !== undefined) antro.pesoKg = pesoKg;
     if (alturaCm !== undefined) antro.alturaCm = alturaCm;
-    if (observacoesGerais !== undefined) antro.observacoesGerais = observacoesGerais;
+    if ('observacoesGerais' in fm) antro.observacoesGerais = str(fm.observacoesGerais, 2000) ?? '';
     if (Object.keys(antro).length > 0) patch.fichaMedica = antro as FichaMedica;
   }
   return patch;

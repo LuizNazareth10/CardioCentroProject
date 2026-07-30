@@ -24,6 +24,7 @@ import { cert, initializeApp } from 'firebase-admin/app';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import * as fs from 'fs';
 import { CONVENIOS, EXAMES } from '../src/lib/seed-data';
+import { derivarCamposBusca } from '../src/lib/db';
 import type { Agendamento, FichaMedica, Paciente, Sexo, StatusAgendamento } from '../src/lib/types';
 
 // ---------------------------------------------------------------
@@ -238,13 +239,14 @@ async function main() {
     const id = uid('pac');
     prontuarioParaPacienteId.set(f.prontuario, id);
     const criadoEm = f.data_de_cadastro ? `${f.data_de_cadastro}T00:00:00-03:00` : new Date().toISOString();
+    const telefone = escolherTelefone(f);
     pacientes.push({
       id,
       nome,
       cpf: f.cpf || undefined,
       dataNascimento: f.data_de_nascimento || undefined,
       sexo: sexoDe(f.sexo),
-      telefone: escolherTelefone(f),
+      telefone,
       email: f.email || undefined,
       endereco: montarEndereco(f),
       convenioId: f.convenio_1 ? acharConvenioId(f.convenio_1) : undefined,
@@ -252,6 +254,10 @@ async function main() {
       fichaMedica: fichaVazia(),
       criadoEm,
       atualizadoEm: criadoEm,
+      // grava já indexado: este script escreve direto no Firestore, sem passar
+      // por `criarPaciente` — sem isto o paciente importado não apareceria em
+      // nenhuma busca até rodar o backfill
+      ...derivarCamposBusca({ nome, cpf: f.cpf || undefined, telefone }),
     });
   }
   console.log('pacientes válidos:', pacientes.length, '| sem nome (pulados):', pacientesSemNome);

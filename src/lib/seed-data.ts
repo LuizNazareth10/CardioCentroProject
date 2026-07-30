@@ -175,6 +175,10 @@ export const MEDICOS: Medico[] = [
     foto: '',
     examesHabilitados: [ECO, CARO, ERGO],
     duracoes: { [ECO]: 15, [CARO]: 15, [ERGO]: 15 },
+    // Regra do Dr. Daher: eco + carótida no mesmo paciente são feitos na
+    // MESMA sessão de 15min (não 15 + 15). Só ele trabalha assim — os outros
+    // médicos continuam somando as durações.
+    combinacoes: [{ exames: [ECO, CARO], duracaoMin: 15 }],
     disponibilidade: [
       { weekday: 1, inicio: '13:30', fim: '17:00', exames: [ECO, CARO, ERGO] }, // seg tarde
       { weekday: 2, inicio: '09:15', fim: '11:30', exames: [ECO, CARO, ERGO] }, // ter manhã
@@ -293,6 +297,21 @@ export const MEDICOS: Medico[] = [
     ativo: false,
   },
 ];
+
+/**
+ * Texto pronto das combinações de exames (feitos no MESMO horário por um
+ * médico), para o contexto da IA responder "posso fazer os dois juntos?".
+ * Derivado dos médicos — nunca escrito à mão, não desatualiza.
+ */
+export const RESUMO_COMBINACOES: string = MEDICOS.filter((m) => m.ativo && m.combinacoes?.length)
+  .flatMap((m) =>
+    (m.combinacoes ?? []).map(
+      (c) =>
+        `${m.nome} realiza ${c.exames.map((id) => EXAMES.find((e) => e.id === id)?.nome ?? id).join(' + ')} ` +
+        `na MESMA sessão de ${c.duracaoMin} min (um único horário, não dois)`,
+    ),
+  )
+  .join('. ');
 
 // =============================================================
 // Contato oficial da clínica — usado na landing e na área restrita.

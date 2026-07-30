@@ -1,5 +1,6 @@
 import { processarMensagem } from '../src/lib/whatsapp/agent';
 import { listarAgendamentos } from '../src/lib/db';
+import type { Agendamento } from '../src/lib/types';
 
 // silencia os logs de "enviaria" para o teste ficar limpo
 const orig = console.log;
@@ -37,9 +38,16 @@ async function run() {
   const doZap = await doPaciente();
   check('Agendou os 2 exames via WhatsApp', doZap.length === 2);
   check('Mesmo paciente nos dois exames', doZap.length === 2 && doZap[0].pacienteId === doZap[1].pacienteId);
-  check('Exames consecutivos (fim de um = início do outro)',
-    doZap.length === 2 && [doZap[0], doZap[1]].sort((a, b) => a.inicio.localeCompare(b.inicio))
-      .reduce((ok, _, i, arr) => i === 0 ? ok : ok && arr[i - 1].fim === arr[i].inicio, true));
+  // Sem buraco na sessão: um exame começa quando o outro termina OU os dois
+  // ocupam o MESMO horário — é o caso do Dr. Daher, que faz eco + carótida
+  // juntos em 15min (ver `combinacoes` em seed-data.ts).
+  const semBuraco = (a: Agendamento, b: Agendamento) =>
+    a.fim === b.inicio || (a.inicio === b.inicio && a.fim === b.fim);
+  const ordenados = doZap.slice().sort((a, b) => a.inicio.localeCompare(b.inicio));
+  check('Exames colados ou no mesmo horário', doZap.length === 2 && semBuraco(ordenados[0], ordenados[1]));
+  check('Com o Dr. Daher, eco + carótida saem no MESMO horário',
+    doZap.length === 2 &&
+    (ordenados[0].medicoId !== 'med-daher' || ordenados[0].inicio === ordenados[1].inicio));
   check('Convênio registrado', doZap.length === 2 && doZap.every((a) => a.convenioId === 'unimed'));
 
   // ---------- convênio com plano NÃO atendido cai para a recepção ----------
@@ -74,8 +82,8 @@ async function run() {
   check('Horário realmente mudou', !!inicioAntigo && depois[0]?.inicio !== inicioAntigo);
   check('Guardou o rastro do horário anterior',
     depois.every((d) => d.remarcadoEm && d.inicioAnterior));
-  check('Sessão continua consecutiva após remarcar',
-    depois.length === 2 && depois[0].fim === depois[1].inicio);
+  check('Sessão continua sem buraco após remarcar',
+    depois.length === 2 && semBuraco(depois[0], depois[1]));
   check('Status volta para "agendado" após remarcar',
     depois.every((d) => d.status === 'agendado' && !d.lembreteEnviadoEm));
 

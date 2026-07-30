@@ -48,13 +48,22 @@ check('Eco do Zorzo dura 20min', ecoZorzo.every((s) => {
   return fim - ini === 20;
 }));
 
-// ---- 5: sessão Eco+Carótida com o MESMO médico (Daher, 15+15) ----
+// ---- 5: sessão Eco+Carótida com o MESMO médico ----
+// Sem buraco entre os exames: ou um começa exatamente quando o anterior
+// termina, ou os dois ocupam o MESMO horário (combinação do médico — o
+// Dr. Daher faz eco + carótida em 15min; ver bloco 12).
 const sessao = proporSessao([exame('eco-doppler'), exame('duplex-carotidas')], MEDICOS, [], { dataInicio: SEG, dias: 2 });
 check('Sessão de 2 exames retorna proposta', sessao !== null);
 check('Sessão prioriza o MESMO médico', sessao?.mesmoMedico === true);
-check('Exames da sessão são consecutivos', (() => {
+check('Exames da sessão ficam colados (ou no mesmo horário)', (() => {
   if (!sessao) return false;
-  for (let i = 1; i < sessao.itens.length; i++) if (sessao.itens[i].inicio !== sessao.itens[i - 1].fim) return false;
+  for (let i = 1; i < sessao.itens.length; i++) {
+    const anterior = sessao.itens[i - 1];
+    const atual = sessao.itens[i];
+    const colado = atual.inicio === anterior.fim;
+    const juntos = atual.inicio === anterior.inicio && atual.fim === anterior.fim;
+    if (!colado && !juntos) return false;
+  }
   return true;
 })());
 
@@ -112,6 +121,68 @@ check('Sessão Eco+Carótida (sem cardiopulmonar) NÃO é agendada com Lovisi na
 // eco continua disponível com OUTRO médico na segunda (Daher, tarde)
 const ecoSegQualquer = gerarSlots(exame('eco-doppler'), MEDICOS, [], { dataInicio: SEG, dias: 1 });
 check('Eco sozinho na seg AINDA é ofertado por outro médico (Daher)', ecoSegQualquer.some((s) => s.medicoId === 'med-daher'));
+
+// ---- 12: REGRA DR. RICARDO DAHER — eco + carótida no MESMO horário ----
+// Ele executa os dois juntos em 15min (não 15 + 15). Vale só para ele.
+const duracaoMin = (i: { inicio: string; fim: string }) =>
+  (Number(i.fim.slice(11, 13)) * 60 + Number(i.fim.slice(14, 16))) -
+  (Number(i.inicio.slice(11, 13)) * 60 + Number(i.inicio.slice(14, 16)));
+
+const comboDaher = proporSessao([exame('eco-doppler'), exame('duplex-carotidas')], MEDICOS, [], {
+  dataInicio: SEG, dias: 1, medicoPreferidoId: 'med-daher',
+});
+check('Daher: eco + carótida começam no MESMO horário', comboDaher?.itens[0].inicio === comboDaher?.itens[1].inicio);
+check('Daher: a dupla termina no mesmo horário', comboDaher?.itens[0].fim === comboDaher?.itens[1].fim);
+check('Daher: a dupla ocupa 15min no total', duracaoMin(comboDaher!.itens[0]) === 15);
+check('Proposta sinaliza que é combinada', comboDaher?.combinada === true);
+
+// desligando a combinação (opção da tela de marcação) volta a somar 15 + 15
+const semCombo = proporSessao([exame('eco-doppler'), exame('duplex-carotidas')], MEDICOS, [], {
+  dataInicio: SEG, dias: 1, medicoPreferidoId: 'med-daher', combinar: false,
+});
+check('combinar=false coloca os exames em sequência', semCombo?.itens[1].inicio === semCombo?.itens[0].fim);
+check('combinar=false não marca a proposta como combinada', semCombo?.combinada === false);
+
+// a regra é SÓ do Daher — Zorzo continua somando (20 + 20 na quarta)
+const comboZorzo = proporSessao([exame('eco-doppler'), exame('duplex-carotidas')], MEDICOS, [], {
+  dataInicio: QUA_ATIVA, dias: 1, medicoPreferidoId: 'med-zorzo',
+});
+check('Zorzo NÃO combina: exames em sequência', comboZorzo?.itens[1].inicio === comboZorzo?.itens[0].fim);
+
+// exame fora da combinação entra depois dela, em sequência
+const trio = proporSessao([exame('eco-doppler'), exame('duplex-carotidas'), exame('ergometrico')], MEDICOS, [], {
+  dataInicio: SEG, dias: 1, medicoPreferidoId: 'med-daher',
+});
+check('Daher: eco + carótida juntos e ergométrico depois', (() => {
+  if (!trio || trio.itens.length !== 3) return false;
+  const [eco1, caro1, ergo1] = trio.itens;
+  return eco1.inicio === caro1.inicio && ergo1.inicio === eco1.fim;
+})());
+
+// o bloco combinado OCUPA o horário para os demais pacientes
+const comboOcupado: Agendamento[] = ['eco-doppler', 'duplex-carotidas'].map((exameId, i) => ({
+  id: `c${i}`, pacienteId: 'p', pacienteNome: 'Z', medicoId: 'med-daher', exameId,
+  convenioId: 'particular', inicio: `${SEG}T13:30:00-03:00`, fim: `${SEG}T13:45:00-03:00`,
+  status: 'agendado', origem: 'sistema', criadoEm: '',
+}));
+const aposCombo = gerarSlots(exame('eco-doppler'), MEDICOS, comboOcupado, {
+  dataInicio: SEG, dias: 1, medicoPreferidoId: 'med-daher',
+});
+check('Horário combinado fica ocupado p/ outro paciente', !aposCombo.some((s) => s.inicio === `${SEG}T13:30:00-03:00`));
+check('13:45 continua livre depois do bloco combinado', aposCombo.some((s) => s.inicio === `${SEG}T13:45:00-03:00`));
+
+// ---- 13: horário que JÁ COMEÇOU não é ofertado ----
+// O piso ("não antes de") vinha com os segundos descartados: às 13:30:31 o
+// motor ainda oferecia o slot das 13:30, que já tinha começado.
+const jaComecou = gerarSlots(exame('eco-doppler'), MEDICOS, [], {
+  dataInicio: SEG, dias: 1, medicoPreferidoId: 'med-daher', naoAntesDe: `${SEG}T13:30:31-03:00`,
+});
+check('Slot que começou há segundos NÃO é ofertado', !jaComecou.some((s) => s.inicio === `${SEG}T13:30:00-03:00`));
+check('O slot seguinte é ofertado normalmente', jaComecou.some((s) => s.inicio === `${SEG}T13:45:00-03:00`));
+const noSegundoZero = gerarSlots(exame('eco-doppler'), MEDICOS, [], {
+  dataInicio: SEG, dias: 1, medicoPreferidoId: 'med-daher', naoAntesDe: `${SEG}T13:30:00-03:00`,
+});
+check('No segundo exato do slot, ele ainda é ofertado', noSegundoZero.some((s) => s.inicio === `${SEG}T13:30:00-03:00`));
 
 console.log('\nResumo:', falhas === 0 ? 'TODOS OS TESTES PASSARAM 🎉' : `${falhas} falha(s)`);
 process.exit(falhas === 0 ? 0 : 1);

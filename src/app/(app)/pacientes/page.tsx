@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { Paciente } from '@/lib/types';
 import { CONVENIOS } from '@/lib/seed-data';
-import { idade, iniciais } from '@/lib/format';
+import { fmtData, idade, iniciais } from '@/lib/format';
 import { DataPagina } from '@/components/DataPagina';
 
 export default function PacientesPage() {
@@ -57,7 +57,6 @@ export default function PacientesPage() {
   }
 
   const conv = (id?: string) => CONVENIOS.find((c) => c.id === id)?.nome ?? 'Particular';
-  const buscaNumerica = /^\s*\d/.test(q);
 
   return (
     <div>
@@ -70,11 +69,12 @@ export default function PacientesPage() {
       </header>
 
       <div className="mt-5">
-        <input className="input max-w-md" placeholder="Buscar por nome (início), CPF ou telefone…"
+        <input className="input max-w-md" placeholder="Buscar por nome, CPF, telefone ou data de nascimento…"
           value={q} onChange={(e) => setQ(e.target.value)} />
-        {q && !buscaNumerica && (
+        {q && (
           <p className="mt-1.5 text-xs text-muted">
-            A busca por nome é pelo começo do nome (ex.: “ana”, “josé s”). Para telefone ou CPF, digite os números.
+            Pode digitar do jeito que vier: nome em qualquer ordem e sem o nome do meio (“luiz ferreira” acha
+            “Luiz Gustavo Ferreira”), CPF ou telefone com ou sem pontuação, data de nascimento como 10/05/1980.
           </p>
         )}
       </div>
@@ -97,7 +97,12 @@ export default function PacientesPage() {
               </div>
               <div className="flex-1">
                 <div className="text-sm font-semibold text-ink">{p.nome}</div>
-                <div className="text-xs text-muted">{p.telefone} · {idade(p.dataNascimento)}</div>
+                {/* nascimento e CPF ficam visíveis porque também são critérios de busca */}
+                <div className="text-xs text-muted">
+                  {[p.telefone, idade(p.dataNascimento), p.dataNascimento ? fmtData(p.dataNascimento + 'T12:00') : null, p.cpf]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
               </div>
               <span className="badge bg-navy-50 text-navy-700">{conv(p.convenioId)}</span>
             </Link>

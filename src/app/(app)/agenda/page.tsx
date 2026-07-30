@@ -64,6 +64,18 @@ interface PlanoRemarcacaoUI {
   itens: Array<{ id: string; exameId: string; medicoId: string; inicio: string; fim: string; inicioAnterior: string }>;
 }
 
+/**
+ * Um quadrado ocupado da agenda. Normalmente é UM agendamento, mas pode ser
+ * mais de um quando o médico executa os exames JUNTOS, no mesmo horário
+ * (regra do Dr. Daher: eco + carótida em 15min). Nesse caso os registros são
+ * separados no banco — a agenda é que os mostra como um bloco só, senão eles
+ * ficariam desenhados um por cima do outro.
+ */
+interface BlocoAgenda {
+  chave: string;
+  ags: Agendamento[];
+}
+
 export default function AgendaPage() {
   return (
     <Suspense fallback={<div className="card p-8 text-center text-sm text-muted">Carregando agenda…</div>}>
@@ -81,7 +93,7 @@ function AgendaConteudo() {
   const [data, setData] = useState(dataParam || hojeJF());
   const [ags, setAgs] = useState<Agendamento[]>([]);
   const [carregando, setCarregando] = useState(true);
-  const [acaoAg, setAcaoAg] = useState<Agendamento | null>(null);
+  const [acaoBloco, setAcaoBloco] = useState<BlocoAgenda | null>(null);
   const [destaqueId, setDestaqueId] = useState<string | null>(novoId);
   const [msgSucesso, setMsgSucesso] = useState('');
   const [tick, setTick] = useState(0); // move a linha de "agora"
@@ -119,7 +131,12 @@ function AgendaConteudo() {
     if (!novoId || carregando) return;
     const ag = ags.find((a) => a.id === novoId);
     if (!ag) return;
-    const exameNome = EXAMES.find((e) => e.id === ag.exameId)?.nome ?? ag.exameId;
+    // exames marcados no MESMO horário entram todos na mensagem (o Dr. Daher
+    // faz eco + carótida juntos — avisar só de um confundiria a recepção)
+    const exameNome = ags
+      .filter((a) => a.pacienteId === ag.pacienteId && a.medicoId === ag.medicoId && a.inicio === ag.inicio)
+      .map((a) => EXAMES.find((e) => e.id === a.exameId)?.nome ?? a.exameId)
+      .join(' + ');
     setMsgSucesso(`Agendamento criado: ${ag.pacienteNome} — ${exameNome} às ${ag.inicio.slice(11, 16)}`);
     const t = setTimeout(() => {
       router.replace(`/agenda?data=${data}`, { scroll: false });
@@ -185,24 +202,33 @@ function AgendaConteudo() {
 
   const nomeExame = (id: string) => EXAMES.find((e) => e.id === id)?.nome ?? id;
 
-  function celulaMedico(m: Medico, t: number): { ag?: Agendamento; dentro: boolean } {
-    const dentro = janelasDia(m).some((j) => hhmmToMin(j.inicio) <= t && t < hhmmToMin(j.fim));
-    const ag = ags.find(
-      (a) => a.medicoId === m.id && a.status !== 'cancelado' &&
-        hhmmToMin(a.inicio.slice(11, 16)) <= t && t < hhmmToMin(a.fim.slice(11, 16)),
-    );
-    return { ag, dentro };
-  }
-  /** agendamento de aparelho que COBRE o minuto t (início pode não ser exatamente t) */
-  const apptAparelhoContendo = (tipo: TipoAparelho, t: number) =>
-    ags.find(
-      (a) => a.exameId === tipo && a.status !== 'cancelado' &&
-        hhmmToMin(a.inicio.slice(11, 16)) <= t && t < hhmmToMin(a.fim.slice(11, 16)),
-    );
+  // agendamentos do mesmo paciente, prestador e horário viram UM bloco
+  const blocos: BlocoAgenda[] = useMemo(() => {
+    const porChave = new Map<string, Agendamento[]>();
+    for (const a of ags) {
+      if (a.status === 'cancelado') continue;
+      const chave = `${a.medicoId}|${a.pacienteId}|${a.inicio}|${a.fim}`;
+      const atual = porChave.get(chave);
+      if (atual) atual.push(a);
+      else porChave.set(chave, [a]);
+    }
+    return [...porChave.entries()].map(([chave, lista]) => ({ chave, ags: lista }));
+  }, [ags]);
 
-  const ehInicio = (ag: Agendamento, t: number) => hhmmToMin(ag.inicio.slice(11, 16)) === t;
-  const spanDe = (ag: Agendamento) =>
-    Math.max(1, (hhmmToMin(ag.fim.slice(11, 16)) - hhmmToMin(ag.inicio.slice(11, 16))) / GRID);
+  const inicioDoBloco = (b: BlocoAgenda) => hhmmToMin(b.ags[0].inicio.slice(11, 16));
+  const fimDoBloco = (b: BlocoAgenda) => hhmmToMin(b.ags[0].fim.slice(11, 16));
+  const cobre = (b: BlocoAgenda, t: number) => inicioDoBloco(b) <= t && t < fimDoBloco(b);
+
+  function celulaMedico(m: Medico, t: number): { bloco?: BlocoAgenda; dentro: boolean } {
+    const dentro = janelasDia(m).some((j) => hhmmToMin(j.inicio) <= t && t < hhmmToMin(j.fim));
+    return { bloco: blocos.find((b) => b.ags[0].medicoId === m.id && cobre(b, t)), dentro };
+  }
+  /** bloco de aparelho que COBRE o minuto t (início pode não ser exatamente t) */
+  const blocoAparelhoContendo = (tipo: TipoAparelho, t: number) =>
+    blocos.find((b) => b.ags[0].exameId === tipo && cobre(b, t));
+
+  const ehInicio = (b: BlocoAgenda, t: number) => inicioDoBloco(b) === t;
+  const spanDe = (b: BlocoAgenda) => Math.max(1, (fimDoBloco(b) - inicioDoBloco(b)) / GRID);
 
   // -------- segmentação livre/bloqueado em blocos de 15min --------
   // Com a grade fina (5min) para ancorar horários quebrados, uma célula
@@ -217,11 +243,11 @@ function AgendaConteudo() {
   function estadoLinha(c: Coluna, t: number): EstadoCelula {
     if (c.tipo === 'medico') {
       if (!c.atende) return 'off-dia';
-      const { ag, dentro } = celulaMedico(c.medico, t);
-      if (ag) return 'ag';
+      const { bloco, dentro } = celulaMedico(c.medico, t);
+      if (bloco) return 'ag';
       return dentro ? 'livre' : 'bloqueado';
     }
-    if (apptAparelhoContendo(c.aparelho, t)) return 'ag';
+    if (blocoAparelhoContendo(c.aparelho, t)) return 'ag';
     return c.slots.has(t) ? 'livre' : 'bloqueado';
   }
 
@@ -242,7 +268,7 @@ function AgendaConteudo() {
   const segmentosPorColuna = useMemo(
     () => new Map(colunas.map((c) => [c.key, segmentarLivreBloqueado(c)])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [colunas, ags, data],
+    [colunas, blocos, data],
   );
 
   /**
@@ -262,7 +288,7 @@ function AgendaConteudo() {
 
   function iniciarRemarcacao(ag: Agendamento) {
     setRemarcando(ag);
-    setAcaoAg(null);
+    setAcaoBloco(null);
     setErroRemarcar('');
     setMsgSucesso('');
   }
@@ -314,45 +340,56 @@ function AgendaConteudo() {
     else carregar(data);
   }
 
-  async function mudarStatus(id: string, status: StatusAgendamento) {
-    await fetch('/api/agendamentos', {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, status }),
-    });
-    setAcaoAg(null);
+  /** aplica o status a TODOS os exames do bloco (eles acontecem juntos) */
+  async function mudarStatus(ids: string[], status: StatusAgendamento) {
+    for (const id of ids) {
+      await fetch('/api/agendamentos', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status }),
+      });
+    }
+    setAcaoBloco(null);
     carregar(data);
   }
 
-  const blocoOcupado = (ag: Agendamento, span: number) => {
+  const blocoOcupado = (b: BlocoAgenda, span: number) => {
+    const principal = b.ags[0];
+    const exames = b.ags.map((a) => nomeExame(a.exameId)).join(' + ');
+    const observacao = [...new Set(b.ags.map((a) => a.observacao).filter(Boolean))].join(' · ');
     // no modo remarcar, os demais blocos ficam inertes (não há para onde
     // mover em cima de alguém); só o que está sendo movido segue destacado
-    const movendoEste = remarcando?.id === ag.id;
+    const movendoEste = !!remarcando && b.ags.some((a) => a.id === remarcando.id);
     const inerte = !!remarcando && !movendoEste;
+    const destacado = !!destaqueId && b.ags.some((a) => a.id === destaqueId);
     return (
       <button
         type="button"
         disabled={inerte}
-        onClick={() => (movendoEste ? cancelarRemarcacao() : setAcaoAg(ag))}
-        className={`absolute inset-x-0.5 overflow-hidden rounded-lg px-2 py-2 text-left text-white shadow-soft transition hover:brightness-110 ${STATUS_AGENDAMENTO_COR[ag.status]} ${destaqueId === ag.id ? 'ring-2 ring-cardio ring-offset-2 animate-pulse' : ''} ${movendoEste ? 'ring-2 ring-brand-red ring-offset-2' : ''} ${inerte ? 'opacity-40' : ''}`}
+        onClick={() => (movendoEste ? cancelarRemarcacao() : setAcaoBloco(b))}
+        className={`absolute inset-x-0.5 overflow-hidden rounded-lg px-2 py-2 text-left text-white shadow-soft transition hover:brightness-110 ${STATUS_AGENDAMENTO_COR[principal.status]} ${destacado ? 'ring-2 ring-cardio ring-offset-2 animate-pulse' : ''} ${movendoEste ? 'ring-2 ring-brand-red ring-offset-2' : ''} ${inerte ? 'opacity-40' : ''}`}
         style={{ height: `calc(${span * ROW_H}px - 4px)` }}
         title={
           inerte
             ? 'Horário ocupado — escolha um horário livre para remarcar'
-            : `${rotuloPaciente(ag.pacienteId)} · ${ag.pacienteNome} · ${nomeExame(ag.exameId)}${ag.observacao ? ` · Obs.: ${ag.observacao}` : ''} (${STATUS_AGENDAMENTO_LABEL[ag.status]})`
+            : `${rotuloPaciente(principal.pacienteId)} · ${principal.pacienteNome} · ${exames}${observacao ? ` · Obs.: ${observacao}` : ''} (${STATUS_AGENDAMENTO_LABEL[principal.status]})`
         }
       >
-        <div className="truncate text-[11px] font-bold leading-snug">{ag.pacienteNome}</div>
-        <div className="truncate text-[9px] font-semibold uppercase tracking-wide text-white/80">{rotuloPaciente(ag.pacienteId)}</div>
-        <div className={`text-[10px] leading-snug text-white/75 ${span >= 2 ? 'line-clamp-2' : 'truncate'}`}>{nomeExame(ag.exameId)}</div>
-        {ag.observacao && (
+        <div className="truncate text-[11px] font-bold leading-snug">{principal.pacienteNome}</div>
+        <div className="truncate text-[9px] font-semibold uppercase tracking-wide text-white/80">
+          {rotuloPaciente(principal.pacienteId)}
+          {/* dois exames no mesmo horário: avisa que o bloco tem mais de um */}
+          {b.ags.length > 1 && ` · ${b.ags.length} exames`}
+        </div>
+        <div className={`text-[10px] leading-snug text-white/75 ${span >= 2 ? 'line-clamp-2' : 'truncate'}`}>{exames}</div>
+        {observacao && (
           <div className={`mt-0.5 text-[10px] font-semibold leading-snug text-amber-100 ${span >= 2 ? 'line-clamp-2' : 'truncate'}`}>
-            Obs.: {ag.observacao}
+            Obs.: {observacao}
           </div>
         )}
         {/* chegada → finalização direto no bloco, assim que o exame acaba */}
-        {ag.chegouEm && ag.finalizadoEm && (
+        {principal.chegouEm && principal.finalizadoEm && (
           <div className="mt-0.5 truncate text-[10px] font-semibold leading-snug text-white/90">
-            ⏱ {fmtHora(ag.chegouEm)} → {fmtHora(ag.finalizadoEm)}
+            ⏱ {fmtHora(principal.chegouEm)} → {fmtHora(principal.finalizadoEm)}
           </div>
         )}
       </button>
@@ -486,9 +523,9 @@ function AgendaConteudo() {
                       const seg = segmentosPorColuna.get(c.key)?.get(t);
 
                       if (c.tipo === 'medico') {
-                        const { ag, dentro } = c.atende ? celulaMedico(c.medico, t) : { ag: undefined, dentro: false };
-                        if (ag && !ehInicio(ag, t)) return <div key={c.key} className={cellCls} />;
-                        if (ag) return <div key={c.key} className={`relative ${cellCls} p-0.5`}>{blocoOcupado(ag, spanDe(ag))}</div>;
+                        const { bloco, dentro } = c.atende ? celulaMedico(c.medico, t) : { bloco: undefined, dentro: false };
+                        if (bloco && !ehInicio(bloco, t)) return <div key={c.key} className={cellCls} />;
+                        if (bloco) return <div key={c.key} className={`relative ${cellCls} p-0.5`}>{blocoOcupado(bloco, spanDe(bloco))}</div>;
                         if (!seg) return <div key={c.key} className={cellCls} />; // absorvido por um bloco de 15min anterior
                         if (!c.atende) {
                           return (
@@ -514,9 +551,9 @@ function AgendaConteudo() {
                           );
                       }
 
-                      const agAparelho = apptAparelhoContendo(c.aparelho, t);
-                      if (agAparelho && !ehInicio(agAparelho, t)) return <div key={c.key} className={cellCls} />;
-                      if (agAparelho) return <div key={c.key} className={`relative ${cellCls} p-0.5`}>{blocoOcupado(agAparelho, spanDe(agAparelho))}</div>;
+                      const blocoAparelho = blocoAparelhoContendo(c.aparelho, t);
+                      if (blocoAparelho && !ehInicio(blocoAparelho, t)) return <div key={c.key} className={cellCls} />;
+                      if (blocoAparelho) return <div key={c.key} className={`relative ${cellCls} p-0.5`}>{blocoOcupado(blocoAparelho, spanDe(blocoAparelho))}</div>;
                       if (!seg) return <div key={c.key} className={cellCls} />;
                       return seg.estado === 'livre'
                         ? <CelulaLivre key={c.key} span={seg.span} onClick={() => abrir({ aparelho: c.aparelho }, t)} titulo={`Agendar ${c.nome} às ${minToHHMM(t)}`} />
@@ -537,14 +574,14 @@ function AgendaConteudo() {
         </div>
       </div>
 
-      {acaoAg && (
+      {acaoBloco && (
         <PopoverAcao
-          ag={acaoAg}
+          bloco={acaoBloco}
           nomeExame={nomeExame}
-          onFechar={() => setAcaoAg(null)}
+          onFechar={() => setAcaoBloco(null)}
           onStatus={mudarStatus}
-          onFicha={() => router.push(`/pacientes/${acaoAg.pacienteId}`)}
-          onRemarcar={() => iniciarRemarcacao(acaoAg)}
+          onFicha={() => router.push(`/pacientes/${acaoBloco.ags[0].pacienteId}`)}
+          onRemarcar={() => iniciarRemarcacao(acaoBloco.ags[0])}
         />
       )}
 
@@ -613,10 +650,13 @@ function CelulaExcecao({ onClick, titulo, className, span = 1 }: { onClick: () =
   );
 }
 
-function PopoverAcao({ ag, nomeExame, onFechar, onStatus, onFicha, onRemarcar }: {
-  ag: Agendamento; nomeExame: (id: string) => string; onFechar: () => void;
-  onStatus: (id: string, s: StatusAgendamento) => void; onFicha: () => void; onRemarcar: () => void;
+function PopoverAcao({ bloco, nomeExame, onFechar, onStatus, onFicha, onRemarcar }: {
+  bloco: BlocoAgenda; nomeExame: (id: string) => string; onFechar: () => void;
+  onStatus: (ids: string[], s: StatusAgendamento) => void; onFicha: () => void; onRemarcar: () => void;
 }) {
+  const ag = bloco.ags[0];
+  const ids = bloco.ags.map((a) => a.id);
+  const observacoes = [...new Set(bloco.ags.map((a) => a.observacao).filter(Boolean))];
   const acoes: Array<{ label: string; status?: StatusAgendamento; cls: string }> = [
     { label: 'Confirmar presença (verde)', status: 'confirmado', cls: 'text-success' },
     { label: 'Paciente chegou (vermelho)', status: 'chegou', cls: 'text-danger' },
@@ -633,11 +673,16 @@ function PopoverAcao({ ag, nomeExame, onFechar, onStatus, onFicha, onRemarcar }:
         <div className="text-sm font-bold text-navy-900">{ag.pacienteNome}</div>
         <div className="text-xs font-semibold text-navy-700">{rotuloPaciente(ag.pacienteId)}</div>
         <div className="text-xs text-muted">
-          {nomeExame(ag.exameId)} · {ag.inicio.slice(11, 16)}–{ag.fim.slice(11, 16)}
+          {bloco.ags.map((a) => nomeExame(a.exameId)).join(' + ')} · {ag.inicio.slice(11, 16)}–{ag.fim.slice(11, 16)}
         </div>
-        {ag.observacao && (
+        {bloco.ags.length > 1 && (
+          <div className="mt-2 rounded-xl bg-cardio/10 px-3 py-2 text-xs font-medium text-navy-800">
+            {bloco.ags.length} exames no mesmo horário — as ações abaixo valem para todos.
+          </div>
+        )}
+        {observacoes.length > 0 && (
           <div className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
-            Obs.: {ag.observacao}
+            Obs.: {observacoes.join(' · ')}
           </div>
         )}
         <span className="badge mt-2 bg-navy-50 text-navy-700">{STATUS_AGENDAMENTO_LABEL[ag.status]}</span>
@@ -651,8 +696,8 @@ function PopoverAcao({ ag, nomeExame, onFechar, onStatus, onFicha, onRemarcar }:
           {acoes.map((a) => (
             <button
               key={a.label}
-              disabled={ag.status === a.status}
-              onClick={() => a.status && onStatus(ag.id, a.status)}
+              disabled={bloco.ags.every((x) => x.status === a.status)}
+              onClick={() => a.status && onStatus(ids, a.status)}
               className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold hover:bg-navy-50 disabled:opacity-40 ${a.cls}`}
             >
               {a.label}
@@ -736,21 +781,25 @@ function ModalRemarcacao({ ag, plano, nomeExame, nomePrestador, salvando, onConf
         )}
 
         <ul className="mt-4 space-y-2">
-          {plano.itens.map((it) => (
-            <li key={it.id} className="rounded-xl border border-navy-100 px-4 py-3">
-              <div className="text-sm font-semibold text-ink">{nomeExame(it.exameId)}</div>
-              <div className="text-xs text-muted">{nomePrestador(it.medicoId)}</div>
-              <div className="mt-1.5 flex items-center gap-2 text-xs">
-                <span className="text-muted line-through">
-                  {fmtData(it.inicioAnterior)} {fmtHora(it.inicioAnterior)}
-                </span>
-                <span className="text-navy-400">→</span>
-                <span className="font-bold text-brand-red">
-                  {fmtData(it.inicio)} {fmtHora(it.inicio)}
-                </span>
-              </div>
-            </li>
-          ))}
+          {/* exames que vão para o MESMO horário aparecem numa linha só */}
+          {[...new Map(plano.itens.map((it) => [`${it.medicoId}|${it.inicio}`, it])).values()].map((it) => {
+            const juntos = plano.itens.filter((x) => x.medicoId === it.medicoId && x.inicio === it.inicio);
+            return (
+              <li key={it.id} className="rounded-xl border border-navy-100 px-4 py-3">
+                <div className="text-sm font-semibold text-ink">{juntos.map((x) => nomeExame(x.exameId)).join(' + ')}</div>
+                <div className="text-xs text-muted">{nomePrestador(it.medicoId)}</div>
+                <div className="mt-1.5 flex items-center gap-2 text-xs">
+                  <span className="text-muted line-through">
+                    {fmtData(it.inicioAnterior)} {fmtHora(it.inicioAnterior)}
+                  </span>
+                  <span className="text-navy-400">→</span>
+                  <span className="font-bold text-brand-red">
+                    {fmtData(it.inicio)} {fmtHora(it.inicio)}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
         </ul>
 
         <p className="mt-3 text-[11px] text-muted">

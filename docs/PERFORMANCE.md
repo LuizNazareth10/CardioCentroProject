@@ -39,8 +39,9 @@ inteira**. Todo filtro vai **dentro da query** do Firestore.
 2. **Contagens** (ex.: "pacientes cadastrados" no Painel) usam **agregação**
    (`.count()`) — **1 leitura** em vez de 19 mil.
 3. **Busca de pacientes** é indexada: campos derivados `nomeBusca`,
-   `cpfDigitos` e `telefoneSufixo` permitem `where`/prefixo no banco. A lista é
-   **paginada** ("Carregar mais"), 50 por vez.
+   `nomeTokens`, `cpfDigitos`, `telefoneSufixo` e `telefoneDigitos` permitem
+   `where`/prefixo/`array-contains` no banco. A lista é **paginada**
+   ("Carregar mais"), 50 por vez. Ver "Como a busca funciona" abaixo.
 4. **Deduplicação** de paciente e de lead do WhatsApp usa query por
    `cpfDigitos`/`telefoneSufixo` — não varre mais a coleção.
 5. **Conflito de agendamento** lê **só o dia do médico** envolvido.
@@ -94,10 +95,38 @@ ligar `DB_METRICS=1` no servidor para ver, nos logs, um aviso `⚠️ LEITURA EM
 MASSA` sempre que alguma operação passar de 1.000 documentos — um alarme para
 regressões futuras.
 
+## Como a busca funciona (nome, CPF, telefone, nascimento)
+
+Toda a normalização está em `src/lib/busca.ts`; as consultas, em
+`listarPacientes` (`src/lib/db/index.ts`). Nenhuma delas usa índice composto.
+
+**Texto (nome)** — duas consultas em paralelo, resultados somados:
+
+1. prefixo de `nomeBusca` (nome completo normalizado) — cobre "ana s";
+2. `array-contains` em `nomeTokens`, que guarda por paciente:
+   - cada palavra do nome e seus **prefixos** a partir de 3 letras (`ferr`);
+   - cada **par** de palavras em ordem alfabética (`ferreira|luiz`).
+
+   É o par que faz **"luiz ferreira" achar "Luiz Gustavo Ferreira"** (pula o
+   nome do meio) numa consulta só, em qualquer ordem. O que voltou é refinado
+   em memória: cada palavra digitada precisa ser prefixo de alguma palavra do
+   nome. Se as duas consultas voltarem vazias (alguém digitou palavras pela
+   metade), há um plano B pela maior palavra, com teto de 300 documentos.
+
+**Números (CPF · telefone · data de nascimento)** — o mesmo dígito pode ser as
+três coisas, então as consultas rodam juntas e os resultados são somados:
+prefixo de `cpfDigitos`, prefixo de `telefoneDigitos`, `telefoneSufixo`
+(igualdade nos últimos 8 dígitos quando o número está completo) e igualdade em
+`dataNascimento` para cada leitura plausível da data (`10/05/1980`, `10-5-80`,
+`10051980`, `1980-05-10`).
+
+Custo: **≤ 50 documentos** por tecla no caminho comum (o plano B, raro, lê no
+máximo 300). Testes em `npm run test:busca`.
+
 ## Limitação consciente
 
-A busca de pacientes por **nome** é por **prefixo** (começo do nome), não por
-substring — é o que permite não ler 19 mil documentos a cada tecla. Buscar
-"silva" não encontra "José Silva"; buscar "josé s" encontra. Busca por telefone
-e CPF é por dígitos. Para busca livre por substring no futuro, o caminho é um
-serviço de indexação (Algolia/Typesense), fora do escopo desta correção.
+A busca por nome casa **palavras inteiras ou seus começos** — não é busca por
+substring no meio da palavra: "ferreira" acha, "erreir" não. É o que permite
+não ler 19 mil documentos a cada tecla. Para busca livre por substring no
+futuro, o caminho é um serviço de indexação (Algolia/Typesense), fora do
+escopo desta correção.

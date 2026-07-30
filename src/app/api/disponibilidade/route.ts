@@ -6,6 +6,8 @@ import { APARELHOS } from '@/lib/seed-data';
 import { gerarSlots, gerarSlotsAparelho, proporSessao } from '@/lib/scheduling/engine';
 
 // GET /api/disponibilidade?exames=eco-doppler,mapa&medico=med-1&data=2026-07-06&dias=28
+// `combinar=0` desliga as combinações do médico (exames no mesmo horário,
+// ex.: eco + carótida do Dr. Daher em 15min) e volta a somar as durações.
 export async function GET(req: NextRequest) {
   if (!(await lerSessao())) return NextResponse.json({ erro: 'não autorizado' }, { status: 401 });
 
@@ -15,6 +17,7 @@ export async function GET(req: NextRequest) {
   const medicoPreferidoId = searchParams.get('medico') || undefined;
   const dataInicio = searchParams.get('data') || hojeJF();
   const diasParam = parseInt(searchParams.get('dias') ?? '', 10);
+  const combinar = searchParams.get('combinar') !== '0';
 
   if (ids.length === 0) return NextResponse.json({ erro: 'informe ao menos um exame' }, { status: 400 });
 
@@ -64,6 +67,7 @@ export async function GET(req: NextRequest) {
     dias,
     medicoPreferidoId,
     naoAntesDe: agoraJF(),
+    combinar,
   });
   return NextResponse.json({ proposta, dataInicio, dias });
 }

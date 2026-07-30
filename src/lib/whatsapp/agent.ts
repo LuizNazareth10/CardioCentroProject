@@ -312,6 +312,31 @@ function rotuloProposta(itens: Array<{ exameId: string; inicio: string }>): stri
   return `${nomes} — ${fmtData(ini)} às ${fmtHora(ini)}`;
 }
 
+/**
+ * Uma linha por HORÁRIO, não por exame: exames que o médico faz juntos (eco +
+ * carótida do Dr. Daher, 15min pelos dois) compartilham início e fim, e
+ * repetir o mesmo horário em duas linhas faria o paciente achar que precisa
+ * vir duas vezes.
+ */
+function linhasDosItens(itens: Array<{ exameId: string; medicoId: string; inicio: string }>): string {
+  const porHorario = new Map<string, typeof itens>();
+  for (const i of itens) {
+    const chave = `${i.medicoId}|${i.inicio}`;
+    const atual = porHorario.get(chave);
+    if (atual) atual.push(i);
+    else porHorario.set(chave, [i]);
+  }
+  return [...porHorario.values()]
+    .map((grupo) => {
+      const med = MEDICOS.find((m) => m.id === grupo[0].medicoId); // aparelhos (mapa/holter) não são médicos
+      const quem = med ? ` (${med.nome})` : '';
+      const nomes = grupo.map((i) => nomeExame(i.exameId)).join(' + ');
+      const juntos = grupo.length > 1 ? ' _(os dois na mesma sessão)_' : '';
+      return `• ${nomes} — ${fmtData(grupo[0].inicio)} ${fmtHora(grupo[0].inicio)}${quem}${juntos}`;
+    })
+    .join('\n');
+}
+
 async function mostrarConfirmacaoRemarcacao(from: string, s: ConversaState) {
   s.etapa = 'confirmando'; await salvarSessao(from, s);
   const escolhida = s.opcoes![0];
@@ -494,7 +519,12 @@ async function calcularEoferecer(from: string, s: ConversaState) {
       });
       if (!p) break;
       const ini = p.itens[0].inicio;
-      const sub = p.mesmoMedico ? `${examesSeq.length} exames · ${nomeMedico(p.itens[0].medicoId)}` : `${examesSeq.length} exames · médicos diferentes`;
+      // `combinada` = o médico faz exames desta sessão no mesmo horário
+      const sub = p.combinada
+        ? `${examesSeq.length} exames juntos · ${nomeMedico(p.itens[0].medicoId)}`
+        : p.mesmoMedico
+          ? `${examesSeq.length} exames · ${nomeMedico(p.itens[0].medicoId)}`
+          : `${examesSeq.length} exames · médicos diferentes`;
       propostas.push({
         data: ini.slice(0, 10), inicio: ini, subtitulo: sub,
         rotulo: `${fmtData(ini)} ${fmtHora(ini)} — ${sub}`,
@@ -694,13 +724,7 @@ async function avancarAposConvenio(from: string, s: ConversaState) {
 async function transbordarParaFinalizarConvenio(from: string, s: ConversaState) {
   const nomeConvenio = CONVENIOS.find((c) => c.id === s.convenioId)?.nome ?? s.convenioId ?? '—';
   const escolhida = s.opcoes?.[0];
-  const detalhes = (escolhida?.itens ?? [])
-    .map((i) => {
-      const med = MEDICOS.find((m) => m.id === i.medicoId);
-      const quem = med ? ` (${med.nome})` : '';
-      return `• ${nomeExame(i.exameId)} — ${fmtData(i.inicio)} ${fmtHora(i.inicio)}${quem}`;
-    })
-    .join('\n');
+  const detalhes = escolhida?.itens.length ? linhasDosItens(escolhida.itens) : '';
   const notaInterna = [
     `⚠️ Transbordo automático — convênio *${nomeConvenio}* (finalizar na recepção).`,
     `Paciente: ${s.nome ?? '(não informado)'}`,
@@ -809,11 +833,7 @@ async function enviarPosConfirmacao(
 async function mostrarConfirmacao(from: string, s: ConversaState) {
   s.etapa = 'confirmando'; await salvarSessao(from, s);
   const escolhida = s.opcoes![0]; // já reduzida à opção escolhida
-  const linhas = escolhida.itens.map((i) => {
-    const med = MEDICOS.find((m) => m.id === i.medicoId); // aparelhos (mapa/holter) não são médicos
-    const quem = med ? ` (${med.nome})` : '';
-    return `• ${nomeExame(i.exameId)} — ${fmtData(i.inicio)} ${fmtHora(i.inicio)}${quem}`;
-  }).join('\n');
+  const linhas = linhasDosItens(escolhida.itens);
   const conv = CONVENIOS.find((c) => c.id === s.convenioId)?.nome ?? 'Particular';
   await enviarBotoes(
     from,

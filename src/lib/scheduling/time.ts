@@ -47,6 +47,21 @@ export function ceilToGrid(min: number): number {
   return Math.ceil(min / GRID_MIN) * GRID_MIN;
 }
 
+/**
+ * Primeiro horário da grade que ainda NÃO começou, a partir de um instante.
+ *
+ * `fromISO` descarta os segundos: às 13:30:31 o piso virava 13:30 e o motor
+ * oferecia um horário que já tinha começado — o paciente marcava para "agora"
+ * e o agendamento nascia no passado (o agente, um segundo depois, nem
+ * reconhecia mais aquele exame como futuro). Com segundos corridos, joga para
+ * o próximo bloco; no segundo exato do bloco, ele continua valendo.
+ */
+export function pisoDaGrade(iso: string): { date: string; min: number } {
+  const { date, min } = fromISO(iso);
+  const segundos = Number(iso.slice(17, 19)) || 0;
+  return { date, min: ceilToGrid(segundos > 0 ? min + 1 : min) };
+}
+
 // ============================================================
 // Agenda quinzenal (Dr. Júlio Lovisi e Dra. Fernanda Lanzoni às quartas)
 // A referência de semana "ativa" é 08/07/2026 (primeira quarta com os dois).

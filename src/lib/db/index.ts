@@ -1,7 +1,18 @@
 import type { Agendamento, Conversa, Lead, MensagemConversa, Paciente, StatusAtendimento, Triagem, Usuario } from '../types';
+import {
+  chaveDeConsultaNome,
+  chavesDoNome,
+  interpretarBusca,
+  nomeCasaTokens,
+  normalizarBusca,
+  soDigitos,
+  tokenMaisLongo,
+} from '../busca';
 import { sanitizarFicha } from '../validation';
 import { medir } from './metrics';
 import { memoria, novoId } from './store';
+
+export { normalizarBusca } from '../busca';
 
 // =============================================================
 // API ÚNICA DE DADOS usada por toda a aplicação.
@@ -26,28 +37,22 @@ async function fs() {
   return db();
 }
 
-const soDigitos = (v?: string) => (v ?? '').replace(/\D/g, '');
-
-/** minúsculas, sem acento e sem pontuação — base das buscas por prefixo */
-export function normalizarBusca(v: string): string {
-  return v
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 /**
  * Campos derivados que tornam a busca indexável. Sem eles, procurar um
  * paciente por nome/CPF/telefone exigiria varrer a coleção inteira.
  * Recalculados a TODA gravação — nunca editados à mão.
+ *
+ * A data de nascimento não precisa de campo derivado: `dataNascimento` já é
+ * gravada em ISO ("AAAA-MM-DD") e é consultada por igualdade.
  */
 export function derivarCamposBusca(p: Pick<Paciente, 'nome' | 'cpf' | 'telefone'>) {
+  const telefone = soDigitos(p.telefone);
   return {
     nomeBusca: normalizarBusca(p.nome ?? ''),
+    nomeTokens: chavesDoNome(p.nome ?? ''),
     cpfDigitos: soDigitos(p.cpf),
-    telefoneSufixo: soDigitos(p.telefone).slice(-8),
+    telefoneSufixo: telefone.slice(-8),
+    telefoneDigitos: telefone,
   };
 }
 
@@ -62,6 +67,9 @@ export interface PaginaPacientes {
   proximoCursor: string | null;
 }
 
+/** teto de leituras do plano B da busca por nome (só roda quando nada foi achado) */
+const LIMITE_FALLBACK_NOME = 300;
+
 /**
  * Lista pacientes PAGINADO.
  *
@@ -70,12 +78,15 @@ export interface PaginaPacientes {
  * de índice composto (que precisaria ser publicado à mão e, se faltar, faz
  * a tela travar). Foi essa a causa da tela de Pacientes ficar "Carregando…".
  *
- * - lista base   → ordena pelo campo `id` (sempre presente, único).
- * - busca nome   → prefixo de `nomeBusca` (requer o backfill dos campos).
- * - busca número → prefixo de `cpfDigitos` ou `telefoneSufixo`.
+ * - lista base    → ordena pelo campo `id` (sempre presente, único).
+ * - busca nome    → prefixo de `nomeBusca` + `nomeTokens` (array-contains).
+ * - busca número  → `cpfDigitos`, `telefoneDigitos`/`telefoneSufixo` e
+ *                   `dataNascimento` — consultados em paralelo e somados,
+ *                   porque só os dígitos não dizem o que a pessoa quis dizer.
  *
- * Limitação consciente: a busca por nome é por PREFIXO (começo do nome),
- * não por substring. "silva" não acha "José Silva"; "josé s" acha.
+ * A busca por NOME ignora a ordem e o nome do meio: "luiz ferreira" acha
+ * "Luiz Gustavo Ferreira", e "ferreira luiz" também. Ver lib/busca.ts.
+ * Depende do backfill dos campos derivados (npm run backfill-busca).
  */
 export async function listarPacientes(opts?: {
   busca?: string;
@@ -83,7 +94,11 @@ export async function listarPacientes(opts?: {
   cursor?: string;
 }): Promise<PaginaPacientes> {
   const limite = Math.min(opts?.limite ?? LIMITE_PADRAO, 200);
-  const busca = opts?.busca?.trim();
+  const busca = interpretarBusca(opts?.busca);
+
+  // 1 ou 2 dígitos: ninguém procura assim de propósito (é telefone/CPF pela
+  // metade) — não consulta nada em vez de despejar a lista inteira
+  if (busca.tipo === 'curta') return { pacientes: [], proximoCursor: null };
 
   if (!isFirestore) {
     const filtrados = filtrarPacientesMemoria(memoria.pacientes, busca).sort((a, b) =>
@@ -98,38 +113,72 @@ export async function listarPacientes(opts?: {
   }
 
   return medir(
-    `listarPacientes(${busca ? 'busca' : 'lista'})`,
+    `listarPacientes(${busca.tipo === 'vazio' ? 'lista' : `busca:${busca.tipo}`})`,
     async () => {
       const col = (await fs()).collection('pacientes');
-      const digitos = soDigitos(busca);
 
-      // --- busca numérica: CPF ou telefone, por prefixo (campo único) ---
-      if (busca && digitos.length >= 3 && digitos.length >= busca.replace(/\s/g, '').length - 2) {
-        const [porCpf, porTelefone] = await Promise.all([
-          col.orderBy('cpfDigitos').startAt(digitos).endAt(digitos + FIM_PREFIXO).limit(limite).get(),
-          col.orderBy('telefoneSufixo').startAt(digitos).endAt(digitos + FIM_PREFIXO).limit(limite).get(),
-        ]);
-        const porId = new Map<string, Paciente>();
-        [...porCpf.docs, ...porTelefone.docs].forEach((d) => {
-          const p = d.data() as Paciente;
-          porId.set(p.id, p);
-        });
-        const pacientes = [...porId.values()]
-          .sort((a, b) => (a.nomeBusca ?? '').localeCompare(b.nomeBusca ?? ''))
-          .slice(0, limite);
-        return { pacientes, proximoCursor: null }; // busca numérica não pagina
+      // --- CPF · telefone · data de nascimento (campos únicos, em paralelo) ---
+      if (busca.tipo === 'numero') {
+        const d = busca.digitos;
+        const consultas = [
+          // CPF por prefixo — a recepção digita da esquerda para a direita
+          col.orderBy('cpfDigitos').startAt(d).endAt(d + FIM_PREFIXO).limit(limite).get(),
+          // telefone inteiro por prefixo (pega quem digita a partir do DDD)
+          col.orderBy('telefoneDigitos').startAt(d).endAt(d + FIM_PREFIXO).limit(limite).get(),
+          // número completo → casa pelos últimos 8 dígitos (tolera DDI/DDD/9º dígito);
+          // parcial → prefixo desse mesmo sufixo
+          d.length >= 8
+            ? col.where('telefoneSufixo', '==', d.slice(-8)).limit(limite).get()
+            : col.orderBy('telefoneSufixo').startAt(d).endAt(d + FIM_PREFIXO).limit(limite).get(),
+          // data de nascimento (uma consulta por leitura plausível do que foi digitado)
+          ...busca.datas.map((iso) => col.where('dataNascimento', '==', iso).limit(limite).get()),
+        ];
+        const snaps = await Promise.all(consultas);
+        return { pacientes: juntar(snaps, limite), proximoCursor: null }; // busca não pagina
       }
 
-      // --- busca por nome: prefixo de nomeBusca (campo único) ---
-      if (busca) {
-        const alvo = normalizarBusca(busca);
-        const snap = await col
-          .orderBy('nomeBusca')
-          .startAt(alvo)
-          .endAt(alvo + FIM_PREFIXO)
-          .limit(limite)
-          .get();
-        return { pacientes: snap.docs.map((d) => d.data() as Paciente), proximoCursor: null };
+      // --- busca por nome ---
+      if (busca.tipo === 'nome') {
+        const encontrados = new Map<string, Paciente>();
+        const casa = (p: Paciente) => nomeCasaTokens(p.nomeBusca ?? normalizarBusca(p.nome), busca.tokens);
+
+        // (A) prefixo do nome completo — o caso mais comum ("ana s")
+        // (B) chave mais seletiva de `nomeTokens`: par das duas maiores
+        //     palavras (2+ termos) ou a própria palavra (1 termo)
+        const chave = chaveDeConsultaNome(busca.tokens);
+        const [porPrefixo, porTokens] = await Promise.all([
+          col.orderBy('nomeBusca').startAt(busca.texto).endAt(busca.texto + FIM_PREFIXO).limit(limite).get(),
+          chave
+            ? col.where('nomeTokens', 'array-contains', chave).limit(limite * 2).get()
+            : Promise.resolve(null),
+        ]);
+        porPrefixo.docs.forEach((doc) => {
+          const p = doc.data() as Paciente;
+          encontrados.set(p.id, p);
+        });
+        porTokens?.docs.forEach((doc) => {
+          const p = doc.data() as Paciente;
+          if (casa(p)) encontrados.set(p.id, p);
+        });
+
+        // (C) plano B: nada casou porque alguma palavra foi digitada pela
+        // metade (o PAR só existe com palavras completas). Consulta a maior
+        // palavra — os prefixos indexados cobrem o resto — e refina aqui.
+        if (encontrados.size === 0 && busca.tokens.length >= 2) {
+          const maior = tokenMaisLongo(busca.tokens);
+          if (maior) {
+            const snap = await col
+              .where('nomeTokens', 'array-contains', maior)
+              .limit(LIMITE_FALLBACK_NOME)
+              .get();
+            snap.docs.forEach((doc) => {
+              const p = doc.data() as Paciente;
+              if (casa(p)) encontrados.set(p.id, p);
+            });
+          }
+        }
+
+        return { pacientes: ordenarPorNome([...encontrados.values()]).slice(0, limite), proximoCursor: null };
       }
 
       // --- lista base: ordena por `id` (campo único, índice automático) ---
@@ -146,17 +195,39 @@ export async function listarPacientes(opts?: {
   );
 }
 
-/** filtro por substring — só no backend de memória, onde o custo é irrelevante */
-function filtrarPacientesMemoria(arr: Paciente[], busca?: string) {
-  if (!busca) return [...arr];
-  const q = normalizarBusca(busca);
-  const d = soDigitos(busca);
-  return arr.filter(
-    (p) =>
-      normalizarBusca(p.nome).includes(q) ||
-      (d.length >= 3 && soDigitos(p.cpf).includes(d)) ||
-      (d.length >= 3 && soDigitos(p.telefone).includes(d)),
-  );
+const ordenarPorNome = (arr: Paciente[]) =>
+  arr.sort((a, b) => (a.nomeBusca ?? normalizarBusca(a.nome)).localeCompare(b.nomeBusca ?? normalizarBusca(b.nome)));
+
+/** funde várias consultas em uma lista única, sem repetir paciente */
+function juntar(snaps: Array<FirebaseFirestore.QuerySnapshot>, limite: number): Paciente[] {
+  const porId = new Map<string, Paciente>();
+  snaps.forEach((s) => s.docs.forEach((d) => {
+    const p = d.data() as Paciente;
+    porId.set(p.id, p);
+  }));
+  return ordenarPorNome([...porId.values()]).slice(0, limite);
+}
+
+/**
+ * Mesmas regras da busca do Firestore, aplicadas em memória (dev/demo, onde
+ * o custo é irrelevante). Aqui o nome casa por substring também, então é
+ * mais permissivo que a produção — nunca menos.
+ */
+function filtrarPacientesMemoria(arr: Paciente[], busca: ReturnType<typeof interpretarBusca>) {
+  if (busca.tipo === 'vazio') return [...arr];
+  if (busca.tipo === 'numero') {
+    const d = busca.digitos;
+    return arr.filter(
+      (p) =>
+        soDigitos(p.cpf).includes(d) ||
+        soDigitos(p.telefone).includes(d) ||
+        (!!p.dataNascimento && busca.datas.includes(p.dataNascimento)),
+    );
+  }
+  return arr.filter((p) => {
+    const nome = normalizarBusca(p.nome);
+    return nome.includes(busca.texto) || nomeCasaTokens(nome, busca.tokens);
+  });
 }
 
 /** Total de pacientes via AGREGAÇÃO — 1 leitura, não 19 mil. */

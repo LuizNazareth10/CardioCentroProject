@@ -2,10 +2,14 @@
  * Backfill dos campos de busca indexáveis.
  *
  * POR QUE ISTO É OBRIGATÓRIO: a camada de dados passou a filtrar no
- * Firestore (`where nomeBusca / cpfDigitos / telefoneSufixo`) em vez de
- * ler a coleção inteira. Os ~19 mil pacientes e os leads que já estavam
- * no banco foram gravados ANTES desses campos existirem — sem o backfill
- * eles simplesmente não aparecem em nenhuma busca.
+ * Firestore (`where nomeBusca / nomeTokens / cpfDigitos / telefoneSufixo /
+ * telefoneDigitos`) em vez de ler a coleção inteira. Os ~19 mil pacientes e
+ * os leads que já estavam no banco foram gravados ANTES desses campos
+ * existirem — sem o backfill eles simplesmente não aparecem em nenhuma busca.
+ *
+ * RODAR DE NOVO a cada versão que acrescenta um campo de busca (foi o caso
+ * de `nomeTokens`/`telefoneDigitos`, que habilitam achar o paciente pulando o
+ * nome do meio e pelo telefone com DDD).
  *
  * Rodar UMA vez após o deploy desta versão:
  *   npx tsx scripts/backfill-busca.ts            # aplica
@@ -39,6 +43,13 @@ async function db() {
 
 const soDigitos = (v?: string) => (v ?? '').replace(/\D/g, '');
 
+/** compara arrays de chaves de busca ignorando a ordem */
+function mesmoConjunto(a?: string[], b?: string[]): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((x) => set.has(x));
+}
+
 async function backfillPacientes(): Promise<{ lidos: number; atualizados: number }> {
   const firestore = await db();
   const snap = await firestore.collection('pacientes').get();
@@ -52,7 +63,9 @@ async function backfillPacientes(): Promise<{ lidos: number; atualizados: number
     const jaOk =
       p.nomeBusca === campos.nomeBusca &&
       p.cpfDigitos === campos.cpfDigitos &&
-      p.telefoneSufixo === campos.telefoneSufixo;
+      p.telefoneSufixo === campos.telefoneSufixo &&
+      p.telefoneDigitos === campos.telefoneDigitos &&
+      mesmoConjunto(p.nomeTokens, campos.nomeTokens);
     if (jaOk) continue;
 
     atualizados++;
