@@ -11,11 +11,14 @@ import { registrarEvento } from '@/lib/whatsapp/monitor';
 // Webhook da Evolution API — canal de TESTE, isolado do webhook oficial
 // da Meta Cloud API (src/app/api/whatsapp/webhook/route.ts, inalterado).
 //
-// Restrito por design à lista de números de cliente de teste
-// (EVOLUTION_NUMEROS_TESTE, separados por vírgula) conversando com o
-// número-agente pareado na instância da Evolution API. Qualquer outra
-// origem — outro número, grupo, ou mensagem enviada pelo próprio agente
-// (eco) — é ignorada sem processar nada e sem tocar no banco.
+// QUEM é atendido NÃO é mais um portão rígido pela allowlist
+// (EVOLUTION_NUMEROS_TESTE) — isso é decidido pelo MODO DE ROLLOUT do agente
+// (full/shadow/canary/paused, ajustável em runtime em /configuracoes; ver
+// `decidirRollout` em rollout.ts). A allowlist virou só o sinal "sempre
+// atende, não importa o modo" para os números de QA da própria clínica.
+// Ou seja: em modo `full` (padrão), QUALQUER número que mandar mensagem é
+// atendido — não só os da allowlist. Grupos e o eco do próprio agente
+// continuam sempre ignorados, sem tocar no banco.
 //
 // maxDuration maior que o padrão: o fluxo completo (sessão + IA + envio)
 // pode passar de alguns segundos, e a Evolution API RETRANSMITE o webhook

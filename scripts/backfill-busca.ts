@@ -3,13 +3,13 @@
  *
  * POR QUE ISTO É OBRIGATÓRIO: a camada de dados passou a filtrar no
  * Firestore (`where nomeBusca / nomeTokens / cpfDigitos / telefoneSufixo /
- * telefoneDigitos`) em vez de ler a coleção inteira. Os ~19 mil pacientes e
+ * telefonePrefixos`) em vez de ler a coleção inteira. Os ~19 mil pacientes e
  * os leads que já estavam no banco foram gravados ANTES desses campos
  * existirem — sem o backfill eles simplesmente não aparecem em nenhuma busca.
  *
  * RODAR DE NOVO a cada versão que acrescenta um campo de busca (foi o caso
- * de `nomeTokens`/`telefoneDigitos`, que habilitam achar o paciente pulando o
- * nome do meio e pelo telefone com DDD).
+ * de `nomeTokens`/`telefonePrefixos`, que habilitam achar o paciente pulando
+ * o nome do meio e pelo telefone com ou sem DDD).
  *
  * Rodar UMA vez após o deploy desta versão:
  *   npx tsx scripts/backfill-busca.ts            # aplica
@@ -64,8 +64,8 @@ async function backfillPacientes(): Promise<{ lidos: number; atualizados: number
       p.nomeBusca === campos.nomeBusca &&
       p.cpfDigitos === campos.cpfDigitos &&
       p.telefoneSufixo === campos.telefoneSufixo &&
-      p.telefoneDigitos === campos.telefoneDigitos &&
-      mesmoConjunto(p.nomeTokens, campos.nomeTokens);
+      mesmoConjunto(p.nomeTokens, campos.nomeTokens) &&
+      mesmoConjunto(p.telefonePrefixos, campos.telefonePrefixos);
     if (jaOk) continue;
 
     atualizados++;

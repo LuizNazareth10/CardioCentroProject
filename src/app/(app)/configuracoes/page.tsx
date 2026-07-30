@@ -11,7 +11,7 @@ const MODOS: Array<{ id: ModoAgente; nome: string; desc: string; cor: string }> 
   { id: 'full', nome: 'Full — atende todos', desc: 'Comportamento padrão: a IA responde a todas as leads.', cor: 'text-navy-700' },
   { id: 'shadow', nome: 'Shadow — só rascunho', desc: 'A IA rascunha a resposta mas NÃO envia ao paciente; o rascunho vai para o Slack/Discord. Risco zero — ideal para a fase 0.', cor: 'text-blue-700' },
   { id: 'canary', nome: 'Canary — fração das leads', desc: 'A IA atende só uma % das leads (fixa por número); o restante segue com a recepção. Suba aos poucos.', cor: 'text-amber-700' },
-  { id: 'paused', nome: 'Pausado — kill-switch', desc: 'A IA não atende ninguém. Tudo volta para a recepção humana.', cor: 'text-brand-red' },
+  { id: 'paused', nome: 'Pausado — kill-switch', desc: 'A IA não atende ninguém, EXCETO os números de teste. Tudo o mais volta para a recepção humana.', cor: 'text-brand-red' },
 ];
 
 export default function ConfiguracoesPage() {

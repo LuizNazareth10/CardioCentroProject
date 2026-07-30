@@ -7,12 +7,15 @@
  * formato. Rodar com `npm run test:busca`.
  */
 import {
+  ancorasDoTelefone,
   chaveDeConsultaNome,
   chavesDoNome,
   datasCandidatas,
   interpretarBusca,
   nomeCasaTokens,
   normalizarBusca,
+  prefixosDoTelefone,
+  soDigitos,
 } from '../src/lib/busca';
 
 let falhas = 0;
@@ -84,6 +87,43 @@ check('10/05/80 (ano curto) → ISO', datasCandidatas('10/05/80').includes(ISO))
 check('data inválida (32/13) é descartada', datasCandidatas('32/13/1980').length === 0);
 check('30/02 (dia inexistente) é descartado', datasCandidatas('30/02/1980').length === 0);
 check('data também é buscada junto do CPF quando ambíguo', interpretarBusca('10051980').datas.includes(ISO));
+
+// ---------------------------------------------------------------
+// Simula a busca real de telefone: `array-contains` em `telefonePrefixos`
+// (gravado a partir do telefone do CADASTRO) contra o que foi DIGITADO.
+// ---------------------------------------------------------------
+function achaTelefone(telefoneCadastrado: string, digitado: string): boolean {
+  const b = interpretarBusca(digitado);
+  if (b.tipo !== 'numero') return false;
+  return prefixosDoTelefone(soDigitos(telefoneCadastrado)).includes(b.digitos);
+}
+
+// ---- 8: telefone — busca funciona COM ou SEM DDD, não importa como foi cadastrado ----
+// Caso real reportado: paciente cadastrada só com o número local (9 dígitos,
+// com o "9" inicial de celular), busca pelo início do número não achava —
+// telefoneSufixo (últimos 8 dígitos) cortava exatamente esse "9" inicial.
+const RUTH_SEM_DDD = '99198-7028'; // só local, 9 dígitos
+check('Cadastro só com local: busca pelo início (com o 9) acha', achaTelefone(RUTH_SEM_DDD, '99198'));
+check('Cadastro só com local: busca por mais dígitos ainda acha', achaTelefone(RUTH_SEM_DDD, '991987'));
+check('Cadastro só com local: número completo acha', achaTelefone(RUTH_SEM_DDD, '991987028'));
+check('Cadastro só com local: prefixo de 2 dígitos não é indexado', !prefixosDoTelefone(soDigitos(RUTH_SEM_DDD)).includes('99'));
+
+const COM_DDD = '(32) 99919-8702'; // DDD + local, 11 dígitos
+check('Cadastro COM DDD: busca A PARTIR do DDD acha', achaTelefone(COM_DDD, '3299919'));
+check('Cadastro COM DDD: busca SEM o DDD (só o local) também acha', achaTelefone(COM_DDD, '99919'));
+check('Cadastro COM DDD: início errado (sem o 9) não acha', !achaTelefone(COM_DDD, '9919870'));
+
+const COM_DDI = '+55 32 99919-8702'; // DDI + DDD + local, 13 dígitos
+check('Cadastro COM DDI: busca a partir do DDI acha', achaTelefone(COM_DDI, '55329991'));
+check('Cadastro COM DDI: busca a partir do DDD (sem DDI) acha', achaTelefone(COM_DDI, '329991'));
+check('Cadastro COM DDI: busca só do local (sem DDI nem DDD) acha', achaTelefone(COM_DDI, '99919'));
+
+check('Números de pacientes diferentes não se confundem', !achaTelefone(RUTH_SEM_DDD, '99919'));
+
+const ancorasSemDdd = ancorasDoTelefone('991987028');
+check('Âncoras de nº só-local: não tenta remover DDD inexistente', ancorasSemDdd.length === 1);
+const ancorasComDdd = ancorasDoTelefone('32999198702');
+check('Âncoras de nº com DDD: inclui o completo e o local', ancorasComDdd.includes('32999198702') && ancorasComDdd.includes('999198702'));
 
 // ---- 7: chaves gravadas no índice ----
 const chaves = chavesDoNome(LUIZ);

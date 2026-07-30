@@ -187,10 +187,14 @@ export interface Paciente {
   nomeTokens?: string[];
   /** só os dígitos do CPF, para busca exata */
   cpfDigitos?: string;
-  /** últimos 8 dígitos do telefone (tolera DDI/DDD/9º dígito) */
+  /** últimos 8 dígitos do telefone (tolera DDI/DDD/9º dígito) — só para DEDUPLICAR */
   telefoneSufixo?: string;
-  /** todos os dígitos do telefone, para busca por prefixo (a partir do DDD) */
-  telefoneDigitos?: string;
+  /**
+   * Prefixos do telefone a partir de QUALQUER ponto de partida válido (com
+   * DDD, sem DDD, sem DDI) — permite buscar "com ou sem DDD" não importa
+   * como foi cadastrado. Ver `prefixosDoTelefone` em lib/busca.ts.
+   */
+  telefonePrefixos?: string[];
 }
 
 /** Conteúdo clínico da ficha (padrão cardiologia) */

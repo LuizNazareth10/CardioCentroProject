@@ -39,7 +39,7 @@ inteira**. Todo filtro vai **dentro da query** do Firestore.
 2. **Contagens** (ex.: "pacientes cadastrados" no Painel) usam **agregação**
    (`.count()`) — **1 leitura** em vez de 19 mil.
 3. **Busca de pacientes** é indexada: campos derivados `nomeBusca`,
-   `nomeTokens`, `cpfDigitos`, `telefoneSufixo` e `telefoneDigitos` permitem
+   `nomeTokens`, `cpfDigitos`, `telefoneSufixo` e `telefonePrefixos` permitem
    `where`/prefixo/`array-contains` no banco. A lista é **paginada**
    ("Carregar mais"), 50 por vez. Ver "Como a busca funciona" abaixo.
 4. **Deduplicação** de paciente e de lead do WhatsApp usa query por
@@ -115,10 +115,24 @@ Toda a normalização está em `src/lib/busca.ts`; as consultas, em
 
 **Números (CPF · telefone · data de nascimento)** — o mesmo dígito pode ser as
 três coisas, então as consultas rodam juntas e os resultados são somados:
-prefixo de `cpfDigitos`, prefixo de `telefoneDigitos`, `telefoneSufixo`
-(igualdade nos últimos 8 dígitos quando o número está completo) e igualdade em
+prefixo de `cpfDigitos`, `array-contains` em `telefonePrefixos` e igualdade em
 `dataNascimento` para cada leitura plausível da data (`10/05/1980`, `10-5-80`,
 `10051980`, `1980-05-10`).
+
+**Telefone com ou sem DDD** — o cadastro não é uniforme (alguns pacientes têm
+o telefone salvo com DDD, outros só o número local — import antigo, cadastro
+manual, agente do WhatsApp). `telefonePrefixos` (ver `ancorasDoTelefone`/
+`prefixosDoTelefone` em `lib/busca.ts`) grava prefixos a partir de TODOS os
+pontos de partida válidos do número (com DDI+DDD, só DDD, só local), inferidos
+pelo COMPRIMENTO do que foi salvo (local 8/9 dígitos · com DDD 10/11 · com
+DDI+DDD 12/13). Buscar "com ou sem DDD" funciona não importa como foi
+cadastrado.
+
+Isto substituiu um bug real: `telefoneSufixo` (últimos 8 dígitos, usado só
+para DEDUPLICAR) corta pelo FIM — num celular local de 9 dígitos isso descarta
+o "9" inicial, desalinhando qualquer busca por PREFIXO que comece do início
+verdadeiro do número. `telefonePrefixos` corta cada âncora pelo INÍCIO, então
+o "9" nunca se perde.
 
 Custo: **≤ 50 documentos** por tecla no caminho comum (o plano B, raro, lê no
 máximo 300). Testes em `npm run test:busca`.

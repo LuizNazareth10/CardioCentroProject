@@ -5,6 +5,7 @@ import {
   interpretarBusca,
   nomeCasaTokens,
   normalizarBusca,
+  prefixosDoTelefone,
   soDigitos,
   tokenMaisLongo,
 } from '../busca';
@@ -52,7 +53,7 @@ export function derivarCamposBusca(p: Pick<Paciente, 'nome' | 'cpf' | 'telefone'
     nomeTokens: chavesDoNome(p.nome ?? ''),
     cpfDigitos: soDigitos(p.cpf),
     telefoneSufixo: telefone.slice(-8),
-    telefoneDigitos: telefone,
+    telefonePrefixos: prefixosDoTelefone(telefone),
   };
 }
 
@@ -80,12 +81,13 @@ const LIMITE_FALLBACK_NOME = 300;
  *
  * - lista base    → ordena pelo campo `id` (sempre presente, único).
  * - busca nome    → prefixo de `nomeBusca` + `nomeTokens` (array-contains).
- * - busca número  → `cpfDigitos`, `telefoneDigitos`/`telefoneSufixo` e
- *                   `dataNascimento` — consultados em paralelo e somados,
+ * - busca número  → `cpfDigitos` (prefixo), `telefonePrefixos` (array-contains)
+ *                   e `dataNascimento` — consultados em paralelo e somados,
  *                   porque só os dígitos não dizem o que a pessoa quis dizer.
  *
  * A busca por NOME ignora a ordem e o nome do meio: "luiz ferreira" acha
- * "Luiz Gustavo Ferreira", e "ferreira luiz" também. Ver lib/busca.ts.
+ * "Luiz Gustavo Ferreira", e "ferreira luiz" também. A busca por TELEFONE
+ * funciona com ou sem DDD, não importa como foi cadastrado. Ver lib/busca.ts.
  * Depende do backfill dos campos derivados (npm run backfill-busca).
  */
 export async function listarPacientes(opts?: {
@@ -123,13 +125,11 @@ export async function listarPacientes(opts?: {
         const consultas = [
           // CPF por prefixo — a recepção digita da esquerda para a direita
           col.orderBy('cpfDigitos').startAt(d).endAt(d + FIM_PREFIXO).limit(limite).get(),
-          // telefone inteiro por prefixo (pega quem digita a partir do DDD)
-          col.orderBy('telefoneDigitos').startAt(d).endAt(d + FIM_PREFIXO).limit(limite).get(),
-          // número completo → casa pelos últimos 8 dígitos (tolera DDI/DDD/9º dígito);
-          // parcial → prefixo desse mesmo sufixo
-          d.length >= 8
-            ? col.where('telefoneSufixo', '==', d.slice(-8)).limit(limite).get()
-            : col.orderBy('telefoneSufixo').startAt(d).endAt(d + FIM_PREFIXO).limit(limite).get(),
+          // telefone: `array-contains` acha o paciente se o que foi digitado
+          // é prefixo de QUALQUER ponto de partida válido do número dele —
+          // com DDD, sem DDD, sem DDI — não importa como foi cadastrado
+          // (ver `prefixosDoTelefone`/`ancorasDoTelefone` em lib/busca.ts).
+          col.where('telefonePrefixos', 'array-contains', d).limit(limite).get(),
           // data de nascimento (uma consulta por leitura plausível do que foi digitado)
           ...busca.datas.map((iso) => col.where('dataNascimento', '==', iso).limit(limite).get()),
         ];

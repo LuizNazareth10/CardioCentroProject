@@ -92,6 +92,50 @@ export function tokenMaisLongo(tokens: string[]): string | null {
   return [...uteis].sort((a, b) => b.length - a.length)[0];
 }
 
+/**
+ * Pontos de partida válidos de um telefone brasileiro, a partir dos dígitos
+ * como foram GRAVADOS. Cada patamar (DDI, DDD) é retirado com base só no
+ * COMPRIMENTO — não há como saber com certeza se um "32" no início é DDD ou
+ * parte do número, mas os comprimentos de telefone BR são bem definidos:
+ * local 8/9 · com DDD 10/11 · com DDI+DDD 12/13.
+ *
+ * Isto é o que permite buscar COM ou SEM DDD não importa como o cadastro
+ * foi digitado: alguns pacientes têm o telefone salvo com DDD, outros sem
+ * (import antigo da retroalimentação, cadastro manual, agente do WhatsApp) —
+ * sem os dois pontos de partida indexados, buscar do jeito "errado" não acha.
+ */
+export function ancorasDoTelefone(digitos: string): string[] {
+  const ancoras = new Set<string>();
+  if (!digitos) return [];
+  ancoras.add(digitos);
+  if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith('55')) {
+    ancoras.add(digitos.slice(2)); // remove DDI → DDD + local
+  }
+  for (const a of [...ancoras]) {
+    if (a.length === 10 || a.length === 11) ancoras.add(a.slice(2)); // remove DDD → só local
+  }
+  return [...ancoras];
+}
+
+/**
+ * Prefixos de TODAS as âncoras válidas de um telefone (ver `ancorasDoTelefone`),
+ * a partir de 3 dígitos. Gravado em `telefonePrefixos` (array); a busca faz
+ * `array-contains` do que foi digitado — se a string digitada é prefixo de
+ * QUALQUER âncora (com DDD, sem DDD, sem DDI), o paciente é encontrado.
+ *
+ * Note a diferença de `telefoneSufixo` (últimos 8 dígitos, usado só para
+ * DEDUPLICAR — ver `acharPacienteDuplicado`): cortar pelo FIM descarta o "9"
+ * inicial de um celular de 9 dígitos, desalinhando a busca por PREFIXO. Aqui
+ * cada âncora é cortada pelo INÍCIO, então o "9" nunca se perde.
+ */
+export function prefixosDoTelefone(digitos: string): string[] {
+  const prefixos = new Set<string>();
+  for (const ancora of ancorasDoTelefone(digitos)) {
+    for (let n = Math.min(MIN_PREFIXO, ancora.length); n <= ancora.length; n++) prefixos.add(ancora.slice(0, n));
+  }
+  return [...prefixos];
+}
+
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
 /** ano com 2 dígitos → século provável (76 → 1976, 09 → 2009) */

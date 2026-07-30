@@ -47,9 +47,13 @@ export function bucketDoNumero(telefone: string): number {
  * Decide o atendimento para um número.
  *
  * `sempreAtende` = números da allowlist de teste (EVOLUTION_NUMEROS_TESTE):
- * são os seus próprios números de QA e entram sempre (exceto em `paused`),
- * independentemente do percentual — assim você testa o fluxo completo sem
- * depender da loteria do canary.
+ * são os seus próprios números de QA e entram sempre, com resposta REAL
+ * (nunca rascunho) — INCLUSIVE em `paused`. É o que permite deixar o agente
+ * "desligado para todo mundo, menos para o meu número de teste" sem precisar
+ * mexer em nada: pausado deixa de ser um silêncio absoluto e passa a poupar
+ * só a allowlist. `shadow` continua valendo para TODOS sem exceção (mesmo a
+ * allowlist só recebe rascunho ali — é o modo de conferir a resposta antes
+ * de qualquer envio real, inclusive o seu).
  */
 export function decidirRollout(
   telefone: string,
@@ -60,11 +64,15 @@ export function decidirRollout(
   const modo = agente.modo ?? 'full';
 
   if (modo === 'paused') {
+    if (sempreAtende) {
+      return { atende: true, shadow: false, modo, bucket, motivo: 'pausado, mas número de teste (allowlist) sempre atende' };
+    }
     return { atende: false, shadow: false, modo, bucket, motivo: 'kill-switch (paused): IA desligada' };
   }
 
   if (modo === 'shadow') {
     // roda o agente para produzir rascunho, mas não envia nada ao paciente
+    // (vale até para a allowlist — shadow nunca manda de verdade p/ ninguém)
     return { atende: true, shadow: true, modo, bucket, motivo: 'shadow: rascunho (não enviado)' };
   }
 

@@ -34,7 +34,10 @@ export type ExameOverride = Partial<Pick<Exame, 'nome' | 'duracaoMin' | 'preparo
  *             Risco zero — ideal para a fase 0 de validação.
  *  - canary : atende só uma fração (`canaryPct`%) das leads, de forma
  *             pegajosa por número; o restante segue com a recepção humana.
- *  - paused : kill-switch — o agente não atende ninguém.
+ *  - paused : kill-switch — o agente não atende ninguém, EXCETO os números
+ *             de teste (`EVOLUTION_NUMEROS_TESTE`), que continuam recebendo
+ *             resposta real. É o modo para operar "só para o meu número de
+ *             QA, silêncio para todo o resto" sem precisar mexer em nada.
  */
 export type ModoAgente = 'full' | 'shadow' | 'canary' | 'paused';
 
