@@ -6,19 +6,18 @@ import { resolverOpcaoEvolution } from '@/lib/whatsapp/evolution-opcoes';
 import { carregarClinicConfig } from '@/lib/clinic-config';
 import { decidirRollout, encaminharRascunhoShadow, transporteCaptura } from '@/lib/whatsapp/rollout';
 import { registrarEvento } from '@/lib/whatsapp/monitor';
+import { numeroPermitido } from '@/lib/whatsapp/evolution-numeros';
 
 // =============================================================
 // Webhook da Evolution API — canal de TESTE, isolado do webhook oficial
 // da Meta Cloud API (src/app/api/whatsapp/webhook/route.ts, inalterado).
 //
-// QUEM é atendido NÃO é mais um portão rígido pela allowlist
-// (EVOLUTION_NUMEROS_TESTE) — isso é decidido pelo MODO DE ROLLOUT do agente
-// (full/shadow/canary/paused, ajustável em runtime em /configuracoes; ver
-// `decidirRollout` em rollout.ts). A allowlist virou só o sinal "sempre
-// atende, não importa o modo" para os números de QA da própria clínica.
-// Ou seja: em modo `full` (padrão), QUALQUER número que mandar mensagem é
-// atendido — não só os da allowlist. Grupos e o eco do próprio agente
-// continuam sempre ignorados, sem tocar no banco.
+// Durante o piloto, EVOLUTION_NUMEROS_TESTE é um portão rígido: o canal
+// Evolution só processa remetentes da allowlist, independentemente do modo de
+// rollout. Dentro da allowlist, o número é marcado como "sempre atende", o que
+// permite resposta real inclusive em `paused` e em `canary` com 0%.
+// Grupos, outros números e o eco do próprio agente são ignorados sem tocar no
+// banco nem enviar qualquer resposta.
 //
 // maxDuration maior que o padrão: o fluxo completo (sessão + IA + envio)
 // pode passar de alguns segundos, e a Evolution API RETRANSMITE o webhook
@@ -74,19 +73,18 @@ export async function POST(req: NextRequest) {
     const numero = extrairTelefone(key, data);
     if (!numero) return NextResponse.json({ ok: true });
 
-    // A allowlist (EVOLUTION_NUMEROS_TESTE) deixou de ser um portão rígido:
-    // agora é o sinal "sempre atende" (seus números de QA). QUEM a IA atende
-    // é decidido pelo MODO DE ROLLOUT (full/shadow/canary/paused), ajustável
-    // em runtime na tela de Configurações — é isso que permite testar com
-    // clientes reais em fração pequena e crescente, sem redeploy.
     const numerosPermitidos = (process.env.EVOLUTION_NUMEROS_TESTE ?? '')
       .split(',')
       .map((n) => n.replace(/\D/g, ''))
       .filter(Boolean);
-    const sempreAtende = numerosPermitidos.length > 0 && numeroPermitido(numero, numerosPermitidos);
+    const permitido = numerosPermitidos.length > 0 && numeroPermitido(numero, numerosPermitidos);
+    if (!permitido) {
+      console.info('[evolution:webhook] ignorado: remetente fora de EVOLUTION_NUMEROS_TESTE');
+      return NextResponse.json({ ok: true });
+    }
 
     const { agente } = await carregarClinicConfig();
-    const decisao = decidirRollout(numero, agente, sempreAtende);
+    const decisao = decidirRollout(numero, agente, true);
 
     if (!decisao.atende) {
       // lead vai para a recepção humana (ou IA pausada): não tocamos em nada.
@@ -170,38 +168,6 @@ function extrairTelefone(key: any, data: any): string {
     String(data?.sender ?? '').replace(/\D/g, ''),
   ].filter((n) => n.length >= 10);
   return candidatos[0] ?? '';
-}
-
-/**
- * Gera variantes BR comuns do mesmo número (com/sem 55, com/sem 9 após DDD)
- * para a allowlist não falhar por formatação.
- */
-function variantesBr(numero: string): string[] {
-  const d = numero.replace(/\D/g, '');
-  if (!d) return [];
-  const out = new Set<string>([d]);
-  if (d.startsWith('55') && d.length >= 12) out.add(d.slice(2));
-  else if (!d.startsWith('55') && d.length >= 10) out.add(`55${d}`);
-
-  for (const v of [...out]) {
-    const nat = v.startsWith('55') ? v.slice(2) : v;
-    if (nat.length === 11 && nat[2] === '9') {
-      const sem9 = nat.slice(0, 2) + nat.slice(3);
-      out.add(sem9);
-      out.add(`55${sem9}`);
-    } else if (nat.length === 10) {
-      const com9 = nat.slice(0, 2) + '9' + nat.slice(2);
-      out.add(com9);
-      out.add(`55${com9}`);
-    }
-  }
-  return [...out];
-}
-
-function numeroPermitido(numero: string, permitidos: string[]): boolean {
-  if (!numero) return false;
-  const allowed = new Set(permitidos.flatMap(variantesBr));
-  return variantesBr(numero).some((v) => allowed.has(v));
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

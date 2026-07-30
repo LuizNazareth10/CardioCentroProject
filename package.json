@@ -11,6 +11,7 @@
     "test:engine": "tsx scripts/test-engine.ts",
     "test:busca": "tsx scripts/test-busca.ts",
     "test:rollout": "tsx scripts/test-rollout.ts",
+    "test:evolution-numeros": "tsx scripts/test-evolution-numeros.ts",
     "test:agent": "tsx scripts/test-agent.ts",
     "chat-agent": "tsx scripts/chat-agent.ts",
     "seed": "tsx scripts/seed-firestore.ts",

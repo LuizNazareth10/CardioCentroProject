@@ -26,8 +26,10 @@ variável de ambiente).
 2. O canary é **pegajoso por número** (hash estável dos últimos 8 dígitos):
    a mesma pessoa é **sempre** IA ou **sempre** humano — nunca alterna no meio
    da conversa.
-3. Seus **números de teste** (`EVOLUTION_NUMEROS_TESTE`) são **sempre**
-   atendidos, independentemente do percentual — QA completo quando quiser.
+3. No canal Evolution, **somente** os números de teste
+   (`EVOLUTION_NUMEROS_TESTE`) podem ser processados durante o piloto. Eles são
+   sempre atendidos, inclusive em `paused` e com canary em 0%; os demais são
+   ignorados independentemente do modo.
 4. Transbordo já existente: urgência, "falar com atendente" e convênios de
    regra especial (ex.: IPSEMG) caem na fila humana em `/atendimentos`.
 
