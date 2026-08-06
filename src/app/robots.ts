@@ -1,6 +1,5 @@
 import type { MetadataRoute } from 'next';
-
-const SITE_URL = process.env.APP_BASE_URL ?? 'https://cardiocentrojf.com.br';
+import { SITE_URL } from '@/lib/site';
 
 // Landing indexável; área restrita, login e APIs bloqueadas.
 export default function robots(): MetadataRoute.Robots {

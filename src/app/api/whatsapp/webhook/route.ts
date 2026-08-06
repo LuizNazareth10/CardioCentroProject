@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { carregarClinicConfig } from '@/lib/clinic-config';
+import { liberarSemSegredo, segredoConfere } from '@/lib/env';
 import { registrarMensagem } from '@/lib/db';
 import { processarMensagem, type Entrada } from '@/lib/whatsapp/agent';
 import { enviarTexto } from '@/lib/whatsapp/client';
@@ -11,7 +12,10 @@ export async function GET(req: NextRequest) {
   const mode = searchParams.get('hub.mode');
   const token = searchParams.get('hub.verify_token');
   const challenge = searchParams.get('hub.challenge');
-  if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+  // Token vazio/ausente nunca verifica — sem esta guarda, um WHATSAPP_VERIFY_TOKEN
+  // definido como string vazia casaria com "?hub.verify_token=".
+  const esperado = process.env.WHATSAPP_VERIFY_TOKEN;
+  if (mode === 'subscribe' && esperado && segredoConfere(esperado, token)) {
     return new NextResponse(challenge ?? '', { status: 200 });
   }
   return new NextResponse('forbidden', { status: 403 });
@@ -19,12 +23,15 @@ export async function GET(req: NextRequest) {
 
 /**
  * Valida a assinatura HMAC-SHA256 (X-Hub-Signature-256) que a Meta envia,
- * assinada com o App Secret. Só é aplicada quando WHATSAPP_APP_SECRET existe
- * (em dev/demo sem segredo, a checagem é ignorada). Usa o corpo CRU.
+ * assinada com o App Secret. Usa o corpo CRU.
+ *
+ * Em produção, WHATSAPP_APP_SECRET ausente REJEITA tudo (fail-closed): sem a
+ * verificação, qualquer um poderia forjar um payload da Meta e falar com o
+ * agente em nome de um paciente. Em dev a checagem é dispensada.
  */
 function assinaturaValida(rawBody: string, header: string | null): boolean {
   const secret = process.env.WHATSAPP_APP_SECRET;
-  if (!secret) return true; // sem segredo configurado → não valida (dev)
+  if (!secret) return liberarSemSegredo();
   if (!header?.startsWith('sha256=')) return false;
   const esperado = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
   const a = Buffer.from(header);

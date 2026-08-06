@@ -29,6 +29,26 @@ export { normalizarBusca } from '../busca';
 
 const isFirestore = process.env.DATA_BACKEND === 'firestore';
 
+// -------------------------------------------------------------
+// TRAVA DE PRODUÇÃO: o store em memória perde tudo a cada cold start.
+// Num sistema de prontuário isso significa agendamento e paciente
+// desaparecendo sem erro visível — falha pior que ficar fora do ar.
+// Por isso, subir em produção sem DATA_BACKEND=firestore derruba o
+// processo no boot em vez de degradar em silêncio.
+//
+// A exceção é o `next build`: o Next importa os módulos para montar as
+// rotas, e o build não deve exigir credencial de banco.
+// -------------------------------------------------------------
+const emBuild = process.env.NEXT_PHASE === 'phase-production-build';
+if (!isFirestore && process.env.NODE_ENV === 'production' && !emBuild) {
+  throw new Error(
+    'DATA_BACKEND não está definido como "firestore" em produção. ' +
+      'O backend em memória NÃO persiste dados entre requisições — agendamentos e ' +
+      'pacientes seriam perdidos a cada cold start. Defina DATA_BACKEND=firestore ' +
+      '(junto de GCP_PROJECT_ID e GOOGLE_SERVICE_ACCOUNT_B64) nas variáveis de ambiente.',
+  );
+}
+
 /** teto de segurança: nenhuma query devolve mais que isto sem paginar */
 const LIMITE_PADRAO = 50;
 

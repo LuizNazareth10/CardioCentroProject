@@ -9,12 +9,12 @@ import { Preparo } from '@/components/landing/Preparo';
 import { Agendamento } from '@/components/landing/Agendamento';
 import { Footer } from '@/components/landing/Footer';
 import { FloatingWhatsApp } from '@/components/landing/FloatingWhatsApp';
-import { CONTATO } from '@/lib/seed-data';
-
-const SITE_URL = process.env.APP_BASE_URL ?? 'https://cardiocentrojf.com.br';
+import { CONTATO, EXAMES, GEO_CLINICA } from '@/lib/seed-data';
+import { SITE_URL } from '@/lib/site';
 
 // Dados estruturados Schema.org (MedicalClinic) — melhora a exibição
-// nos resultados do Google (endereço, telefone, horários).
+// nos resultados do Google (endereço, telefone, horários) e ajuda a casar
+// a página com a ficha do Google Business Profile.
 const clinicJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'MedicalClinic',
@@ -30,7 +30,24 @@ const clinicJsonLd = {
     addressRegion: 'MG',
     addressCountry: 'BR',
   },
+  // Só entra no JSON-LD quando preenchido — coordenada errada posiciona a
+  // clínica no lugar errado no mapa, o que é pior que não informar nada.
+  ...(GEO_CLINICA
+    ? { geo: { '@type': 'GeoCoordinates', latitude: GEO_CLINICA.latitude, longitude: GEO_CLINICA.longitude } }
+    : {}),
+  hasMap: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(CONTATO.enderecoCompleto)}`,
   medicalSpecialty: 'Cardiovascular',
+  areaServed: {
+    '@type': 'City',
+    name: 'Juiz de Fora',
+    containedInPlace: { '@type': 'State', name: 'Minas Gerais' },
+  },
+  currenciesAccepted: 'BRL',
+  // Exames como serviços — são os termos que as pessoas efetivamente buscam.
+  availableService: EXAMES.map((e) => ({
+    '@type': 'MedicalTest',
+    name: e.nome,
+  })),
   openingHoursSpecification: [
     {
       '@type': 'OpeningHoursSpecification',

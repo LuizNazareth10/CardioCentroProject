@@ -12,6 +12,25 @@
 # =============================================================
 
 services:
+  # TLS + domínio fixo. O Caddy obtém e renova o certificado Let's Encrypt
+  # sozinho — basta o DNS de EVOLUTION_DOMINIO já apontar para esta máquina
+  # antes de subir, senão a emissão falha.
+  caddy:
+    image: caddy:2-alpine
+    container_name: evolution_caddy
+    restart: always
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      EVOLUTION_DOMINIO: ${EVOLUTION_DOMINIO}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # <- certificados; preserva entre deploys
+      - caddy_config:/config
+    depends_on:
+      - evolution-api
+
   evolution-api:
     image: evoapicloud/evolution-api:v2.3.7 # fixe a versão; não use :latest em produção
     # Nota: a imagem antiga (atendai/evolution-api) foi descontinuada no Docker
@@ -19,7 +38,10 @@ services:
     container_name: evolution_api
     restart: always
     ports:
-      - '8080:8080'
+      # Só no loopback: quem publica para a internet é o Caddy, com TLS.
+      # Expor '8080:8080' numa VPS deixaria a API acessível em HTTP puro,
+      # protegida apenas pela API key e com o tráfego em texto claro.
+      - '127.0.0.1:8080:8080'
     environment:
       # --- servidor ---
       SERVER_URL: ${SERVER_URL} # ex.: https://evo.suaclinica.com.br
@@ -72,3 +94,5 @@ volumes:
   evolution_instances:
   postgres_data:
   redis_data:
+  caddy_data: # certificados TLS — apagar força reemissão e pode bater no rate limit do Let's Encrypt
+  caddy_config:

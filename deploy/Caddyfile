@@ -1,0 +1,33 @@
+# TLS automático para a Evolution API.
+#
+# O Caddy resolve certificado Let's Encrypt sozinho na primeira subida, desde
+# que o DNS de EVOLUTION_DOMINIO já aponte para o IP desta VPS e as portas
+# 80 e 443 estejam liberadas no firewall.
+#
+# `evolution-api` é o nome do serviço no docker-compose — o Caddy alcança o
+# container pela rede interna, sem depender da porta publicada no host.
+
+{$EVOLUTION_DOMINIO} {
+	reverse_proxy evolution-api:8080
+
+	# O webhook da Evolution manda payloads pequenos; um teto evita que a
+	# instância seja usada para empurrar corpos grandes contra a VPS.
+	request_body {
+		max_size 10MB
+	}
+
+	encode gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	log {
+		output file /data/acesso.log {
+			roll_size 10MB
+			roll_keep 5
+		}
+	}
+}

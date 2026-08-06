@@ -7,6 +7,7 @@ import { carregarClinicConfig } from '@/lib/clinic-config';
 import { decidirRollout, encaminharRascunhoShadow, transporteCaptura } from '@/lib/whatsapp/rollout';
 import { registrarEvento } from '@/lib/whatsapp/monitor';
 import { numeroPermitido } from '@/lib/whatsapp/evolution-numeros';
+import { liberarSemSegredo, segredoConfere } from '@/lib/env';
 
 // =============================================================
 // Webhook da Evolution API — canal de TESTE, isolado do webhook oficial
@@ -26,10 +27,13 @@ import { numeroPermitido } from '@/lib/whatsapp/evolution-numeros';
 // =============================================================
 export const maxDuration = 60;
 
+// Em produção, EVOLUTION_WEBHOOK_SECRET ausente BLOQUEIA o webhook
+// (fail-closed): sem ele qualquer um poderia injetar mensagens forjadas e
+// conversar com o agente como se fosse paciente. Em dev a checagem é dispensada.
 function autorizado(req: NextRequest): boolean {
   const segredo = process.env.EVOLUTION_WEBHOOK_SECRET;
-  if (!segredo) return true; // sem segredo configurado → não valida (dev)
-  return req.headers.get('x-evolution-secret') === segredo;
+  if (!segredo) return liberarSemSegredo();
+  return segredoConfere(segredo, req.headers.get('x-evolution-secret'));
 }
 
 /**

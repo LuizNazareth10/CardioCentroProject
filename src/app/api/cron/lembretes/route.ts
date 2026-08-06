@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { carregarClinicConfig } from '@/lib/clinic-config';
+import { liberarSemSegredo, segredoConfere } from '@/lib/env';
 import { atualizarAgendamento, listarAgendamentos, obterPaciente } from '@/lib/db';
 import { fmtData, fmtHora } from '@/lib/format';
 import { enviarBotoes } from '@/lib/whatsapp/client';
@@ -13,10 +14,14 @@ function amanhaJF(): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Em produção, CRON_SECRET ausente BLOQUEIA o endpoint (fail-closed): sem ele
+// qualquer um poderia disparar o lembrete para toda a agenda do dia seguinte,
+// quantas vezes quisesse. Em dev a checagem é dispensada.
 function autorizado(req: NextRequest): boolean {
   const segredo = process.env.CRON_SECRET;
-  if (!segredo) return true; // sem segredo configurado → não valida (dev/demo)
-  return req.headers.get('authorization') === `Bearer ${segredo}`;
+  if (!segredo) return liberarSemSegredo();
+  const header = req.headers.get('authorization') ?? '';
+  return segredoConfere(`Bearer ${segredo}`, header);
 }
 
 /**

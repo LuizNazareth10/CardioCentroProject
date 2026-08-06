@@ -16,6 +16,65 @@ export interface Intencao {
   resposta?: string; // resposta livre para "duvida"
 }
 
+// -------------------------------------------------------------
+// Chamada à API da Anthropic com timeout e retry.
+//
+// Sem timeout, um pedido pendurado consome o maxDuration=60s do webhook e a
+// Evolution retransmite a mensagem. Sem checar `res.ok`, um 429 vira um JSON
+// inválido que cai no catch — e o paciente recebe o fallback por palavras-chave
+// sem que nada apareça como erro.
+//
+// Orçamento: 2 tentativas × 15s + backoff ≈ 31s no pior caso, deixando folga
+// dentro dos 60s do webhook para o envio da resposta.
+// -------------------------------------------------------------
+const TENTATIVAS = 2;
+
+async function chamarAnthropic(
+  key: string,
+  corpo: Record<string, unknown>,
+  rotulo: string,
+  timeoutMs = 15_000,
+): Promise<string | null> {
+  for (let tentativa = 1; tentativa <= TENTATIVAS; tentativa++) {
+    const ultima = tentativa === TENTATIVAS;
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+        body: JSON.stringify(corpo),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as { content?: Array<{ text?: string }> };
+        return (data.content ?? []).map((c) => c.text ?? '').join('').trim();
+      }
+
+      // 429 (limite) e 5xx (indisponibilidade) passam; 4xx restante não melhora
+      // com repetição — chave inválida ou payload malformado.
+      const transitorio = res.status === 429 || res.status >= 500;
+      console.error(`[agente:${rotulo}] HTTP ${res.status} (tentativa ${tentativa}/${TENTATIVAS})`);
+      if (!transitorio || ultima) return null;
+    } catch (e) {
+      const motivo = e instanceof Error && e.name === 'TimeoutError' ? `timeout após ${timeoutMs}ms` : e;
+      console.error(`[agente:${rotulo}] falha de rede (tentativa ${tentativa}/${TENTATIVAS}):`, motivo);
+      if (ultima) return null;
+    }
+    await new Promise((r) => setTimeout(r, 400 * tentativa));
+  }
+  return null;
+}
+
+/** Extrai o JSON de uma resposta que pode vir cercada por cerca de código. */
+function parseJson<T>(bruto: string, rotulo: string): T | null {
+  try {
+    return JSON.parse(bruto.replace(/```json|```/g, '').trim()) as T;
+  } catch {
+    console.error(`[agente:${rotulo}] resposta não era JSON válido:`, bruto.slice(0, 200));
+    return null;
+  }
+}
+
 const listaExames = EXAMES.map((e) => `${e.id}: ${e.nome}${e.preparo ? ` (preparo: ${e.preparo})` : ''}`).join('\n');
 const listaMedicos = MEDICOS.filter((m) => m.ativo)
   .map((m) => `- ${m.nome}${m.especialidade ? ` — ${m.especialidade}` : ''}`)
@@ -66,27 +125,20 @@ Responda SOMENTE com um JSON válido, sem texto fora dele, no formato:
 - "urgencia": sintomas agudos acontecendo agora (regra 2).
 - "duvida": pergunta geral (responda em "resposta", curto, gentil e acolhedor, e convide a agendar quando fizer sentido).`;
 
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 400,
-        system,
-        messages: [{ role: 'user', content: texto }],
-      }),
-    });
-    const data = await res.json();
-    const raw = (data.content ?? []).map((c: { text?: string }) => c.text ?? '').join('').trim();
-    const limpo = raw.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(limpo) as Intencao;
-    parsed.exames = (parsed.exames ?? []).filter((id) => EXAMES.some((e) => e.id === id));
-    return parsed;
-  } catch (e) {
-    console.error('[agente:ia] falha, usando fallback:', e);
-    return fallbackPorPalavras(texto);
-  }
+  const bruto = await chamarAnthropic(key, {
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 400,
+    system,
+    messages: [{ role: 'user', content: texto }],
+  }, 'ia');
+
+  if (bruto === null) return fallbackPorPalavras(texto);
+
+  const parsed = parseJson<Intencao>(bruto, 'ia');
+  if (!parsed) return fallbackPorPalavras(texto);
+
+  parsed.exames = (parsed.exames ?? []).filter((id) => EXAMES.some((e) => e.id === id));
+  return parsed;
 }
 
 /**
@@ -103,43 +155,38 @@ export async function lerPedidoMedico(base64: string, mime: string): Promise<str
     `Considere apenas esta lista de exames disponíveis: ${nomes}. ` +
     'Responda SOMENTE com um JSON no formato {"exames":["nome exato da lista", ...]}, sem texto fora dele.';
 
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-5', // modelo com visão, mais capaz p/ leitura de imagem
-        max_tokens: 400,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'image', source: { type: 'base64', media_type: mime, data: base64 } },
-              { type: 'text', text: prompt },
-            ],
-          },
+  // Timeout maior que o de texto: a leitura de imagem é mais lenta. Ainda
+  // cabe no maxDuration=60s do webhook (2 × 20s + backoff ≈ 41s).
+  const bruto = await chamarAnthropic(key, {
+    model: 'claude-sonnet-5', // modelo com visão, mais capaz p/ leitura de imagem
+    max_tokens: 400,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mime, data: base64 } },
+          { type: 'text', text: prompt },
         ],
-      }),
-    });
-    const data = await res.json();
-    const raw = (data.content ?? []).map((c: { text?: string }) => c.text ?? '').join('').trim();
-    const limpo = raw.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(limpo) as { exames?: string[] };
-    // mapeia nomes retornados -> ids de EXAMES (match aproximado)
-    const ids = (parsed.exames ?? [])
-      .map((nome) => {
-        const alvo = nome.toLowerCase();
-        const found = EXAMES.find(
-          (e) => e.nome.toLowerCase().includes(alvo) || alvo.includes(e.nome.toLowerCase().split(' ')[0]),
-        );
-        return found?.id;
-      })
-      .filter((id): id is string => Boolean(id));
-    return Array.from(new Set(ids));
-  } catch (e) {
-    console.error('[agente:visão] falha ao ler pedido médico:', e);
-    return [];
-  }
+      },
+    ],
+  }, 'visão', 20_000);
+
+  if (bruto === null) return [];
+
+  const parsed = parseJson<{ exames?: string[] }>(bruto, 'visão');
+  if (!parsed) return [];
+
+  // mapeia nomes retornados -> ids de EXAMES (match aproximado)
+  const ids = (parsed.exames ?? [])
+    .map((nome) => {
+      const alvo = nome.toLowerCase();
+      const found = EXAMES.find(
+        (e) => e.nome.toLowerCase().includes(alvo) || alvo.includes(e.nome.toLowerCase().split(' ')[0]),
+      );
+      return found?.id;
+    })
+    .filter((id): id is string => Boolean(id));
+  return Array.from(new Set(ids));
 }
 
 function fallbackPorPalavras(texto: string): Intencao {

@@ -3,6 +3,7 @@ import { Inter, Nunito, Playfair_Display } from 'next/font/google';
 import './globals.css';
 import '@/lib/env'; // valida variáveis de ambiente no boot do servidor
 import { CookieBanner } from '@/components/CookieBanner';
+import { SITE_URL } from '@/lib/site';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -24,8 +25,6 @@ const nunito = Nunito({
   variable: '--font-nunito',
   display: 'swap',
 });
-
-const SITE_URL = process.env.APP_BASE_URL ?? 'https://cardiocentrojf.com.br';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

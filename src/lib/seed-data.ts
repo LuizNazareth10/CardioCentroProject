@@ -320,6 +320,23 @@ const WHATSAPP_NUMERO = '5532999952138'; // formato internacional (wa.me)
 // mensagem do deep link — o agente detecta esta frase e já inicia o fluxo
 const WHATSAPP_MENSAGEM = 'Olá, gostaria de agendar um exame';
 
+/**
+ * Coordenadas da clínica para os dados estruturados (Schema.org GeoCoordinates).
+ *
+ * PREENCHER — reforça o vínculo entre o site e a ficha do Google Business
+ * Profile em buscas do tipo "cardiologia perto de mim". Deixado como `null`
+ * de propósito: uma coordenada chutada colocaria a clínica no ponto errado do
+ * mapa, o que é pior do que não informar. Enquanto for `null`, o campo `geo`
+ * simplesmente não entra no JSON-LD.
+ *
+ * Como obter: abrir o Google Maps, buscar "Rua Delfim Moreira, 165 — Centro,
+ * Juiz de Fora", clicar com o botão direito sobre o ponto exato da clínica e
+ * copiar o par de coordenadas que aparece no topo do menu.
+ *
+ * Ex.: export const GEO_CLINICA = { latitude: -21.7612, longitude: -43.3496 };
+ */
+export const GEO_CLINICA: { latitude: number; longitude: number } | null = null;
+
 export const CONTATO = {
   nomeClinica: 'Cardiocentro',
   subtitulo: 'Métodos Diagnósticos em Cardiologia',

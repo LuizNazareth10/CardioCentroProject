@@ -1,6 +1,5 @@
 import type { MetadataRoute } from 'next';
-
-const SITE_URL = process.env.APP_BASE_URL ?? 'https://cardiocentrojf.com.br';
+import { SITE_URL } from '@/lib/site';
 
 // Apenas páginas públicas — a área restrita fica fora do índice.
 export default function sitemap(): MetadataRoute.Sitemap {
