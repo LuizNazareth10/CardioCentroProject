@@ -14,6 +14,7 @@ export type EtapaConversa =
   | 'inicio'
   | 'menu'
   | 'escolhendo_exames'
+  | 'confirmando_idade' // exames escolhidos: confirma se é para adulto ou criança, antes de seguir
   | 'escolhendo_medico'
   | 'escolhendo_horario'
   | 'identificacao'
@@ -51,6 +52,15 @@ export interface ConversaState {
   docsAutorizacaoRecebidos?: number;
   /** paciente já confirmou que o plano dele NÃO é um dos não atendidos (ver PLANOS_NAO_ATENDIDOS) */
   planoConfirmado?: boolean;
+  /**
+   * já perguntamos e o agendamento desta sessão é para um ADULTO. Regra de
+   * negócio: agendamento para criança/menor de idade sempre transborda para
+   * a recepção (ver transbordarMenorIdade) — por isso só existe o caso
+   * "true" aqui; se fosse criança o fluxo já teria saído para 'humano'.
+   * Volta a `undefined` a cada "menu" para o mesmo telefone poder agendar
+   * para outra pessoa da família depois, sem herdar a resposta anterior.
+   */
+  idadeConfirmada?: boolean;
 
   // ---- REMARCAÇÃO ----
   /**

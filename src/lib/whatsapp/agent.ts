@@ -19,7 +19,6 @@ import {
   mensagemResumoRemarcacao,
   mensagemSemAgendamentoParaRemarcar,
   mensagemConfirmacaoLembreteRecebida,
-  mensagemConfirmarPedidoMedico,
   mensagemConvenioNaoEncontrado,
   mensagemConvenioOutro,
   mensagemDocumentoRecebidoParcial,
@@ -40,12 +39,14 @@ import {
   mensagemPedirConvenio,
   mensagemPedirDocumentosAutorizacao,
   mensagemPedirNome,
+  mensagemPerguntarIdade,
   mensagemPreferenciaMedico,
   mensagemRecebendoPedido,
   mensagemResumoAgendamento,
   mensagemSemHorarios,
   mensagemSemMedicoUnico,
   mensagemFinalizarComRecepcao,
+  mensagemTransbordoMenorIdade,
   mensagemTransferenciaHumana,
   mensagemUrgencia,
   montarOrientacoesExames,
@@ -133,7 +134,7 @@ export async function processarMensagem(
   if (['menu', 'oi', 'olá', 'ola', 'início', 'inicio', 'começar', 'comecar'].includes(vlow)) {
     s.etapa = 'menu'; s.examesSelecionados = []; s.medicoPreferidoId = undefined;
     s.opcoes = undefined; s.propostas = undefined; s.aguardandoConvenio = undefined;
-    s.remarcandoId = undefined; s.planoConfirmado = undefined;
+    s.remarcandoId = undefined; s.planoConfirmado = undefined; s.idadeConfirmada = undefined;
   }
 
   switch (s.etapa) {
@@ -147,11 +148,7 @@ export async function processarMensagem(
       if (e.valor === 'remarcar') return iniciarRemarcacao(from, s);
       // confirmação dos exames lidos de um pedido médico (imagem)
       if (e.valor === 'img_sim' && s.examesSelecionados.length) {
-        s.etapa = 'escolhendo_medico'; await salvarSessao(from, s);
-        return enviarBotoes(from, mensagemConfirmarPedidoMedico(), [
-          { id: 'med_qualquer', titulo: 'Sem preferência' },
-          { id: 'med_escolher', titulo: 'Escolher médico' },
-        ]);
+        return perguntarIdadeOuContinuar(from, s);
       }
       if (e.valor === 'img_nao') { s.examesSelecionados = []; return menuPrincipal(from, s); }
       if (e.valor.startsWith('ex:')) { s.etapa = 'escolhendo_exames'; return tratarExames(from, s, e); }
@@ -161,6 +158,9 @@ export async function processarMensagem(
 
     case 'escolhendo_exames':
       return tratarExames(from, s, e);
+
+    case 'confirmando_idade':
+      return tratarConfirmacaoIdade(from, s, e);
 
     case 'escolhendo_medico':
       return tratarMedico(from, s, e);
@@ -425,18 +425,94 @@ async function tratarExames(from: string, s: ConversaState, e: Entrada) {
 
   if (e.valor === 'concluir_exames') {
     if (s.examesSelecionados.length === 0) return enviarListaExames(from);
-    // exame de aparelho (Mapa/Holter) não escolhe médico — vai direto p/ horário
-    const temAparelho = s.examesSelecionados.some((id) => EXAMES.find((x) => x.id === id)?.aparelho);
-    if (temAparelho) { s.medicoPreferidoId = undefined; return calcularEoferecer(from, s); }
-    s.etapa = 'escolhendo_medico'; await salvarSessao(from, s);
-    return enviarBotoes(from, mensagemPreferenciaMedico(), [
-      { id: 'med_qualquer', titulo: 'Sem preferência' },
-      { id: 'med_escolher', titulo: 'Escolher médico' },
-    ]);
+    return perguntarIdadeOuContinuar(from, s);
   }
 
   // texto livre → IA
   return rotearIA(from, s, e.valor);
+}
+
+/**
+ * Ponto único por onde passam os três caminhos que terminam a escolha de
+ * exames (lista de exames, foto de pedido médico, texto livre via IA):
+ * pergunta se o agendamento é para adulto ou criança ANTES de seguir para
+ * médico/horário. Já perguntado nesta sessão (`idadeConfirmada`), não
+ * pergunta de novo — evita repetir a cada exame adicionado.
+ */
+async function perguntarIdadeOuContinuar(from: string, s: ConversaState) {
+  if (s.idadeConfirmada) return continuarAposConfirmarIdade(from, s);
+  s.etapa = 'confirmando_idade'; await salvarSessao(from, s);
+  return enviarBotoes(from, mensagemPerguntarIdade(), [
+    { id: 'idade_adulto', titulo: 'Adulto' },
+    { id: 'idade_crianca', titulo: 'Criança' },
+  ]);
+}
+
+async function tratarConfirmacaoIdade(from: string, s: ConversaState, e: Entrada) {
+  const vlow = normalizarTexto(e.valor);
+  const crianca = e.valor === 'idade_crianca' || /crianc|menor|infantil|bebe/.test(vlow);
+  const adulto = e.valor === 'idade_adulto' || /adulto|maioridade/.test(vlow);
+
+  if (crianca) return transbordarMenorIdade(from, s);
+  if (adulto) {
+    s.idadeConfirmada = true; await salvarSessao(from, s);
+    return continuarAposConfirmarIdade(from, s);
+  }
+  // resposta que não dá para classificar → repete a pergunta com os botões
+  return enviarBotoes(from, mensagemPerguntarIdade(), [
+    { id: 'idade_adulto', titulo: 'Adulto' },
+    { id: 'idade_crianca', titulo: 'Criança' },
+  ]);
+}
+
+/** retomada exata do que 'concluir_exames' fazia antes de existir a pergunta de idade */
+async function continuarAposConfirmarIdade(from: string, s: ConversaState) {
+  // exame de aparelho (Mapa/Holter) não escolhe médico — vai direto p/ horário
+  const temAparelho = s.examesSelecionados.some((id) => EXAMES.find((x) => x.id === id)?.aparelho);
+  if (temAparelho) { s.medicoPreferidoId = undefined; return calcularEoferecer(from, s); }
+  s.etapa = 'escolhendo_medico'; await salvarSessao(from, s);
+  return enviarBotoes(from, mensagemPreferenciaMedico(), [
+    { id: 'med_qualquer', titulo: 'Sem preferência' },
+    { id: 'med_escolher', titulo: 'Escolher médico' },
+  ]);
+}
+
+/**
+ * Transborda quando o agendamento é para uma criança/menor de idade — a
+ * recepção assume. Mesmo padrão do transbordo de convênio
+ * (transbordarParaFinalizarConvenio): nota interna com o que já foi
+ * levantado, lead morno, e mensagem natural ao paciente sem citar a regra.
+ */
+async function transbordarMenorIdade(from: string, s: ConversaState) {
+  const detalhes = s.examesSelecionados.length
+    ? `Exames de interesse: ${s.examesSelecionados.map(nomeExame).join(', ')}`
+    : 'Sem exames escolhidos ainda.';
+  const notaInterna = [
+    '⚠️ Transbordo automático — agendamento para CRIANÇA/MENOR DE IDADE (recepção finaliza).',
+    `Paciente/responsável: ${s.nome ?? '(não informado)'}`,
+    detalhes,
+  ].join('\n');
+
+  s.etapa = 'humano';
+  await salvarSessao(from, s);
+
+  await registrarMensagem(
+    from,
+    { de: 'agente', texto: notaInterna, ts: new Date().toISOString(), interna: true },
+    { nome: s.nome, status: 'aguardando' },
+  );
+
+  try {
+    await registrarLeadWhatsapp(from, {
+      nome: s.nome,
+      exameInteresse: s.examesSelecionados.map(nomeExame).join(', ') || undefined,
+      temperatura: 'morno',
+    });
+  } catch (err) {
+    console.error('[agente] falha ao registrar lead (transbordo menor de idade):', err);
+  }
+
+  await enviarTexto(from, mensagemTransbordoMenorIdade(primeiroNome(s)));
 }
 
 // -------- MÉDICO --------
@@ -922,13 +998,10 @@ async function rotearIA(from: string, s: ConversaState, texto: string) {
   if (intent.exames.length) {
     const novos = intent.exames.filter((id) => !s.examesSelecionados.includes(id));
     s.examesSelecionados.push(...new Set(novos));
-    s.etapa = 'escolhendo_medico'; await salvarSessao(from, s);
+    await salvarSessao(from, s);
     const lista = s.examesSelecionados.map((x, i) => `${i + 1}. ${nomeExame(x)}`).join('\n');
     await enviarTexto(from, mensagemExamesEntendidos(lista));
-    return enviarBotoes(from, mensagemPreferenciaMedico(), [
-      { id: 'med_qualquer', titulo: 'Sem preferência' },
-      { id: 'med_escolher', titulo: 'Escolher médico' },
-    ]);
+    return perguntarIdadeOuContinuar(from, s);
   }
   s.etapa = 'escolhendo_exames'; await salvarSessao(from, s);
   return enviarListaExames(from);
