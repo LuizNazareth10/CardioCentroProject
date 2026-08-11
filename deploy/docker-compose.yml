@@ -1,5 +1,5 @@
 # =============================================================
-# Stack da VPS — Evolution API (WhatsApp) + Postgres + Redis.
+# Stack da VPS — Evolution API (WhatsApp) + Postgres + Caddy.
 #
 # PONTO CRÍTICO: a sessão do WhatsApp (o pareamento do QR Code) vive nos
 # VOLUMES abaixo. Enquanto os volumes existirem, subir/descer/atualizar os
@@ -9,6 +9,16 @@
 # O "cérebro" do agente NÃO está aqui: ele roda na Vercel (Next.js) e é
 # atualizado por git push, sem tocar nesta VPS. Esta stack só mantém a
 # conexão do WhatsApp viva e entrega os webhooks para a Vercel.
+#
+# DIMENSIONADA PARA 1 GB DE RAM (e2-micro do free tier da GCP):
+#  · sem Redis — o cache local da Evolution basta para uma instância só e
+#    poupa um container inteiro. Se um dia houver várias instâncias, volte
+#    o Redis e suba a máquina junto.
+#  · Postgres com shared_buffers mínimo: este banco guarda só o cadastro da
+#    instância (todos os DATABASE_SAVE_* estão em false), não histórico.
+#  · `mem_limit` em cada serviço para que um pico não derrube os outros —
+#    numa máquina desse tamanho o OOM killer é uma questão de quando, e o
+#    limite decide QUEM morre (e o `restart: always` traz de volta).
 # =============================================================
 
 services:
@@ -19,6 +29,7 @@ services:
     image: caddy:2-alpine
     container_name: evolution_caddy
     restart: always
+    mem_limit: 64m
     ports:
       - '80:80'
       - '443:443'
@@ -37,6 +48,10 @@ services:
     # Hub (pull access denied) — o projeto migrou para o org evoapicloud.
     container_name: evolution_api
     restart: always
+    # Teto do container + teto do heap do V8 (NODE_OPTIONS abaixo). O segundo
+    # existe para o Node fazer GC ANTES de bater no primeiro: sem ele, o V8
+    # cresce até o limite do cgroup e o processo é morto em vez de coletar.
+    mem_limit: 512m
     ports:
       # Só no loopback: quem publica para a internet é o Caddy, com TLS.
       # Expor '8080:8080' numa VPS deixaria a API acessível em HTTP puro,
@@ -44,6 +59,7 @@ services:
       - '127.0.0.1:8080:8080'
     environment:
       # --- servidor ---
+      NODE_OPTIONS: '--max-old-space-size=384'
       SERVER_URL: ${SERVER_URL} # ex.: https://evo.suaclinica.com.br
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
       # --- persistência da sessão no Postgres (sobrevive a restart) ---
@@ -55,11 +71,11 @@ services:
       DATABASE_SAVE_MESSAGE_UPDATE: 'false'
       DATABASE_SAVE_DATA_CONTACTS: 'false'
       DATABASE_SAVE_DATA_CHATS: 'false'
-      # --- cache no Redis ---
-      CACHE_REDIS_ENABLED: 'true'
-      CACHE_REDIS_URI: redis://redis:6379
-      CACHE_REDIS_PREFIX_KEY: evolution
-      CACHE_LOCAL_ENABLED: 'false'
+      # --- cache LOCAL (sem Redis) ---
+      # Uma instância só não precisa de cache compartilhado; o Redis existia
+      # para escalar horizontalmente, cenário que não é o desta VPS.
+      CACHE_REDIS_ENABLED: 'false'
+      CACHE_LOCAL_ENABLED: 'true'
       # --- webhook: aponta para o app na Vercel ---
       WEBHOOK_GLOBAL_ENABLED: 'true'
       WEBHOOK_GLOBAL_URL: ${WEBHOOK_URL} # ex.: https://SEU-APP.vercel.app/api/whatsapp/evolution/webhook
@@ -68,12 +84,24 @@ services:
       - evolution_instances:/evolution/instances # <- sessão do WhatsApp
     depends_on:
       - postgres
-      - redis
 
   postgres:
     image: postgres:16-alpine
     container_name: evolution_postgres
     restart: always
+    mem_limit: 224m
+    # Postgres assume uma máquina grande por padrão. Aqui ele guarda só o
+    # cadastro da instância (os DATABASE_SAVE_* da Evolution estão em false),
+    # então cabe folgado num orçamento pequeno de memória.
+    command: >
+      postgres
+      -c shared_buffers=32MB
+      -c max_connections=20
+      -c work_mem=2MB
+      -c maintenance_work_mem=32MB
+      -c effective_cache_size=192MB
+      -c max_wal_size=256MB
+      -c min_wal_size=64MB
     environment:
       POSTGRES_USER: evolution
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -81,18 +109,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data # <- histórico de instâncias
 
-  redis:
-    image: redis:7-alpine
-    container_name: evolution_redis
-    restart: always
-    volumes:
-      - redis_data:/data
-
 # Estes volumes NOMEADOS são o que preserva o pareamento do WhatsApp entre
 # deploys. NUNCA rode `docker compose down -v` em produção.
 volumes:
   evolution_instances:
   postgres_data:
-  redis_data:
   caddy_data: # certificados TLS — apagar força reemissão e pode bater no rate limit do Let's Encrypt
   caddy_config:
