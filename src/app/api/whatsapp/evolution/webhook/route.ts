@@ -10,15 +10,22 @@ import { numeroPermitido } from '@/lib/whatsapp/evolution-numeros';
 import { liberarSemSegredo, segredoConfere } from '@/lib/env';
 
 // =============================================================
-// Webhook da Evolution API — canal de TESTE, isolado do webhook oficial
-// da Meta Cloud API (src/app/api/whatsapp/webhook/route.ts, inalterado).
+// Webhook da Evolution API — canal do WhatsApp da clínica, isolado do webhook
+// oficial da Meta Cloud API (src/app/api/whatsapp/webhook/route.ts, inalterado).
 //
-// Durante o piloto, EVOLUTION_NUMEROS_TESTE é um portão rígido: o canal
-// Evolution só processa remetentes da allowlist, independentemente do modo de
-// rollout. Dentro da allowlist, o número é marcado como "sempre atende", o que
-// permite resposta real inclusive em `paused` e em `canary` com 0%.
-// Grupos, outros números e o eco do próprio agente são ignorados sem tocar no
-// banco nem enviar qualquer resposta.
+// EVOLUTION_NUMEROS_TESTE tem DOIS regimes, e é a chave que vira o piloto em
+// produção:
+//
+//  • PREENCHIDA  → modo piloto. Portão rígido: só remetentes da allowlist
+//    chegam ao agente, e chegam marcados como "sempre atende" (resposta real
+//    inclusive em `paused` e em `canary` com 0%). Era o regime de QA.
+//  • VAZIA       → canal aberto ao público. Todo remetente é avaliado pelo
+//    ROLLOUT (Configurações → Rollout do agente): em `canary 5%`, só ~5% dos
+//    pacientes — fixos por número — são atendidos pela IA; o restante segue
+//    com a recepção humana, que continua vendo 100% das conversas no aparelho.
+//
+// Grupos, mensagens antigas (sync de histórico), outros números e o eco do
+// próprio agente são ignorados sem tocar no banco nem enviar qualquer resposta.
 //
 // maxDuration maior que o padrão: o fluxo completo (sessão + IA + envio)
 // pode passar de alguns segundos, e a Evolution API RETRANSMITE o webhook
@@ -26,6 +33,26 @@ import { liberarSemSegredo, segredoConfere } from '@/lib/env';
 // `jaProcessada` abaixo, reprocessaria a mensagem inteira do zero.
 // =============================================================
 export const maxDuration = 60;
+
+/**
+ * Idade máxima (minutos) de uma mensagem para o agente responder.
+ *
+ * Ao ler o QR, a Evolution SINCRONIZA o histórico do aparelho e pode reemitir
+ * `messages.upsert` para conversas antigas. Sem este corte, o pareamento faria
+ * o agente responder de uma vez a semanas de mensagens que a recepção já
+ * tratou — no número principal da clínica, na frente de pacientes reais.
+ */
+const JANELA_FRESCOR_MIN = Number(process.env.EVOLUTION_JANELA_FRESCOR_MIN) || 10;
+
+/** true se a mensagem é recente o bastante para ser "ao vivo". */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function recente(data: any): boolean {
+  const bruto = Number(data?.messageTimestamp);
+  if (!Number.isFinite(bruto) || bruto <= 0) return true; // sem timestamp → não bloqueia
+  const segundos = bruto > 1e12 ? bruto / 1000 : bruto; // Evolution manda em s; tolera ms
+  const idadeMin = (Date.now() / 1000 - segundos) / 60;
+  return idadeMin <= JANELA_FRESCOR_MIN;
+}
 
 // Em produção, EVOLUTION_WEBHOOK_SECRET ausente BLOQUEIA o webhook
 // (fail-closed): sem ele qualquer um poderia injetar mensagens forjadas e
@@ -77,18 +104,29 @@ export async function POST(req: NextRequest) {
     const numero = extrairTelefone(key, data);
     if (!numero) return NextResponse.json({ ok: true });
 
+    // Mensagem antiga (sync de histórico no pareamento) → não responde.
+    if (!recente(data)) {
+      console.info('[evolution:webhook] ignorado: mensagem fora da janela de frescor (sync de histórico?)');
+      return NextResponse.json({ ok: true });
+    }
+
+    // Allowlist VAZIA = canal aberto: quem filtra é o rollout (canary %), não
+    // esta lista. Allowlist PREENCHIDA = modo piloto, portão rígido de QA.
     const numerosPermitidos = (process.env.EVOLUTION_NUMEROS_TESTE ?? '')
       .split(',')
       .map((n) => n.replace(/\D/g, ''))
       .filter(Boolean);
-    const permitido = numerosPermitidos.length > 0 && numeroPermitido(numero, numerosPermitidos);
-    if (!permitido) {
-      console.info('[evolution:webhook] ignorado: remetente fora de EVOLUTION_NUMEROS_TESTE');
+    const modoPiloto = numerosPermitidos.length > 0;
+    const naAllowlist = modoPiloto && numeroPermitido(numero, numerosPermitidos);
+    if (modoPiloto && !naAllowlist) {
+      console.info('[evolution:webhook] ignorado: modo piloto ativo e remetente fora de EVOLUTION_NUMEROS_TESTE');
       return NextResponse.json({ ok: true });
     }
 
     const { agente } = await carregarClinicConfig();
-    const decisao = decidirRollout(numero, agente, true);
+    // `sempreAtende` só vale para a allowlist de QA. Paciente real passa pelo
+    // rollout — é o que faz o canary de 5% valer de verdade.
+    const decisao = decidirRollout(numero, agente, naAllowlist);
 
     if (!decisao.atende) {
       // lead vai para a recepção humana (ou IA pausada): não tocamos em nada.

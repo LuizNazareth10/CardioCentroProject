@@ -1,5 +1,6 @@
 import { processarMensagem } from '../src/lib/whatsapp/agent';
 import { listarAgendamentos } from '../src/lib/db';
+import { carregarSessao } from '../src/lib/whatsapp/session';
 import type { Agendamento } from '../src/lib/types';
 
 // silencia os logs de "enviaria" para o teste ficar limpo
@@ -27,7 +28,8 @@ async function run() {
   await passo('agendar');                   // lista de exames
   await passo('ex:eco-doppler');            // adiciona Eco
   await passo('ex:duplex-carotidas');       // adiciona Carótida (sessão)
-  await passo('concluir_exames');           // pergunta médico
+  await passo('concluir_exames');           // pergunta se é p/ adulto ou criança
+  await passo('idade_adulto');              // é adulto -> pergunta médico
   await passo('med_qualquer');              // calcula horários
   await passo('slot:0');                    // escolhe 1ª opção -> pede nome
   await passo('João da Silva', 'texto');    // informa nome -> pede convênio
@@ -56,6 +58,7 @@ async function run() {
   await processarMensagem(outro, { tipo: 'interativo', valor: 'agendar' });
   await processarMensagem(outro, { tipo: 'interativo', valor: 'ex:eco-doppler' });
   await processarMensagem(outro, { tipo: 'interativo', valor: 'concluir_exames' });
+  await processarMensagem(outro, { tipo: 'interativo', valor: 'idade_adulto' });
   await processarMensagem(outro, { tipo: 'interativo', valor: 'med_qualquer' });
   await processarMensagem(outro, { tipo: 'interativo', valor: 'slot:0' });
   await processarMensagem(outro, { tipo: 'texto', valor: 'Maria Bradesco' });
@@ -64,6 +67,26 @@ async function run() {
   await processarMensagem(outro, { tipo: 'interativo', valor: 'confirmar_sim' });  // não deve gravar
   const daMaria = (await listarAgendamentos()).filter((a) => a.pacienteNome === 'Maria Bradesco');
   check('Plano não atendido não vira agendamento (vai p/ recepção)', daMaria.length === 0);
+
+  // ---------- agendamento para criança sempre transborda p/ recepção ----------
+  const criancaNum = '5532977776666';
+  await processarMensagem(criancaNum, { tipo: 'texto', valor: 'oi' });
+  await processarMensagem(criancaNum, { tipo: 'interativo', valor: 'agendar' });
+  await processarMensagem(criancaNum, { tipo: 'interativo', valor: 'ex:eco-doppler' });
+  await processarMensagem(criancaNum, { tipo: 'interativo', valor: 'concluir_exames' }); // pergunta idade
+  await processarMensagem(criancaNum, { tipo: 'interativo', valor: 'idade_crianca' });   // -> transbordo
+  const sessaoCrianca = await carregarSessao(criancaNum);
+  check('Criança: transborda para atendimento humano', sessaoCrianca.etapa === 'humano');
+
+  // texto livre também classifica: "é para minha filha, ela tem 8 anos"
+  const criancaTexto = '5532966665555';
+  await processarMensagem(criancaTexto, { tipo: 'texto', valor: 'oi' });
+  await processarMensagem(criancaTexto, { tipo: 'interativo', valor: 'agendar' });
+  await processarMensagem(criancaTexto, { tipo: 'interativo', valor: 'ex:eco-doppler' });
+  await processarMensagem(criancaTexto, { tipo: 'interativo', valor: 'concluir_exames' });
+  await processarMensagem(criancaTexto, { tipo: 'texto', valor: 'é para minha filha, uma criança' });
+  const sessaoCriancaTexto = await carregarSessao(criancaTexto);
+  check('Criança (texto livre): também transborda', sessaoCriancaTexto.etapa === 'humano');
 
   // ---------- remarcação pelo WhatsApp ----------
   const antes = (await doPaciente()).slice().sort((a, b) => a.inicio.localeCompare(b.inicio));

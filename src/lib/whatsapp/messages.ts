@@ -60,6 +60,10 @@ export function mensagemSemMedicoUnico(): string {
   return 'Para essa combinação de exames não há um único médico que realize todos. 👍\nVou buscar a melhor combinação de horários para você.';
 }
 
+export function mensagemPerguntarIdade(): string {
+  return 'Antes de continuar: esse agendamento é para um *adulto* ou para uma *criança*?';
+}
+
 export function mensagemSemHorarios(): string {
   return [
     'No momento não encontrei horários livres para essa combinação nos próximos dias. 😕',
@@ -479,6 +483,22 @@ export function mensagemFinalizarComRecepcao(primeiroNome?: string): string {
     'Para concluir o seu agendamento com esse convênio, vou te passar para a nossa recepção.',
     '',
     'Já deixei aqui os detalhes do que você escolheu para agilizar. Uma atendente irá dar continuidade ao atendimento.',
+  ].join('\n');
+}
+
+/**
+ * Transbordo NATURAL para agendamento de criança/menor de idade — a recepção
+ * assume para garantir o suporte adequado. Mesmo padrão do transbordo de
+ * convênio: não expõe a regra interna ao paciente, só avisa a transferência.
+ */
+export function mensagemTransbordoMenorIdade(primeiroNome?: string): string {
+  const oi = primeiroNome ? `Tudo bem, *${primeiroNome}*!` : 'Tudo bem!';
+  return [
+    `${oi} 💙`,
+    '',
+    'Para agendamentos de crianças, a nossa recepção cuida diretamente para garantir todo o suporte necessário.',
+    '',
+    'Vou te transferir — uma atendente continua o atendimento por aqui mesmo.',
   ].join('\n');
 }
 
