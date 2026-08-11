@@ -18,6 +18,17 @@ A mudança de modo/percentual vale **nas próximas mensagens**, sem novo deploy
 (persiste no documento de config no Firestore; a tela tem prioridade sobre a
 variável de ambiente).
 
+> ⚠️ **A tela vence o ambiente.** Um `full` salvo em Configurações continua
+> valendo mesmo que `AGENTE_MODO=canary` esteja na Vercel. Antes de abrir o
+> canal ao público, **confirme o valor efetivo** — um `full` esquecido faria a
+> IA atender 100% dos pacientes no primeiro minuto do pareamento:
+>
+> ```bash
+> npm run rollout             # mostra o que está valendo de verdade
+> npm run rollout canary 5    # fixa canary 5%
+> npm run rollout paused      # kill-switch pelo terminal
+> ```
+
 ## Por que é seguro (não perde lead)
 
 1. A Evolution conecta como **dispositivo vinculado** ao celular da clínica:
@@ -26,11 +37,20 @@ variável de ambiente).
 2. O canary é **pegajoso por número** (hash estável dos últimos 8 dígitos):
    a mesma pessoa é **sempre** IA ou **sempre** humano — nunca alterna no meio
    da conversa.
-3. No canal Evolution, **somente** os números de teste
-   (`EVOLUTION_NUMEROS_TESTE`) podem ser processados durante o piloto. Eles são
-   sempre atendidos, inclusive em `paused` e com canary em 0%; os demais são
-   ignorados independentemente do modo.
-4. Transbordo já existente: urgência, "falar com atendente" e convênios de
+3. `EVOLUTION_NUMEROS_TESTE` é a chave que separa **piloto** de **produção**:
+
+   | Allowlist | Regime | Quem o agente atende |
+   |---|---|---|
+   | **preenchida** | piloto (QA) | só esses números — e sempre, inclusive em `paused` e canary 0% |
+   | **vazia** | canal aberto | todo mundo é avaliado pelo **rollout**: em `canary 5%`, ~5% dos pacientes |
+
+   Esvaziar a variável é o que "abre" o WhatsApp da clínica. A partir daí quem
+   segura o volume é o percentual do canary — não a lista.
+4. Mensagens **antigas são ignoradas**. Ao ler o QR, a Evolution sincroniza o
+   histórico do aparelho; sem esse corte, o pareamento faria o agente responder
+   de uma vez a semanas de conversas já tratadas pela recepção. A janela é de
+   10 min (`EVOLUTION_JANELA_FRESCOR_MIN`).
+5. Transbordo já existente: urgência, "falar com atendente" e convênios de
    regra especial (ex.: IPSEMG) caem na fila humana em `/atendimentos`.
 
 ### O risco que continua sendo seu (decisão consciente)
@@ -69,7 +89,8 @@ VPS. A **VPS** só mantém a Evolution viva. A sessão do WhatsApp vive em
 **volumes Docker**; enquanto eles existirem, atualizar os containers **não pede
 QR de novo**.
 
-- `deploy/docker-compose.yml` — Evolution + Postgres + Redis com volumes nomeados.
+- `deploy/docker-compose.yml` — Evolution + Postgres + Caddy com volumes nomeados
+  (dimensionado para 1 GB de RAM; sem Redis).
 - `deploy/deploy.sh` — sobe/atualiza **sem** `down -v` (nunca apaga a sessão).
 - `.github/workflows/deploy-vps.yml` — CI/CD: em mudanças de `deploy/`, faz SSH
   na VPS e roda `deploy.sh pull` (recria containers, preserva volumes).

@@ -7,11 +7,16 @@ pode ser feita a partir do repositório.
 | # | Tarefa | Tempo ativo | Espera | Bloqueia |
 |---|---|---|---|---|
 | 1 | Registrar `cardiocentrojf.com.br` | ~30 min | 1–24 h (DNS) | Indexação no Google, TLS da VPS |
-| 2 | Criar e configurar a VPS | ~2 h | — | Agente de WhatsApp em produção |
-| 3 | Google Business Profile | ~1 h | 5–14 dias | Buscas "perto de mim" |
+| 2 | Criar e configurar a VPS (GCP) | ~2 h | — | Agente de WhatsApp em produção |
+| 3 | Conectar o WhatsApp da clínica | ~40 min | — | Início do canary de 5% |
+| 4 | Google Business Profile | ~1 h | 5–14 dias | Buscas "perto de mim" |
 
-Comece pelo **1** e pelo **3** no mesmo dia: o domínio destrava o resto, e a
+Comece pelo **1** e pelo **4** no mesmo dia: o domínio destrava o resto, e a
 verificação do Business Profile é a que tem a espera mais longa e imprevisível.
+
+O passo **3** — parear o WhatsApp da clínica sem derrubar os computadores da
+recepção e com a IA limitada a 5% — tem roteiro próprio em
+**[DIA-1-WHATSAPP.md](DIA-1-WHATSAPP.md)**.
 
 ---
 
@@ -21,6 +26,18 @@ verificação do Business Profile é a que tem a espera mais longa e imprevisív
 24/06/2026. O alvo é `cardiocentrojf.com.br`, verificado livre em 06/08/2026.
 
 ### 1.1 Registrar
+
+**O que ter em mãos antes de abrir o site** (tudo do titular = a clínica):
+
+| Dado | Observação |
+|---|---|
+| **CNPJ da clínica** | o domínio fica no CNPJ, não no seu CPF |
+| **Razão social** | exatamente como na Receita — o registro.br valida contra a base |
+| **CPF do responsável** | quem administra a conta (você ou o sócio administrador) |
+| **E-mail da clínica** | vai receber aviso de expiração; use um que alguém lê |
+| **Telefone** | (32) 3215-8744 |
+| **Endereço completo + CEP** | Rua Delfim Moreira, 165 — Centro, Juiz de Fora/MG |
+| **Forma de pagamento** | Pix libera em minutos; boleto leva 1–3 dias úteis |
 
 1. Criar conta em **[registro.br](https://registro.br)**. Exige CPF ou CNPJ
    brasileiro — **registre no CNPJ da clínica**, não no seu CPF. Domínio no nome
@@ -100,69 +117,145 @@ O que sobe aqui é **só a Evolution API** (a ponte do WhatsApp). O agente em si
 roda na Vercel e continua atualizando por `git push` — a VPS não é tocada nesses
 deploys.
 
-### 2.1 Contratar
+### 2.1 Criar a VM no GCP
 
-Qualquer provedor serve; o porte necessário é modesto.
+Você já tem o projeto **`cardiocentro-pipeline`** com faturamento ativo (é onde
+mora o Firestore), então a VM entra na mesma fatura e no mesmo IAM.
 
-| Provedor | Plano | Preço aprox. |
+E dá para rodar de **graça**: o *Always Free* da GCP inclui 1 `e2-micro` por
+mês, e a stack foi dimensionada para caber nele.
+
+| | vCPU / RAM | Custo |
 |---|---|---|
-| **Hetzner** | CX22 — 2 vCPU / 4 GB / 40 GB | ~€4/mês |
-| Contabo | VPS S | ~€5/mês |
-| DigitalOcean | Basic 2 GB | ~US$ 12/mês |
+| **e2-micro · us-east1** (esta receita) | 2 burst / **1 GB** | **US$ 0** |
+| e2-small · us-east1 | 2 / 2 GB | ~US$ 12/mês |
+| e2-small · São Paulo | 2 / 2 GB | ~US$ 19/mês |
 
-Escolha **Ubuntu 24.04 LTS** e cadastre sua **chave SSH pública** na criação —
-não use senha. Anote o IP e volte na etapa 1.3 para preencher o registro `evo`.
+**Por que `us-east1` (Carolina do Sul)?** O free tier só vale em `us-west1`,
+`us-central1` e `us-east1` — São Paulo não entra. Das três, `us-east1` é a mais
+perto do Brasil. O custo disso é ~120 ms a mais no salto VPS → Vercel (que roda
+em `gru1`), duas vezes por mensagem. Contra os 2–4 s da chamada de IA, é ruído:
+~5% do tempo total de resposta.
 
-> Aguarde o DNS de `evo.cardiocentrojf.com.br` resolver antes de subir a stack.
-> O Caddy pede o certificado TLS na primeira subida e, se o domínio ainda não
-> apontar para a máquina, a emissão falha e entra no limite de tentativas do
-> Let's Encrypt. Confira com `dig +short evo.cardiocentrojf.com.br`.
+**As três pegadinhas que fazem o "grátis" virar cobrança** — todas já tratadas
+nos comandos abaixo:
+
+1. Disco **`pd-standard`**, no máximo 30 GB. `pd-balanced` ou SSD **são
+   cobrados** (era o erro da versão anterior deste documento).
+2. **Network tier `STANDARD`**. O Premium (padrão) cobra egresso por outra
+   tabela.
+3. Só **1 GB de egresso/mês** da América do Norte. Texto não chega perto; foto
+   de exame que o paciente manda, sim (~2 MB cada, ~500/mês no limite). Passar
+   disso custa ~US$ 0,12/GB — irrelevante, mas não é zero.
+
+```bash
+gcloud config set project cardiocentro-pipeline
+
+# IP estático em tier STANDARD — sem isso o IP muda a cada restart e o DNS
+# (e o certificado TLS) quebram junto.
+gcloud compute addresses create evolution-ip \
+  --region=us-east1 \
+  --network-tier=STANDARD
+
+gcloud compute instances create evolution-vps \
+  --zone=us-east1-b \
+  --machine-type=e2-micro \
+  --image-family=ubuntu-2404-lts-amd64 \
+  --image-project=ubuntu-os-cloud \
+  --boot-disk-size=30GB \
+  --boot-disk-type=pd-standard \
+  --network-tier=STANDARD \
+  --address=evolution-ip \
+  --tags=evolution-web
+
+# firewall: só 80/443 entram. A Evolution (8080) NÃO fica exposta —
+# quem publica para a internet é o Caddy, com TLS.
+gcloud compute firewall-rules create evolution-web \
+  --allow=tcp:80,tcp:443 \
+  --target-tags=evolution-web \
+  --source-ranges=0.0.0.0/0
+```
+
+Pegue o IP e volte na etapa 1.3 para preencher o registro `evo`:
+
+```bash
+gcloud compute addresses describe evolution-ip --region=us-east1 --format='value(address)'
+```
+
+> **Confira a primeira fatura.** O free tier é um crédito aplicado por uso, não
+> um bloqueio: se algum parâmetro escapar (disco balanced, tier Premium), a GCP
+> cobra em silêncio. Vale criar um **orçamento com alerta em US$ 1** em
+> *Billing → Budgets & alerts* — leva 2 minutos e você descobre no primeiro dia,
+> não no fim do mês.
+
+### 2.1.1 Se 1 GB apertar
+
+A stack foi enxugada para caber (sem Redis, Postgres com `shared_buffers=32MB`,
+tetos de memória por container — ver `deploy/docker-compose.yml`). O consumo
+esperado é ~600–700 MB dos ~960 MB úteis, com 2 GB de swap de rede de segurança.
+
+Se ainda assim faltar memória (`docker stats` encostando nos limites, ou a
+Evolution reiniciando sozinha), subir de máquina é um comando **sem perder o
+pareamento** — os volumes ficam no disco:
+
+```bash
+gcloud compute instances stop evolution-vps --zone=us-east1-b
+gcloud compute instances set-machine-type evolution-vps --zone=us-east1-b --machine-type=e2-small
+gcloud compute instances start evolution-vps --zone=us-east1-b
+```
+
+A partir daí são ~US$ 12/mês — e a máquina sai do free tier.
+
+> **Aguarde o DNS de `evo.cardiocentrojf.com.br` resolver antes de subir a
+> stack.** O Caddy pede o certificado TLS na primeira subida e, se o domínio
+> ainda não apontar para a máquina, a emissão falha e entra no limite de
+> tentativas do Let's Encrypt (5 falhas/hora — depois você espera de castigo).
+> Confira com `dig +short evo.cardiocentrojf.com.br`.
 
 ### 2.2 Preparar a máquina
 
-```bash
-ssh root@SEU_IP
-
-# usuário sem privilégio para a operação do dia a dia
-adduser --disabled-password --gecos "" deploy
-usermod -aG sudo deploy
-rsync --archive --chown=deploy:deploy ~/.ssh /home/deploy/
-
-# firewall: só SSH e web. A Evolution NÃO fica exposta — o Caddy publica por ela.
-ufw allow OpenSSH && ufw allow 80 && ufw allow 443 && ufw --force enable
-
-# desligar login por senha e login direto de root
-sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
-sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
-systemctl restart ssh
-
-# atualizações de segurança automáticas
-apt update && apt install -y unattended-upgrades && dpkg-reconfigure -f noninteractive unattended-upgrades
-```
-
-Instalar o Docker:
+Na GCP o SSH já vem por chave, gerenciado pelo gcloud — não há senha para
+desligar nem usuário root para bloquear. Entre com:
 
 ```bash
-curl -fsSL https://get.docker.com | sh
-usermod -aG docker deploy
+gcloud compute ssh evolution-vps --zone=us-east1-b
 ```
 
-**Abra uma nova sessão SSH como `deploy` e confirme que funciona antes de fechar
-a sessão de root** — se algo saiu errado no SSH, essa é sua única chance de
-consertar sem console de recuperação.
+O usuário que o gcloud cria já é sudo e sem senha. Use ele como o `deploy` do
+roteiro genérico — não precisa criar outro:
+
+```bash
+# swap: rede de segurança da e2-micro (1 GB de RAM) — NÃO é opcional aqui
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+# firewall do SO, além do da GCP (defesa em profundidade)
+sudo ufw allow OpenSSH && sudo ufw allow 80 && sudo ufw allow 443 && sudo ufw --force enable
+
+# atualizações de segurança automáticas + ferramentas do deploy.sh
+# (jq monta o payload do webhook; qrencode desenha o QR de pareamento)
+sudo apt update && sudo apt install -y unattended-upgrades jq qrencode
+sudo dpkg-reconfigure -f noninteractive unattended-upgrades
+
+# Docker
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER
+```
+
+Saia e entre de novo (`exit`, depois o mesmo `gcloud compute ssh`) para o grupo
+`docker` valer. Confirme com `docker ps` — se pedir sudo, o grupo não pegou.
 
 ### 2.3 Subir a stack
-
-```bash
-ssh deploy@SEU_IP
-mkdir -p ~/cardiocentro && cd ~/cardiocentro
-```
 
 Copie da sua máquina os três arquivos da pasta `deploy/`:
 
 ```bash
-scp deploy/docker-compose.yml deploy/Caddyfile deploy/deploy.sh deploy@SEU_IP:~/cardiocentro/
+gcloud compute scp deploy/docker-compose.yml deploy/Caddyfile deploy/deploy.sh \
+  evolution-vps:~/cardiocentro/ --zone=us-east1-b
 ```
+
+Se a pasta ainda não existir, crie antes pelo SSH: `mkdir -p ~/cardiocentro`.
 
 Na VPS, crie o `.env` (a partir de `deploy/.env.example`):
 
@@ -177,13 +270,17 @@ EOF
 chmod 600 ~/cardiocentro/.env
 ```
 
-Suba e pareie:
+Suba a stack:
 
 ```bash
 chmod +x deploy.sh
 ./deploy.sh up
-./deploy.sh qr     # leia o QR no WhatsApp da clínica — só nesta primeira vez
 ```
+
+> **Não leia o QR ainda.** Parear é o momento em que a IA passa a ver as
+> conversas reais da clínica — só faça isso depois de confirmar o canary e
+> avisar a recepção. O passo a passo está em
+> [DIA-1-WHATSAPP.md](DIA-1-WHATSAPP.md).
 
 Confirme o TLS:
 
@@ -204,8 +301,17 @@ EVOLUTION_API_URL        = https://evo.cardiocentrojf.com.br
 EVOLUTION_API_KEY        = <o mesmo valor do .env da VPS>
 EVOLUTION_INSTANCE       = <nome da instância criada no pareamento>
 EVOLUTION_WEBHOOK_SECRET = <gere: openssl rand -hex 32>
-EVOLUTION_NUMEROS_TESTE  = 5532XXXXXXXXX
+AGENTE_MODO              = canary
+AGENTE_CANARY_PCT        = 5
 ```
+
+E **apague `EVOLUTION_NUMEROS_TESTE`** — com ela preenchida o canal fica em modo
+piloto e só os números da lista são atendidos. Vazia, o canal abre e quem passa a
+segurar o volume é o canary. Detalhes em [DIA-1-WHATSAPP.md](DIA-1-WHATSAPP.md).
+
+> `AGENTE_MODO`/`AGENTE_CANARY_PCT` são só o **piso**: o valor salvo em
+> Configurações (Firestore) tem prioridade. Confirme o que está valendo de
+> verdade com `npm run rollout` antes de parear.
 
 O `EVOLUTION_WEBHOOK_SECRET` precisa ser cadastrado **também** no webhook da
 instância Evolution, como header `x-evolution-secret`. Sem isso, em produção o
@@ -220,10 +326,13 @@ Em **GitHub → Settings → Secrets and variables → Actions**, cadastre:
 
 | Secret | Valor |
 |---|---|
-| `VPS_HOST` | IP da VPS |
-| `VPS_USER` | `deploy` |
-| `VPS_SSH_KEY` | chave **privada** SSH com acesso ao usuário `deploy` |
-| `VPS_DEPLOY_DIR` | `/home/deploy/cardiocentro` |
+| `VPS_HOST` | IP estático da VM (etapa 2.1) |
+| `VPS_USER` | o usuário do `gcloud compute ssh` (rode `whoami` na VM) |
+| `VPS_SSH_KEY` | conteúdo de `~/.ssh/google_compute_engine` (chave **privada**) |
+| `VPS_DEPLOY_DIR` | `/home/<esse usuário>/cardiocentro` |
+
+O `gcloud compute ssh` gera esse par de chaves na primeira conexão e registra a
+pública no projeto — é ela que o GitHub Actions reusa.
 
 Com isso, mudanças em `deploy/` passam a se aplicar sozinhas, preservando os
 volumes (e o pareamento).
@@ -232,9 +341,11 @@ volumes (e o pareamento).
 
 - [ ] `https://evo.cardiocentrojf.com.br` responde com certificado válido
 - [ ] Porta 8080 **não** responde de fora: `curl http://SEU_IP:8080` deve falhar
-- [ ] Mandar mensagem do número em `EVOLUTION_NUMEROS_TESTE` e receber resposta
+- [ ] `npm run rollout` mostra `canary 5%` (e não `full`)
 - [ ] `docker compose restart` e confirmar que **não** pede QR de novo
 - [ ] Painel em **Configurações → Rollout do agente** registrando os eventos
+- [ ] `free -h` mostra o swap ativo (2 GB) e `docker stats` com folga nos limites
+- [ ] Orçamento com alerta em US$ 1 criado em *Billing → Budgets & alerts*
 
 ---
 
@@ -327,7 +438,8 @@ por escolha de projeto, para não rodar desprotegido em silêncio.
 | `CRON_SECRET` | **[fail-closed]** senão os lembretes não são enviados |
 | `EVOLUTION_WEBHOOK_SECRET` | **[fail-closed]** e o mesmo valor no webhook da instância |
 | `EVOLUTION_API_URL` · `_API_KEY` · `_INSTANCE` | ver etapa 2.4 |
-| `EVOLUTION_NUMEROS_TESTE` | allowlist do piloto, só dígitos |
+| `EVOLUTION_NUMEROS_TESTE` | **apagar** para abrir o canal; preenchida = modo piloto |
+| `AGENTE_MODO` · `AGENTE_CANARY_PCT` | `canary` · `5` — piso; a tela tem prioridade |
 | `WHATSAPP_APP_SECRET` | **[fail-closed]** se usar o canal oficial da Meta |
 | `ANTHROPIC_API_KEY` | sem ela o agente cai no fallback por palavras-chave |
 | `NEXT_PUBLIC_GA_ID` | opcional; só carrega após consentimento no banner |
