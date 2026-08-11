@@ -38,6 +38,12 @@ export type ExameOverride = Partial<Pick<Exame, 'nome' | 'duracaoMin' | 'preparo
  *             de teste (`EVOLUTION_NUMEROS_TESTE`), que continuam recebendo
  *             resposta real. É o modo para operar "só para o meu número de
  *             QA, silêncio para todo o resto" sem precisar mexer em nada.
+ *             Com a allowlist vazia (canal aberto), `paused` é silêncio total.
+ *
+ * ATENÇÃO ao valor gravado no Firestore: ele tem PRIORIDADE sobre as variáveis
+ * AGENTE_MODO / AGENTE_CANARY_PCT. Um `full` salvo pela tela continua valendo
+ * mesmo que o ambiente diga `canary` — use `npm run rollout` para inspecionar
+ * e fixar o valor efetivo antes de abrir o canal ao público.
  */
 export type ModoAgente = 'full' | 'shadow' | 'canary' | 'paused';
 

@@ -46,14 +46,17 @@ export function bucketDoNumero(telefone: string): number {
 /**
  * Decide o atendimento para um número.
  *
- * `sempreAtende` = números da allowlist de teste (EVOLUTION_NUMEROS_TESTE):
- * são os seus próprios números de QA e entram sempre, com resposta REAL
- * (nunca rascunho) — INCLUSIVE em `paused`. É o que permite deixar o agente
- * "desligado para todo mundo, menos para o meu número de teste" sem precisar
- * mexer em nada: pausado deixa de ser um silêncio absoluto e passa a poupar
- * só a allowlist. `shadow` continua valendo para TODOS sem exceção (mesmo a
- * allowlist só recebe rascunho ali — é o modo de conferir a resposta antes
- * de qualquer envio real, inclusive o seu).
+ * `sempreAtende` = número da allowlist de QA (EVOLUTION_NUMEROS_TESTE, quando
+ * preenchida): entra sempre, com resposta REAL (nunca rascunho) — INCLUSIVE em
+ * `paused`. É o que permite deixar o agente "desligado para todo mundo, menos
+ * para o meu número de teste": pausado deixa de ser um silêncio absoluto e
+ * passa a poupar só a allowlist. `shadow` continua valendo para TODOS sem
+ * exceção (mesmo a allowlist só recebe rascunho ali — é o modo de conferir a
+ * resposta antes de qualquer envio real, inclusive o seu).
+ *
+ * Com a allowlist VAZIA (canal aberto ao público), `sempreAtende` é `false`
+ * para todo mundo e é o modo que manda: em `canary 5%`, só os buckets 0–4 são
+ * atendidos pela IA; os demais seguem com a recepção humana.
  */
 export function decidirRollout(
   telefone: string,

@@ -14,6 +14,7 @@
     "test:evolution-numeros": "tsx scripts/test-evolution-numeros.ts",
     "test:agent": "tsx scripts/test-agent.ts",
     "chat-agent": "tsx scripts/chat-agent.ts",
+    "rollout": "tsx scripts/rollout.ts",
     "seed": "tsx scripts/seed-firestore.ts",
     "backfill-busca": "tsx scripts/backfill-busca.ts",
     "medir-performance": "tsx scripts/medir-performance.ts"
