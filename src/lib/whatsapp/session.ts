@@ -147,6 +147,25 @@ export async function salvarSessao(telefone: string, state: ConversaState): Prom
   sessoes.set(telefone, state);
 }
 
+/**
+ * Marca a conversa como `humano` porque a RECEPÇÃO respondeu digitando
+ * direto no celular/PC (não pelo agente) — ver `foiEnviadoPeloAgente` em
+ * evolution.ts, chamado a partir do webhook para todo `fromMe` que não é eco
+ * do próprio agente.
+ *
+ * Sem isto, um paciente já em atendimento humano que caísse no bucket da IA
+ * (canary) na mensagem seguinte reabriria o fluxo de agendamento do zero,
+ * sem nenhuma noção da conversa em andamento. Como toda sessão expira depois
+ * de 30 min sem mensagem (TTL acima), o handoff não é permanente: encerrada a
+ * conversa humana, a próxima mensagem do paciente volta a cair na IA normalmente.
+ */
+export async function marcarHandoffHumano(telefone: string): Promise<void> {
+  const s = await carregarSessao(telefone);
+  if (s.etapa === 'humano') return;
+  s.etapa = 'humano';
+  await salvarSessao(telefone, s);
+}
+
 export async function limparSessao(telefone: string): Promise<void> {
   if (isFirestore) {
     try {

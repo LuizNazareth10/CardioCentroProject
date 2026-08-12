@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processarMensagem, type Entrada } from '@/lib/whatsapp/agent';
 import { capturarEnvios, comTransporte } from '@/lib/whatsapp/client';
-import { transporteEvolution } from '@/lib/whatsapp/evolution';
+import { foiEnviadoPeloAgente, transporteEvolution } from '@/lib/whatsapp/evolution';
 import { resolverOpcaoEvolution } from '@/lib/whatsapp/evolution-opcoes';
 import { carregarClinicConfig } from '@/lib/clinic-config';
 import { decidirRollout, encaminharRascunhoShadow, transporteCaptura } from '@/lib/whatsapp/rollout';
 import { registrarEvento } from '@/lib/whatsapp/monitor';
 import { numeroPermitido } from '@/lib/whatsapp/evolution-numeros';
 import { liberarSemSegredo, segredoConfere } from '@/lib/env';
+import { marcarHandoffHumano } from '@/lib/whatsapp/session';
 
 // =============================================================
 // Webhook da Evolution API — canal do WhatsApp da clínica, isolado do webhook
@@ -24,8 +25,12 @@ import { liberarSemSegredo, segredoConfere } from '@/lib/env';
 //    pacientes — fixos por número — são atendidos pela IA; o restante segue
 //    com a recepção humana, que continua vendo 100% das conversas no aparelho.
 //
-// Grupos, mensagens antigas (sync de histórico), outros números e o eco do
-// próprio agente são ignorados sem tocar no banco nem enviar qualquer resposta.
+// Grupos, mensagens antigas (sync de histórico) e o eco do próprio agente são
+// ignorados sem tocar no banco nem enviar qualquer resposta. Um `fromMe` que
+// NÃO é eco do agente — a recepção digitou direto no celular/PC — marca
+// handoff humano (ver tratarEcoOuHandoffHumano) para a IA não atropelar uma
+// conversa que já está sendo respondida por gente, mesmo que esse número
+// caia no bucket do canary na mensagem seguinte.
 //
 // maxDuration maior que o padrão: o fluxo completo (sessão + IA + envio)
 // pode passar de alguns segundos, e a Evolution API RETRANSMITE o webhook
@@ -94,10 +99,17 @@ export async function POST(req: NextRequest) {
     const data = body?.data;
     const key = data?.key;
     if (!key) return NextResponse.json({ ok: true });
-    if (key.fromMe) return NextResponse.json({ ok: true }); // eco do que o próprio agente mandou
 
     const remoteJid: string = key.remoteJid ?? '';
-    if (remoteJid.endsWith('@g.us')) return NextResponse.json({ ok: true }); // bloqueia grupos
+    if (remoteJid.endsWith('@g.us')) return NextResponse.json({ ok: true }); // bloqueia grupos, mesmo fromMe
+
+    if (key.fromMe) {
+      // Sync de histórico no pareamento pode reemitir SEMANAS de mensagens já
+      // enviadas — sem o corte de frescor, cada uma seria avaliada abaixo e
+      // geraria handoff para números aleatórios que não têm nada a ver com agora.
+      if (recente(data)) await tratarEcoOuHandoffHumano(key, data);
+      return NextResponse.json({ ok: true });
+    }
 
     // WhatsApp/Evolution pode mandar com ou sem 55, com ou sem o 9º dígito,
     // e em alguns casos o JID principal vem como @lid (telefone em remoteJidAlt).
@@ -191,6 +203,27 @@ export async function POST(req: NextRequest) {
     console.error('[evolution:webhook] erro:', e);
     return NextResponse.json({ ok: true, erro: e instanceof Error ? e.message : String(e) });
   }
+}
+
+/**
+ * `fromMe:true` chega tanto quando o PRÓPRIO agente manda uma resposta (eco,
+ * pelo mesmo mecanismo de "dispositivo vinculado") quanto quando a RECEPÇÃO
+ * digita direto no celular/PC — a Evolution manda os dois formatos idênticos,
+ * sem nenhum campo que diga quem originou.
+ *
+ * Diferenciamos pelo id: `foiEnviadoPeloAgente` (evolution.ts) só é true para
+ * ids que o PRÓPRIO agente gerou (marcados no envio). Se não é eco, é a
+ * recepção respondendo de verdade — marcamos handoff para a IA não atropelar
+ * uma conversa que já está sendo respondida por gente, mesmo que o número
+ * caia no bucket do canary na mensagem seguinte.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function tratarEcoOuHandoffHumano(key: any, data: any): Promise<void> {
+  if (await foiEnviadoPeloAgente(key.id)) return; // eco do próprio agente
+  const numero = extrairTelefone(key, data);
+  if (!numero) return;
+  await marcarHandoffHumano(numero);
+  console.info('[evolution:webhook] recepção respondeu manualmente — handoff marcado');
 }
 
 /** Digitos de um JID WhatsApp (`5532…@s.whatsapp.net` → `5532…`). Ignora `@lid`. */

@@ -61,7 +61,51 @@ async function enviarTextoPlano(to: string, texto: string): Promise<void> {
   const limpo = texto.replace(/\\u([0-9a-fA-F]{4})/gi, (_m, hex: string) =>
     String.fromCharCode(parseInt(hex, 16)),
   );
-  await chamar('/message/sendText', { number: numeroLimpo(to), text: limpo });
+  const res = await chamar('/message/sendText', { number: numeroLimpo(to), text: limpo });
+  await marcarComoEnviadoPeloAgente(await idDaMensagemEnviada(res));
+}
+
+/** extrai `key.id` da resposta do /message/sendText — sem lançar se o formato vier diferente do esperado. */
+async function idDaMensagemEnviada(res: Response | null): Promise<string | undefined> {
+  if (!res?.ok) return undefined;
+  try {
+    const data = (await res.json()) as { key?: { id?: string } };
+    return data?.key?.id;
+  } catch {
+    return undefined;
+  }
+}
+
+// -------------------------------------------------------------
+// Distingue, no webhook, um `fromMe:true` que é ECO do próprio agente de um
+// `fromMe:true` que é a RECEPÇÃO digitando direto no celular/PC — a Evolution
+// manda os dois formatos exatamente iguais. Guardamos o id de toda mensagem
+// que o agente envia; no webhook (route.ts), um fromMe sem id aqui só pode
+// ser humano → aciona marcarHandoffHumano (session.ts) para a IA não
+// atropelar uma conversa que a recepção já está respondendo de verdade.
+// -------------------------------------------------------------
+
+async function marcarComoEnviadoPeloAgente(messageId: string | undefined): Promise<void> {
+  if (!messageId) return;
+  try {
+    const { db } = await import('../db/firestore');
+    await db().collection('evolution_msgs_agente').doc(messageId).set({ enviadoEm: new Date().toISOString() });
+  } catch (e) {
+    console.error('[evolution] falha ao marcar mensagem como enviada pelo agente:', e);
+  }
+}
+
+/** true se ESTE agente enviou a mensagem (eco); false se veio de outro lugar (recepção). */
+export async function foiEnviadoPeloAgente(messageId: string | undefined): Promise<boolean> {
+  if (!messageId) return true; // sem id não dá pra provar handoff → não arrisca falso positivo
+  try {
+    const { db } = await import('../db/firestore');
+    const doc = await db().collection('evolution_msgs_agente').doc(messageId).get();
+    return doc.exists;
+  } catch (e) {
+    console.error('[evolution] falha ao checar remetente da mensagem (assumindo eco do agente):', e);
+    return true; // falha ao checar → não bloqueia o comportamento de hoje (ignora o fromMe)
+  }
 }
 
 export const transporteEvolution: TransporteExterno = {

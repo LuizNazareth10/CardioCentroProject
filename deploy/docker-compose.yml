@@ -76,6 +76,18 @@ services:
       # para escalar horizontalmente, cenário que não é o desta VPS.
       CACHE_REDIS_ENABLED: 'false'
       CACHE_LOCAL_ENABLED: 'true'
+      # --- identificação do dispositivo vinculado ---
+      # É o nome que aparece em "Dispositivos conectados" no celular da clínica
+      # e o fingerprint que vai para o WhatsApp no pareamento.
+      #
+      # O default da imagem é a string literal "Evolution API" — assinatura
+      # conhecida de automação, e um candidato a rejeição silenciosa no
+      # handshake (o celular mostra "não foi possível conectar" e o servidor
+      # não loga erro nenhum, porque a recusa é do lado do WhatsApp).
+      #
+      # Trocado por um nome neutro e verdadeiro: quem opera é a clínica.
+      CONFIG_SESSION_PHONE_CLIENT: 'Cardiocentro'
+      CONFIG_SESSION_PHONE_NAME: 'Chrome'
       # --- webhook: aponta para o app na Vercel ---
       # DESLIGADO de propósito. O webhook GLOBAL entrega a URL, mas não manda
       # header nenhum — e o app é fail-closed em `x-evolution-secret`. Com ele
