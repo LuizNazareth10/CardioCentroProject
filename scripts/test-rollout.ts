@@ -68,5 +68,33 @@ check('Subir 5%→10% não tira ninguém da IA (rollout é monotônico)', [...em
 // pausar com o canal aberto é silêncio TOTAL — não há allowlist para poupar
 check('Pausado + canal aberto: nem o QA é atendido', !decidirRollout(QA, { modo: 'paused', canaryPct: 5 }, false).atende);
 
+// ---- 7: silêncio de 4h+ dá cobertura total, mesmo fora do bucket -----------
+// Conversa abandonada há 4h+ não está sendo respondida por ninguém — a IA
+// assume mesmo fora da fatia normal do canary, pra não deixar o lead parado.
+check(
+  'Canary 5%: cliente FORA do bucket, mas 4h+ de silêncio → atende mesmo assim',
+  decidirRollout(CLIENTE, { modo: 'canary', canaryPct: 5 }, false, 4).atende,
+);
+check(
+  'Canary 5%: cliente FORA do bucket, exatamente no limiar (4.0h) → atende',
+  decidirRollout(CLIENTE, { modo: 'canary', canaryPct: 5 }, false, 4.0).atende,
+);
+check(
+  'Canary 5%: cliente FORA do bucket, com só 3h de silêncio → continua na regra normal (não atende)',
+  !decidirRollout(CLIENTE, { modo: 'canary', canaryPct: 5 }, false, 3).atende,
+);
+check(
+  'Canary 5%: cliente FORA do bucket, sem NUNCA ter conversado (null) → não força atendimento (não é "silêncio", é lead novo)',
+  !decidirRollout(CLIENTE, { modo: 'canary', canaryPct: 5 }, false, null).atende,
+);
+check(
+  'Canary 5%: sem passar horasSilencio (default) → comportamento de sempre preservado',
+  !decidirRollout(CLIENTE, { modo: 'canary', canaryPct: 5 }, false).atende,
+);
+check(
+  'Canary: silêncio 4h+ não afeta modo full (já atende todo mundo de qualquer forma)',
+  decidirRollout(CLIENTE, { modo: 'full', canaryPct: 0 }, false, 10).atende,
+);
+
 console.log('\nResumo:', falhas === 0 ? 'TODOS OS TESTES PASSARAM 🎉' : `${falhas} falha(s)`);
 process.exit(falhas === 0 ? 0 : 1);

@@ -27,6 +27,18 @@ export interface DecisaoRollout {
 }
 
 /**
+ * Silêncio (sem nenhuma mensagem, de nenhum lado) a partir do qual uma
+ * conversa em `canary` passa a ser SEMPRE atendida pela IA, mesmo fora do
+ * bucket sorteado. Só vale para conversas que JÁ existiam (`horasSilencio`
+ * não nulo) — lead novo continua sob a % normal do canary, que é a proteção
+ * que o canary existe para dar. O motivo de existir: uma conversa abandonada
+ * há horas não está sendo respondida por ninguém (nem humano, nem IA), então
+ * não faz sentido reservar pra ela a fatia pequena do canary — melhor a IA
+ * retomar do que ela ficar parada esperando a recepção notar.
+ */
+const LIMITE_SILENCIO_HORAS = 4;
+
+/**
  * Hash estável de um número de telefone → bucket 0–99. Determinístico: o
  * MESMO número cai SEMPRE no mesmo bucket, então uma pessoa nunca "pula"
  * entre IA e humano no meio da conversa quando o modo é canary. Usa só os
@@ -62,6 +74,8 @@ export function decidirRollout(
   telefone: string,
   agente: Pick<AgenteConfig, 'modo' | 'canaryPct'>,
   sempreAtende: boolean,
+  /** horas desde a última mensagem (qualquer lado) nessa conversa; `null` = nunca conversamos com esse número */
+  horasSilencio: number | null = null,
 ): DecisaoRollout {
   const bucket = bucketDoNumero(telefone);
   const modo = agente.modo ?? 'full';
@@ -85,13 +99,18 @@ export function decidirRollout(
 
   if (modo === 'canary') {
     const pct = Math.max(0, Math.min(100, agente.canaryPct ?? 0));
-    const dentro = bucket < pct;
+    const silencioLongo = horasSilencio !== null && horasSilencio >= LIMITE_SILENCIO_HORAS;
+    const dentro = bucket < pct || silencioLongo;
     return {
       atende: dentro,
       shadow: false,
       modo,
       bucket,
-      motivo: dentro ? `canary: bucket ${bucket} < ${pct}%` : `canary: bucket ${bucket} ≥ ${pct}% (humano)`,
+      motivo: silencioLongo
+        ? `canary: conversa em silêncio há ${horasSilencio!.toFixed(1)}h (≥ ${LIMITE_SILENCIO_HORAS}h) → atende sempre`
+        : dentro
+          ? `canary: bucket ${bucket} < ${pct}%`
+          : `canary: bucket ${bucket} ≥ ${pct}% (humano)`,
     };
   }
 

@@ -8,7 +8,7 @@ import { decidirRollout, encaminharRascunhoShadow, transporteCaptura } from '@/l
 import { registrarEvento } from '@/lib/whatsapp/monitor';
 import { numeroPermitido } from '@/lib/whatsapp/evolution-numeros';
 import { liberarSemSegredo, segredoConfere } from '@/lib/env';
-import { marcarHandoffHumano } from '@/lib/whatsapp/session';
+import { horasDeSilencio, marcarHandoffHumano } from '@/lib/whatsapp/session';
 
 // =============================================================
 // Webhook da Evolution API — canal do WhatsApp da clínica, isolado do webhook
@@ -135,10 +135,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    // Responde sempre no formato internacional BR (55…), que a Evolution espera
+    // — calculado já aqui porque é a mesma chave usada pela sessão (wa_sessions),
+    // necessária para medir o silêncio da conversa antes de decidir o rollout.
+    const destino = numero.startsWith('55') ? numero : `55${numero}`;
+
     const { agente } = await carregarClinicConfig();
     // `sempreAtende` só vale para a allowlist de QA. Paciente real passa pelo
-    // rollout — é o que faz o canary de 5% valer de verdade.
-    const decisao = decidirRollout(numero, agente, naAllowlist);
+    // rollout — é o que faz o canary de 5% valer de verdade. `horasSilencio`
+    // dá cobertura total (atende sempre) a conversas já existentes, abandonadas
+    // há 4h+ (ver LIMITE_SILENCIO_HORAS em rollout.ts) — ninguém, nem humano
+    // nem IA, está respondendo ali, então não reserva a fatia pequena do canary
+    // pra elas.
+    const decisao = decidirRollout(numero, agente, naAllowlist, await horasDeSilencio(destino));
 
     if (!decisao.atende) {
       // lead vai para a recepção humana (ou IA pausada): não tocamos em nada.
@@ -153,9 +162,6 @@ export async function POST(req: NextRequest) {
 
     const entrada0 = normalizarEntrada(data);
     if (!entrada0) return NextResponse.json({ ok: true });
-
-    // Responde sempre no formato internacional BR (55…), que a Evolution espera.
-    const destino = numero.startsWith('55') ? numero : `55${numero}`;
 
     // Menus do Evolution vão em texto numerado (botões/listas quebram no WA comum).
     // Se o paciente responder "1", "2"…, traduzimos para o(s) id(s) interativo(s)

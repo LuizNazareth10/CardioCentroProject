@@ -168,6 +168,33 @@ export async function marcarHandoffHumano(telefone: string): Promise<void> {
   await salvarSessao(telefone, s);
 }
 
+/**
+ * Horas desde a última mensagem (de qualquer lado) nesta conversa —
+ * INDEPENDENTE do TTL acima, que só decide se o CONTEÚDO da sessão ainda
+ * vale (etapa, exames escolhidos etc.), não se existe registro dela. Usado
+ * pelo rollout (ver decidirRollout em rollout.ts) para dar cobertura total
+ * (atende sempre) a conversas em `canary` abandonadas há 4h+: ninguém, nem
+ * humano nem IA, está respondendo ali, então não faz sentido reservar a
+ * fatia pequena do canary pra elas. `null` = nunca conversamos com esse
+ * número — nesse caso o rollout aplica a % normal, não o override.
+ */
+export async function horasDeSilencio(telefone: string): Promise<number | null> {
+  let atualizadoEm: number | undefined;
+  if (isFirestore) {
+    try {
+      const doc = await (await fs()).collection('wa_sessions').doc(telefone).get();
+      atualizadoEm = doc.exists ? (doc.data() as ConversaState)?.atualizadoEm : undefined;
+    } catch (e) {
+      console.error('[wa_sessions] erro ao checar silêncio:', e);
+      return null;
+    }
+  } else {
+    atualizadoEm = sessoes.get(telefone)?.atualizadoEm;
+  }
+  if (!atualizadoEm) return null;
+  return (Date.now() - atualizadoEm) / (60 * 60 * 1000);
+}
+
 export async function limparSessao(telefone: string): Promise<void> {
   if (isFirestore) {
     try {

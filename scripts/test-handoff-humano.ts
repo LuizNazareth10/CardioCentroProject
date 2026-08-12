@@ -6,7 +6,7 @@
  * (evolution.ts) depende do Firestore real e é conferido manualmente — ver
  * DIA-1-WHATSAPP.md.
  */
-import { carregarSessao, marcarHandoffHumano, salvarSessao } from '../src/lib/whatsapp/session';
+import { carregarSessao, horasDeSilencio, marcarHandoffHumano, salvarSessao } from '../src/lib/whatsapp/session';
 
 let falhas = 0;
 function checar(nome: string, cond: boolean) {
@@ -41,6 +41,14 @@ async function main() {
   const depois = await carregarSessao(numC);
   checar('handoff repetido: continua humano', depois.etapa === 'humano');
   checar('handoff repetido: não regride nem quebra (idempotente, retorna cedo)', depois.atualizadoEm === antes);
+
+  // 4) horasDeSilencio — usado pelo rollout pra dar cobertura total (canary
+  // 100%) a conversas abandonadas há 4h+ (ver LIMITE_SILENCIO_HORAS em rollout.ts)
+  const numD = '5532988884444';
+  checar('nunca conversamos: horasDeSilencio devolve null', (await horasDeSilencio(numD)) === null);
+  await salvarSessao(numD, await carregarSessao(numD)); // atualizadoEm = agora
+  const silencioD = await horasDeSilencio(numD);
+  checar('sessão recém-salva: silêncio ~0h (não null, não horas)', silencioD !== null && silencioD < 0.01);
 
   console.log(falhas === 0 ? '\nResumo: TODOS OS TESTES PASSARAM 🎉' : `\nResumo: ${falhas} FALHA(S)`);
   process.exit(falhas === 0 ? 0 : 1);
