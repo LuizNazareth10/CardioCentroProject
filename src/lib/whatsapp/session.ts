@@ -7,7 +7,9 @@
 // Sem persistência, o paciente perderia o fluxo no meio da conversa.
 //
 // No modo memory (dev/demo), usa um Map em memória como antes.
-// TTL de 30 min: sessão mais antiga é descartada e recomeça do zero.
+// TTL de 2h: sessão mais antiga é descartada e recomeça do zero. Mesmo TTL
+// vale para o handoff humano (marcarHandoffHumano, abaixo) — não há uma
+// janela separada para cada caso.
 // =============================================================
 
 export type EtapaConversa =
@@ -95,7 +97,7 @@ export interface AgendamentoFuturoState {
   resumo: string;
 }
 
-const TTL = 30 * 60 * 1000; // 30 min
+const TTL = 2 * 60 * 60 * 1000; // 2 horas
 const isFirestore = process.env.DATA_BACKEND === 'firestore';
 const sessoes = new Map<string, ConversaState>(); // fallback memory
 
@@ -156,7 +158,7 @@ export async function salvarSessao(telefone: string, state: ConversaState): Prom
  * Sem isto, um paciente já em atendimento humano que caísse no bucket da IA
  * (canary) na mensagem seguinte reabriria o fluxo de agendamento do zero,
  * sem nenhuma noção da conversa em andamento. Como toda sessão expira depois
- * de 30 min sem mensagem (TTL acima), o handoff não é permanente: encerrada a
+ * de 2h sem mensagem (TTL acima), o handoff não é permanente: encerrada a
  * conversa humana, a próxima mensagem do paciente volta a cair na IA normalmente.
  */
 export async function marcarHandoffHumano(telefone: string): Promise<void> {
