@@ -16,6 +16,7 @@ export type EtapaConversa =
   | 'inicio'
   | 'menu'
   | 'escolhendo_exames'
+  | 'confirmando_exames' // exames entendidos por TEXTO LIVRE: confirma a lista antes de seguir
   | 'confirmando_idade' // exames escolhidos: confirma se é para adulto ou criança, antes de seguir
   | 'escolhendo_medico'
   | 'escolhendo_horario'

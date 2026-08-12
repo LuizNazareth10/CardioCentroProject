@@ -61,6 +61,10 @@ async function enviarTextoPlano(to: string, texto: string): Promise<void> {
   const limpo = texto.replace(/\\u([0-9a-fA-F]{4})/gi, (_m, hex: string) =>
     String.fromCharCode(parseInt(hex, 16)),
   );
+  // ANTES de mandar: fecha a corrida descrita em `houveEnvioRecente`. Precisa
+  // estar gravado no banco antes de a mensagem sair, porque o webhook do eco
+  // pode chegar antes de esta função terminar.
+  await marcarEnvioEmVoo(to);
   const res = await chamar('/message/sendText', { number: numeroLimpo(to), text: limpo });
   await marcarComoEnviadoPeloAgente(await idDaMensagemEnviada(res));
 }
@@ -95,17 +99,75 @@ async function marcarComoEnviadoPeloAgente(messageId: string | undefined): Promi
   }
 }
 
-/** true se ESTE agente enviou a mensagem (eco); false se veio de outro lugar (recepção). */
-export async function foiEnviadoPeloAgente(messageId: string | undefined): Promise<boolean> {
+/**
+ * Chave por CONVERSA usada pelo marcador de envio em voo. Mesma normalização
+ * que o webhook aplica ao remetente (`destino`), para os dois lados baterem.
+ */
+function chaveEnvio(numero: string): string {
+  const d = numeroLimpo(numero);
+  return d.startsWith('55') ? d : `55${d}`;
+}
+
+/**
+ * Janela em que um `fromMe` sem id conhecido ainda é tratado como eco do
+ * próprio agente. Generosa de propósito: o custo de errar para MAIS é só
+ * deixar de marcar um handoff que a próxima mensagem da recepção marca; o
+ * custo de errar para MENOS é o agente se calar sozinho (ver abaixo).
+ */
+const JANELA_ENVIO_EM_VOO_MS = 20_000;
+
+/** Registra que o agente está enviando algo para este número AGORA. */
+async function marcarEnvioEmVoo(numero: string): Promise<void> {
+  try {
+    const { db } = await import('../db/firestore');
+    await db().collection('evolution_envios_em_voo').doc(chaveEnvio(numero)).set({ em: Date.now() });
+  } catch (e) {
+    console.error('[evolution] falha ao marcar envio em voo:', e);
+  }
+}
+
+/** true se o agente mandou alguma mensagem para este número nos últimos segundos. */
+async function houveEnvioRecente(numero: string): Promise<boolean> {
+  if (!numero) return false;
+  try {
+    const { db } = await import('../db/firestore');
+    const doc = await db().collection('evolution_envios_em_voo').doc(chaveEnvio(numero)).get();
+    const em = doc.data()?.em as number | undefined;
+    return typeof em === 'number' && Date.now() - em <= JANELA_ENVIO_EM_VOO_MS;
+  } catch (e) {
+    console.error('[evolution] falha ao checar envio em voo (assumindo eco):', e);
+    return true;
+  }
+}
+
+/**
+ * true se ESTE agente enviou a mensagem (eco); false se veio de outro lugar
+ * (recepção digitando no celular/PC).
+ *
+ * A checagem por id sozinha TEM UMA CORRIDA, e ela derrubou atendimentos em
+ * produção: o Baileys emite `messages.upsert` para a mensagem que acabou de
+ * sair ANTES de a chamada `/message/sendText` retornar para nós — ou seja,
+ * antes de `marcarComoEnviadoPeloAgente` ter o id para gravar. Quando o
+ * webhook do eco ganha essa corrida, o id ainda não existe, o agente conclui
+ * "isso foi a recepção" e marca handoff CONTRA A PRÓPRIA RESPOSTA — a partir
+ * dali ele fica mudo para aquele paciente até a sessão expirar (2h).
+ *
+ * Por isso, quando o id não é encontrado, ainda perguntamos se o agente
+ * enviou algo para esse número há poucos segundos (`marcarEnvioEmVoo` grava
+ * ANTES do envio, então está sempre lá quando o eco chega). Só é handoff de
+ * verdade quando as duas checagens falham.
+ */
+export async function foiEnviadoPeloAgente(messageId: string | undefined, numero?: string): Promise<boolean> {
   if (!messageId) return true; // sem id não dá pra provar handoff → não arrisca falso positivo
   try {
     const { db } = await import('../db/firestore');
     const doc = await db().collection('evolution_msgs_agente').doc(messageId).get();
-    return doc.exists;
+    if (doc.exists) return true;
   } catch (e) {
     console.error('[evolution] falha ao checar remetente da mensagem (assumindo eco do agente):', e);
     return true; // falha ao checar → não bloqueia o comportamento de hoje (ignora o fromMe)
   }
+  return houveEnvioRecente(numero ?? '');
 }
 
 export const transporteEvolution: TransporteExterno = {

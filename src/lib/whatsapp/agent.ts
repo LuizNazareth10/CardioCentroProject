@@ -24,6 +24,7 @@ import {
   mensagemDocumentoRecebidoParcial,
   mensagemDocumentosCompletos,
   mensagemErroImagem,
+  mensagemConfirmarExames,
   mensagemExameAdicionado,
   mensagemExameDuplicado,
   mensagemExamesEntendidos,
@@ -52,7 +53,7 @@ import {
   montarOrientacoesExames,
 } from './messages';
 import { carregarSessao, limparSessao, salvarSessao, type AgendamentoFuturoState, type ConversaState } from './session';
-import { interpretar, lerPedidoMedico } from './ai';
+import { interpretar, lerPedidoMedico, type Intencao } from './ai';
 import { nomeExameDisplay, nomeExameLista, descricaoExameLista } from '../exames-display';
 
 // entrada normalizada do webhook
@@ -169,6 +170,9 @@ export async function processarMensagem(
 
     case 'escolhendo_exames':
       return tratarExames(from, s, e);
+
+    case 'confirmando_exames':
+      return tratarConfirmacaoExames(from, s, e);
 
     case 'confirmando_idade':
       return tratarConfirmacaoIdade(from, s, e);
@@ -448,6 +452,61 @@ async function tratarExames(from: string, s: ConversaState, e: Entrada) {
 
   // texto livre → IA
   return rotearIA(from, s, e.valor);
+}
+
+/**
+ * Mostra o que foi entendido de um TEXTO LIVRE e espera o paciente confirmar
+ * antes de seguir. Só entra aqui o caminho da IA: quem escolheu pela lista
+ * numerada já viu item por item o que selecionou, e a foto do pedido médico
+ * tem a confirmação própria (img_sim/img_nao).
+ *
+ * Motivo: o paciente escreveu "eco e duplex de carótidas e vertebrais", a
+ * leitura reconheceu só o eco, e o fluxo seguiu marcando UM exame enquanto
+ * ele achava que tinha marcado dois — erro que só apareceria no dia.
+ */
+async function confirmarExamesEscolhidos(from: string, s: ConversaState) {
+  s.etapa = 'confirmando_exames'; await salvarSessao(from, s);
+  const lista = s.examesSelecionados.map((x, i) => `${i + 1}. ${nomeExame(x)}`).join('\n');
+  return enviarBotoes(from, mensagemConfirmarExames(lista), [
+    { id: 'exames_ok', titulo: 'Sim, é só isso' },
+    { id: 'add_exame', titulo: 'Falta um exame' },
+    { id: 'falar_humano', titulo: 'Falar c/ atendente' },
+  ]);
+}
+
+async function tratarConfirmacaoExames(from: string, s: ConversaState, e: Entrada) {
+  const vlow = normalizarTexto(e.valor);
+
+  if (e.valor === 'exames_ok' || /^(sim|isso|so isso|somente|confirmo|confirmado|ok|pode|correto|exato|perfeito|certo|e isso)/.test(vlow)) {
+    return perguntarIdadeOuContinuar(from, s);
+  }
+  if (e.valor === 'add_exame') {
+    s.etapa = 'escolhendo_exames'; await salvarSessao(from, s);
+    return enviarListaExames(from, s.examesSelecionados);
+  }
+  // tocou num item da lista de exames enquanto confirmava
+  if (e.valor.startsWith('ex:')) { s.etapa = 'escolhendo_exames'; return tratarExames(from, s, e); }
+
+  // Texto livre. A ordem aqui importa: "na verdade quero TAMBÉM o holter"
+  // casa com as palavras de "falta um exame" E cita o exame — se a regra
+  // genérica vier primeiro, ela engole a mensagem e devolve a lista sem
+  // acrescentar nada, e o paciente repete tudo de novo. Por isso perguntamos
+  // à IA ANTES: citou exame, acrescenta e reconfirma; não citou, aí sim é um
+  // "falta algo" genérico e mandamos a lista.
+  const intent = await interpretar(e.valor, s.examesSelecionados.length ? { exameIds: s.examesSelecionados } : undefined);
+  if (intent.acao === 'agendar' && intent.exames.length) {
+    const novos = intent.exames.filter((id) => !s.examesSelecionados.includes(id));
+    s.examesSelecionados.push(...new Set(novos));
+    await salvarSessao(from, s);
+    return confirmarExamesEscolhidos(from, s);
+  }
+  if (/(falta|adicionar|acrescent|mais um|outro exame|tambem|nao e so|nao so)/.test(vlow)) {
+    s.etapa = 'escolhendo_exames'; await salvarSessao(from, s);
+    return enviarListaExames(from, s.examesSelecionados);
+  }
+  // dúvida, urgência, pedido de humano, remarcação… — reaproveita a intenção
+  // já calculada em vez de chamar a IA de novo.
+  return rotearIA(from, s, e.valor, intent);
 }
 
 /**
@@ -1018,16 +1077,21 @@ async function tratarConfirmacao(from: string, s: ConversaState, e: Entrada) {
 }
 
 // -------- IA / utilidades --------
-async function rotearIA(from: string, s: ConversaState, texto: string) {
+async function rotearIA(from: string, s: ConversaState, texto: string, intentPronto?: Intencao) {
   // pergunta em texto livre ("precisa de preparo?", "posso comer antes?") só
   // faz sentido responder de forma específica se soubermos QUAL exame é —
   // sem isso a IA teria que perguntar de volta. Prioriza o que já está sendo
   // escolhido nesta sessão; se não há nada em andamento, cai pro que o
   // paciente já tem marcado (carregarAgendamentoFuturo cacheia em `s`, então
   // não gera leitura extra se outra parte do fluxo já carregou).
-  const futuro = s.examesSelecionados.length ? null : await carregarAgendamentoFuturo(from, s);
-  const exameIds = s.examesSelecionados.length ? s.examesSelecionados : futuro?.exameIds;
-  const intent = await interpretar(texto, exameIds?.length ? { exameIds } : undefined);
+  // `intentPronto` evita uma segunda chamada à IA quando quem chamou já
+  // precisou interpretar o mesmo texto (ver tratarConfirmacaoExames).
+  let intent = intentPronto;
+  if (!intent) {
+    const futuro = s.examesSelecionados.length ? null : await carregarAgendamentoFuturo(from, s);
+    const exameIds = s.examesSelecionados.length ? s.examesSelecionados : futuro?.exameIds;
+    intent = await interpretar(texto, exameIds?.length ? { exameIds } : undefined);
+  }
   // urgência médica: orienta a procurar emergência AGORA e transfere p/ humano
   if (intent.acao === 'urgencia') {
     await enviarTexto(from, mensagemUrgencia());
@@ -1047,9 +1111,10 @@ async function rotearIA(from: string, s: ConversaState, texto: string) {
     const novos = intent.exames.filter((id) => !s.examesSelecionados.includes(id));
     s.examesSelecionados.push(...new Set(novos));
     await salvarSessao(from, s);
-    const lista = s.examesSelecionados.map((x, i) => `${i + 1}. ${nomeExame(x)}`).join('\n');
-    await enviarTexto(from, mensagemExamesEntendidos(lista));
-    return perguntarIdadeOuContinuar(from, s);
+    // NÃO segue direto para idade/médico: a leitura de texto livre pode ter
+    // captado menos exames do que o paciente pediu, e ele não tem como
+    // perceber isso no meio do fluxo. Confirma a lista primeiro.
+    return confirmarExamesEscolhidos(from, s);
   }
   s.etapa = 'escolhendo_exames'; await salvarSessao(from, s);
   return enviarListaExames(from);

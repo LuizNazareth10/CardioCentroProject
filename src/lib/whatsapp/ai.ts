@@ -134,9 +134,24 @@ ${blocoContexto}
 4. Se o paciente demonstrar medo ou ansiedade, acolha com empatia ANTES de falar de agendamento.
 5. Não invente informações (preços, prazos, promoções). O que não souber → "humano".
 
+# Como ler o pedido de exames (CRÍTICO)
+O paciente quase nunca usa o nome oficial. Alguns apelidos comuns:
+- "eco", "ecocardio", "eco do coração", "ecocardiograma transtorácico" → eco-doppler
+- "doppler de carótidas", "duplex de carótidas", "carótidas e vertebrais", "dopplerzinho do pescoço" → duplex-carotidas
+- "esteira", "teste de esforço", "ergométrico" → ergometrico
+- "teste do sopro"/"ergoespirometria"/"cardiopulmonar" → cardiopulmonar
+- "holter", "aparelho do coração 24h" → holter
+- "mapa", "aparelho de pressão 24h" → mapa
+REGRA: liste em "exames" TODOS os exames citados na mensagem, não só o primeiro.
+Uma frase pode pedir vários de uma vez ("eco e duplex de carótidas e vertebrais"
+são DOIS exames: eco-doppler e duplex-carotidas). Se o paciente já tinha pedido
+um exame antes e agora cita outros, devolva a lista COMPLETA do que ele quer.
+Na dúvida entre incluir ou não um exame citado, INCLUA — a confirmação é feita
+depois com ele.
+
 Responda SOMENTE com um JSON válido, sem texto fora dele, no formato:
 {"acao":"agendar|remarcar|menu|humano|duvida|urgencia","exames":["id",...],"medicoMencionado":"...|null","resposta":"texto curto se acao=duvida, senão null"}
-- "agendar": paciente quer marcar um ou mais exames (preencha "exames" com os ids).
+- "agendar": paciente quer marcar um ou mais exames (preencha "exames" com TODOS os ids citados).
 - "remarcar": paciente quer MUDAR o horário de um exame que já está marcado ("preciso adiar", "posso trocar o dia?", "não vou conseguir nesse horário").
 - "menu": paciente quer ver as opções/voltar ao início.
 - "humano": paciente quer falar com uma pessoa OU caso das regras 3/5.
@@ -207,8 +222,30 @@ export async function lerPedidoMedico(base64: string, mime: string): Promise<str
   return Array.from(new Set(ids));
 }
 
+/**
+ * minúsculas SEM acento — "carótidas" e "carotidas" precisam casar igual.
+ * O intervalo ̀-ͯ é o das marcas de acento que o NFD separa da letra.
+ */
+function semAcento(t: string): string {
+  return t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+/**
+ * Apelidos que o paciente usa de verdade no WhatsApp. Existe porque casar só
+ * pelo nome oficial ("Duplex Scan de Carótidas e Vertebrais") deixa passar as
+ * formas que ele realmente digita — e aí o pedido cai como texto solto.
+ */
+const APELIDOS_EXAME: Array<{ re: RegExp; id: string }> = [
+  { re: /\becocardio|\beco\b|ecocardiograma|transtoracic/, id: 'eco-doppler' },
+  { re: /carotida|duplex|vertebrai|doppler de pescoco/, id: 'duplex-carotidas' },
+  { re: /ergometric|esteira|teste de esforco/, id: 'ergometrico' },
+  { re: /cardiopulmonar|ergoespirometr/, id: 'cardiopulmonar' },
+  { re: /holter/, id: 'holter' },
+  { re: /\bmapa\b|press[ãa]o 24|pressao 24/, id: 'mapa' },
+];
+
 function fallbackPorPalavras(texto: string): Intencao {
-  const t = texto.toLowerCase();
+  const t = semAcento(texto);
   // urgência tem prioridade máxima — sintomas agudos nunca viram agendamento
   if (/(dor no peito|dor forte no peito|infart|avc|derrame|desmai|falta de ar (forte|intensa)|n[ãa]o consigo respirar|socorro|emerg[êe]ncia)/.test(t)) {
     return { acao: 'urgencia', exames: [] };
@@ -219,11 +256,15 @@ function fallbackPorPalavras(texto: string): Intencao {
   if (/(remarc|reagend|adiar|antecipar|mudar (o )?(hor[áa]rio|dia|data)|trocar (o )?(hor[áa]rio|dia|data)|outro (hor[áa]rio|dia))/.test(t)) {
     return { acao: 'remarcar', exames: [] };
   }
-  if (/(menu|opç|come|in[ií]cio|voltar)/.test(t)) return { acao: 'menu', exames: [] };
-  const exames = EXAMES.filter((e) => {
-    const nome = e.nome.toLowerCase();
-    return t.includes(e.id) || nome.split(/\s|\(|\)/).some((p) => p.length > 3 && t.includes(p));
+  if (/(menu|opc|come|inicio|voltar)/.test(t)) return { acao: 'menu', exames: [] };
+  // casa pelo nome oficial E pelos apelidos — e devolve TODOS os exames
+  // citados na mesma frase ("eco e duplex de carotidas" são dois).
+  const porNome = EXAMES.filter((e) => {
+    const nome = semAcento(e.nome);
+    return t.includes(e.id) || nome.split(/\s|\(|\)|\//).some((p) => p.length > 3 && t.includes(p));
   }).map((e) => e.id);
+  const porApelido = APELIDOS_EXAME.filter((a) => a.re.test(t)).map((a) => a.id);
+  const exames = [...new Set([...porNome, ...porApelido])].filter((id) => EXAMES.some((e) => e.id === id));
   if (exames.length) return { acao: 'agendar', exames };
   if (/(marca|agend|hor[áa]rio|consulta|exame)/.test(t)) return { acao: 'menu', exames: [] };
   return { acao: 'duvida', exames: [], resposta: mensagemDuvidaFallback() };

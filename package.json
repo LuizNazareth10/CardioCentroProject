@@ -13,6 +13,8 @@
     "test:rollout": "tsx scripts/test-rollout.ts",
     "test:handoff-humano": "tsx scripts/test-handoff-humano.ts",
     "test:falar-humano": "tsx scripts/test-falar-humano.ts",
+    "test:confirmar-exames": "tsx scripts/test-confirmar-exames.ts",
+    "test:eco-agente": "tsx scripts/test-eco-agente.ts",
     "test:evolution-numeros": "tsx scripts/test-evolution-numeros.ts",
     "test:evolution-opcoes": "tsx scripts/test-evolution-opcoes.ts",
     "test:agent": "tsx scripts/test-agent.ts",

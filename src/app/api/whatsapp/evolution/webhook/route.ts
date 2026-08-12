@@ -232,8 +232,11 @@ export async function POST(req: NextRequest) {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function tratarEcoOuHandoffHumano(key: any, data: any): Promise<void> {
-  if (await foiEnviadoPeloAgente(key.id)) return; // eco do próprio agente
   const numero = extrairTelefone(key, data);
+  // o número entra na checagem: sem ele, um eco cujo id ainda não foi gravado
+  // (corrida descrita em foiEnviadoPeloAgente) seria lido como "a recepção
+  // respondeu" e calaria o agente contra a própria mensagem.
+  if (await foiEnviadoPeloAgente(key.id, numero)) return; // eco do próprio agente
   if (!numero) return;
   await marcarHandoffHumano(numero);
   console.info('[evolution:webhook] recepção respondeu manualmente — handoff marcado');

@@ -523,6 +523,24 @@ export function mensagemExamesEntendidos(lista: string): string {
   ].join('\n');
 }
 
+/**
+ * Confirmação explícita da lista lida de um texto livre. Existe porque a
+ * leitura de texto pode captar MENOS exames do que o paciente pediu (ele
+ * escreve "eco e duplex de carótidas" e só o eco é reconhecido); sem uma
+ * confirmação, ele segue o fluxo achando que marcou os dois e só descobre no
+ * dia. Mostrar a lista e travar até ele dizer "é isso" é o que evita marcar
+ * exame a menos sem ninguém perceber.
+ */
+export function mensagemConfirmarExames(lista: string): string {
+  return [
+    'Entendi que você quer marcar: ✨',
+    '',
+    lista,
+    '',
+    '*Confere pra mim:* é só isso mesmo, ou falta algum exame?',
+  ].join('\n');
+}
+
 export function mensagemDuvidaFallback(): string {
   return 'Posso te ajudar a agendar um exame cardiológico. Quer ver as opções? 😊';
 }
