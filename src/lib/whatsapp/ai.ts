@@ -16,6 +16,17 @@ export interface Intencao {
   resposta?: string; // resposta livre para "duvida"
 }
 
+export interface ContextoInterpretacao {
+  /**
+   * ids de EXAMES já marcados/escolhidos NESTA conversa (agendamento futuro
+   * do paciente, ou seleção em andamento na sessão) — sem isso, uma pergunta
+   * como "precisa de preparo?" cai sem saber a qual exame se refere, e a IA
+   * ou responde de forma genérica ou pergunta de volta "qual exame?", mesmo
+   * quando já dá pra saber pelo contexto da conversa.
+   */
+  exameIds?: string[];
+}
+
 // -------------------------------------------------------------
 // Chamada à API da Anthropic com timeout e retry.
 //
@@ -81,9 +92,16 @@ const listaMedicos = MEDICOS.filter((m) => m.ativo)
   .join('\n');
 const listaConvenios = CONVENIOS.filter((c) => c.ativo).map((c) => c.nome).join(', ');
 
-export async function interpretar(texto: string): Promise<Intencao> {
+export async function interpretar(texto: string, contexto?: ContextoInterpretacao): Promise<Intencao> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return fallbackPorPalavras(texto);
+
+  const nomesContexto = contexto?.exameIds
+    ?.map((id) => EXAMES.find((e) => e.id === id)?.nome)
+    .filter((n): n is string => Boolean(n));
+  const blocoContexto = nomesContexto?.length
+    ? `\n# Contexto desta conversa\nEste paciente JÁ TEM marcado (ou está escolhendo agora): ${nomesContexto.join(', ')}. Se ele perguntar sobre preparo, jejum, horário de chegada ou documentos SEM dizer qual exame, responda com base NESSES exames — não pergunte "qual exame" de novo.\n`
+    : '';
 
   const system = `Você é a assistente virtual da ${CONTATO.nomeClinica} — ${CONTATO.subtitulo}, clínica de cardiologia em Juiz de Fora, MG.
 Tom: profissional, acolhedor e objetivo. Nunca robótico ou burocrático. Emojis com moderação. Não use nome próprio para si (não se apresente como "Cardi" nem outro nome).
@@ -108,7 +126,7 @@ ${listaMedicos}
 # Exames feitos na mesma sessão
 ${RESUMO_COMBINACOES}
 Se o paciente pedir esses exames juntos, eles ocupam UM só horário — o sistema já marca assim. Nunca diga que ele precisa vir duas vezes nem reservar dois horários.
-
+${blocoContexto}
 # Regras de segurança (OBRIGATÓRIAS)
 1. Você NÃO é médica: nunca dê diagnóstico, interprete sintomas/exames nem recomende/ajuste medicação. Dúvida clínica → orientar consulta com cardiologista.
 2. URGÊNCIA: se o paciente relatar sintomas agudos AGORA (dor no peito, falta de ar intensa, desmaio, palpitações fortes com mal-estar, suspeita de infarto/AVC), classifique como "urgencia" — nunca tente agendar nesse caso.
@@ -123,7 +141,7 @@ Responda SOMENTE com um JSON válido, sem texto fora dele, no formato:
 - "menu": paciente quer ver as opções/voltar ao início.
 - "humano": paciente quer falar com uma pessoa OU caso das regras 3/5.
 - "urgencia": sintomas agudos acontecendo agora (regra 2).
-- "duvida": pergunta geral (responda em "resposta", curto, gentil e acolhedor, e convide a agendar quando fizer sentido).`;
+- "duvida": pergunta geral (responda em "resposta", curto, gentil e acolhedor; use o bloco "Contexto desta conversa" quando existir para responder sobre o exame específico do paciente, e convide a agendar quando fizer sentido).`;
 
   const bruto = await chamarAnthropic(key, {
     model: 'claude-haiku-4-5-20251001',

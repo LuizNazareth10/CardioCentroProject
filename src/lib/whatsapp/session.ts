@@ -160,10 +160,15 @@ export async function salvarSessao(telefone: string, state: ConversaState): Prom
  * sem nenhuma noção da conversa em andamento. Como toda sessão expira depois
  * de 2h sem mensagem (TTL acima), o handoff não é permanente: encerrada a
  * conversa humana, a próxima mensagem do paciente volta a cair na IA normalmente.
+ *
+ * SEMPRE salva (não retorna cedo se já estava em `humano`): cada mensagem
+ * real da atendente precisa repor `atualizadoEm`, senão `horasDeSilencio`
+ * (rollout.ts) mede a partir da PRIMEIRA resposta da recepção — se a
+ * atendente seguir conversando por horas, o "silêncio" pareceria antigo e o
+ * canary poderia dar a conversa de volta pra IA no meio do atendimento.
  */
 export async function marcarHandoffHumano(telefone: string): Promise<void> {
   const s = await carregarSessao(telefone);
-  if (s.etapa === 'humano') return;
   s.etapa = 'humano';
   await salvarSessao(telefone, s);
 }

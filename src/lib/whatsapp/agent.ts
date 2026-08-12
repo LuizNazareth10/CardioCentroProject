@@ -1019,7 +1019,15 @@ async function tratarConfirmacao(from: string, s: ConversaState, e: Entrada) {
 
 // -------- IA / utilidades --------
 async function rotearIA(from: string, s: ConversaState, texto: string) {
-  const intent = await interpretar(texto);
+  // pergunta em texto livre ("precisa de preparo?", "posso comer antes?") só
+  // faz sentido responder de forma específica se soubermos QUAL exame é —
+  // sem isso a IA teria que perguntar de volta. Prioriza o que já está sendo
+  // escolhido nesta sessão; se não há nada em andamento, cai pro que o
+  // paciente já tem marcado (carregarAgendamentoFuturo cacheia em `s`, então
+  // não gera leitura extra se outra parte do fluxo já carregou).
+  const futuro = s.examesSelecionados.length ? null : await carregarAgendamentoFuturo(from, s);
+  const exameIds = s.examesSelecionados.length ? s.examesSelecionados : futuro?.exameIds;
+  const intent = await interpretar(texto, exameIds?.length ? { exameIds } : undefined);
   // urgência médica: orienta a procurar emergência AGORA e transfere p/ humano
   if (intent.acao === 'urgencia') {
     await enviarTexto(from, mensagemUrgencia());

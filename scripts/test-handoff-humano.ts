@@ -32,15 +32,18 @@ async function main() {
   checar('em fluxo ativo: handoff sobrescreve para humano', sB2.etapa === 'humano');
   checar('em fluxo ativo: não perde o que já tinha selecionado (auditoria)', sB2.examesSelecionados.includes('eco'));
 
-  // 3) idempotência: marcar handoff duas vezes não quebra nem reseta atualizadoEm de forma estranha
+  // 3) handoff repetido (atendente mandando várias mensagens seguidas): cada
+  // chamada precisa REPOR atualizadoEm — é o que faz horasDeSilencio refletir
+  // a mensagem mais recente da recepção, não só a primeira (ver comentário em
+  // marcarHandoffHumano, session.ts)
   const numC = '5532988885555';
   await marcarHandoffHumano(numC);
   const antes = (await carregarSessao(numC)).atualizadoEm;
-  await new Promise((r) => setTimeout(r, 5));
+  await new Promise((r) => setTimeout(r, 15));
   await marcarHandoffHumano(numC);
   const depois = await carregarSessao(numC);
   checar('handoff repetido: continua humano', depois.etapa === 'humano');
-  checar('handoff repetido: não regride nem quebra (idempotente, retorna cedo)', depois.atualizadoEm === antes);
+  checar('handoff repetido: repõe atualizadoEm (relógio do silêncio não fica preso na 1ª mensagem)', depois.atualizadoEm > antes);
 
   // 4) horasDeSilencio — usado pelo rollout pra dar cobertura total (canary
   // 100%) a conversas abandonadas há 4h+ (ver LIMITE_SILENCIO_HORAS em rollout.ts)
