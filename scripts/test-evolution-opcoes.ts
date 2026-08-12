@@ -37,7 +37,8 @@ async function main() {
   const { db } = await import('../src/lib/db/firestore');
   const { resolverOpcaoEvolution, salvarOpcoesEvolution } = await import('../src/lib/whatsapp/evolution-opcoes');
 
-  // menu de EXAMES (todo id começa com "ex:") — cenário do Jeff
+  // menu de EXAMES (todo id começa com "ex:", + "Falar c/ atendente" no fim —
+  // é exatamente o shape real que enviarListaExames manda hoje) — cenário do Jeff
   await salvarOpcoesEvolution(NUM_EXAMES, [
     { id: 'ex:eco-doppler', titulo: 'Eco Doppler' },
     { id: 'ex:duplex-carotidas', titulo: 'Duplex Carótidas' },
@@ -45,12 +46,14 @@ async function main() {
     { id: 'ex:cardiopulmonar', titulo: 'Teste Cardiopulmonar' },
     { id: 'ex:holter', titulo: 'Holter 24h' },
     { id: 'ex:mapa', titulo: 'MAPA 24h' },
+    { id: 'falar_humano', titulo: 'Falar c/ atendente' },
   ]);
 
-  // menu de BOTÕES (2 opções, não é exame) — não deve aceitar múltipla escolha
+  // menu de BOTÕES (3 opções, não é exame) — não deve aceitar múltipla escolha
   await salvarOpcoesEvolution(NUM_BOTOES, [
     { id: 'idade_adulto', titulo: 'Adulto' },
     { id: 'idade_crianca', titulo: 'Criança' },
+    { id: 'falar_humano', titulo: 'Falar c/ atendente' },
   ]);
 
   try {
@@ -98,6 +101,21 @@ async function main() {
     );
 
     checar('texto livre sem número nenhum → null', (await resolverOpcaoEvolution(NUM_EXAMES, 'quero fazer eco e mapa')) === null);
+
+    checar(
+      '"Falar c/ atendente" sozinho, pelo número dele na lista de exames (7)',
+      JSON.stringify(await resolverOpcaoEvolution(NUM_EXAMES, '7')) === JSON.stringify(['falar_humano']),
+    );
+
+    checar(
+      'misturar exame(s) + o número do escape ("1 3 7") prioriza o escape, ignora o resto',
+      JSON.stringify(await resolverOpcaoEvolution(NUM_EXAMES, '1 3 7')) === JSON.stringify(['falar_humano']),
+    );
+
+    checar(
+      'menu de botões com escape: número do escape isolado (3) funciona',
+      JSON.stringify(await resolverOpcaoEvolution(NUM_BOTOES, '3')) === JSON.stringify(['falar_humano']),
+    );
   } finally {
     await db().collection('evolution_opcoes').doc(NUM_EXAMES).delete();
     await db().collection('evolution_opcoes').doc(NUM_BOTOES).delete();

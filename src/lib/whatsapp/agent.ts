@@ -110,7 +110,19 @@ export async function processarMensagem(
     return; // a recepção assume a conversa
   }
 
-  // (1.5) confirmação do lembrete de presença (1 dia antes) — só quando não
+  // (1.5) pedido de atendente HUMANO, em QUALQUER etapa da conversa — não só
+  // no menu principal. Existe porque a IA pode se perder ou o paciente pode
+  // se confundir com a numeração de um menu (ex.: digitar "1" achando que
+  // ainda é a lista de exames, quando na verdade é outro menu) e ficar
+  // andando em círculo sem conseguir sair. O botão "Falar com atendente"
+  // aparece em praticamente todo menu (ver os `enviarBotoes`/`enviarLista`
+  // abaixo), mas o reconhecimento aqui vale mesmo se o paciente digitar
+  // "atendente"/"humano" em texto livre, em vez de tocar no botão.
+  if (e.valor === 'falar_humano' || (e.tipo === 'texto' && /(atendente|humano|pessoa|recep)/i.test(vlow))) {
+    return falarComHumano(from);
+  }
+
+  // (1.6) confirmação do lembrete de presença (1 dia antes) — só quando não
   // há fluxo de agendamento em andamento, para não interferir na etapa "confirmando"
   if (
     (s.etapa === 'inicio' || s.etapa === 'menu') &&
@@ -144,7 +156,6 @@ export async function processarMensagem(
         s.etapa = 'escolhendo_exames'; await salvarSessao(from, s);
         return enviarListaExames(from);
       }
-      if (e.valor === 'falar_humano') return falarComHumano(from);
       if (e.valor === 'remarcar') return iniciarRemarcacao(from, s);
       // confirmação dos exames lidos de um pedido médico (imagem)
       if (e.valor === 'img_sim' && s.examesSelecionados.length) {
@@ -277,6 +288,7 @@ async function iniciarRemarcacao(from: string, s: ConversaState) {
   return enviarBotoes(from, mensagemConfirmarRemarcacao(futuro.resumo), [
     { id: 'remarcar_sim', titulo: 'Ver novos horários' },
     { id: 'remarcar_nao', titulo: 'Manter como está' },
+    { id: 'falar_humano', titulo: 'Falar c/ atendente' },
   ]);
 }
 
@@ -346,7 +358,11 @@ async function mostrarConfirmacaoRemarcacao(from: string, s: ConversaState) {
   await enviarBotoes(
     from,
     mensagemResumoRemarcacao(de, rotuloProposta(escolhida.itens)),
-    [{ id: 'confirmar_sim', titulo: 'Confirmar ✅' }, { id: 'confirmar_nao', titulo: 'Voltar' }],
+    [
+      { id: 'confirmar_sim', titulo: 'Confirmar ✅' },
+      { id: 'confirmar_nao', titulo: 'Voltar' },
+      { id: 'falar_humano', titulo: 'Falar c/ atendente' },
+    ],
   );
 }
 
@@ -399,6 +415,7 @@ async function enviarListaExames(from: string, jaSelecionados: string[] = []) {
       titulo: nomeExameLista(e.id),
       descricao: descricaoExameLista(e.id, e.duracaoMin),
     })) },
+    { titulo: 'Outra opção', itens: [{ id: 'falar_humano', titulo: 'Falar c/ atendente' }] },
   ]);
 }
 
@@ -419,6 +436,7 @@ async function tratarExames(from: string, s: ConversaState, e: Entrada) {
       return enviarBotoes(from, mensagemExameAdicionado(lista), [
         { id: 'add_exame', titulo: 'Adicionar exame' },
         { id: 'concluir_exames', titulo: 'Ver horários' },
+        { id: 'falar_humano', titulo: 'Falar c/ atendente' },
       ]);
     }
   }
@@ -445,6 +463,7 @@ async function perguntarIdadeOuContinuar(from: string, s: ConversaState) {
   return enviarBotoes(from, mensagemPerguntarIdade(), [
     { id: 'idade_adulto', titulo: 'Adulto' },
     { id: 'idade_crianca', titulo: 'Criança' },
+    { id: 'falar_humano', titulo: 'Falar c/ atendente' },
   ]);
 }
 
@@ -462,6 +481,7 @@ async function tratarConfirmacaoIdade(from: string, s: ConversaState, e: Entrada
   return enviarBotoes(from, mensagemPerguntarIdade(), [
     { id: 'idade_adulto', titulo: 'Adulto' },
     { id: 'idade_crianca', titulo: 'Criança' },
+    { id: 'falar_humano', titulo: 'Falar c/ atendente' },
   ]);
 }
 
@@ -474,6 +494,7 @@ async function continuarAposConfirmarIdade(from: string, s: ConversaState) {
   return enviarBotoes(from, mensagemPreferenciaMedico(), [
     { id: 'med_qualquer', titulo: 'Sem preferência' },
     { id: 'med_escolher', titulo: 'Escolher médico' },
+    { id: 'falar_humano', titulo: 'Falar c/ atendente' },
   ]);
 }
 
@@ -531,6 +552,7 @@ async function tratarMedico(from: string, s: ConversaState, e: Entrada) {
     }
     return enviarLista(from, 'Escolha o médico:', 'Ver médicos', [
       { titulo: 'Médicos', itens: habilitados.map((m) => ({ id: `med:${m.id}`, titulo: m.nome, descricao: m.crm })) },
+      { titulo: 'Outra opção', itens: [{ id: 'falar_humano', titulo: 'Falar c/ atendente' }] },
     ]);
   }
   if (e.valor.startsWith('med:')) {
@@ -638,6 +660,7 @@ async function mostrarDiasSugeridos(from: string, s: ConversaState) {
   }
   await enviarLista(from, mensagemHorariosSugeridos(), 'Ver horários', [
     { titulo: 'Sugestões', itens },
+    { titulo: 'Outra opção', itens: [{ id: 'falar_humano', titulo: 'Falar c/ atendente' }] },
   ]);
 }
 
@@ -646,21 +669,26 @@ async function mostrarDatasDisponiveis(from: string, s: ConversaState) {
   const props = s.propostas ?? [];
   const porDia = new Map<string, number>();
   for (const p of props) porDia.set(p.data, (porDia.get(p.data) ?? 0) + 1);
-  const itens = [...porDia.entries()].slice(0, 10).map(([data, n]) => ({
+  // 9 (não 10): o 10º lugar é reservado pro "Falar com atendente" logo abaixo —
+  // sem isso, o limite de 10 itens do WhatsApp cortaria o botão de escape.
+  const itens = [...porDia.entries()].slice(0, 9).map(([data, n]) => ({
     id: `data:${data}`,
     titulo: fmtDiaCurto(data),
     descricao: `${n} horário${n > 1 ? 's' : ''} disponíve${n > 1 ? 'is' : 'l'}`,
   }));
   await enviarLista(from, mensagemEscolherDia(), 'Ver dias', [
     { titulo: 'Dias disponíveis', itens },
+    { titulo: 'Outra opção', itens: [{ id: 'falar_humano', titulo: 'Falar c/ atendente' }] },
   ]);
 }
 
 /** mostra os horários de um dia específico escolhido pelo paciente */
 async function mostrarHorariosDoDia(from: string, s: ConversaState, data: string) {
   const props = s.propostas ?? [];
+  // 8 (não 9): sobram 2 lugares — "Ver outros dias" logo abaixo e "Falar com
+  // atendente" na seção seguinte — sem estourar o limite de 10 do WhatsApp.
   const itens: Array<{ id: string; titulo: string; descricao?: string }> = [];
-  for (let i = 0; i < props.length && itens.length < 9; i++) {
+  for (let i = 0; i < props.length && itens.length < 8; i++) {
     if (props[i].data !== data) continue;
     itens.push({ id: `slot:${i}`, titulo: fmtHora(props[i].inicio), descricao: props[i].subtitulo });
   }
@@ -668,6 +696,7 @@ async function mostrarHorariosDoDia(from: string, s: ConversaState, data: string
   itens.push({ id: 'mais_datas', titulo: '📅 Ver outros dias', descricao: 'Voltar para a lista de datas' });
   await enviarLista(from, mensagemHorariosDoDia(fmtDiaCurto(data)), 'Ver horários', [
     { titulo: 'Horários', itens },
+    { titulo: 'Outra opção', itens: [{ id: 'falar_humano', titulo: 'Falar c/ atendente' }] },
   ]);
 }
 
@@ -783,6 +812,7 @@ async function avancarAposConvenio(from: string, s: ConversaState) {
     return enviarBotoes(from, mensagemAvisoPlanoNaoAtendido(nomeConvenio(s.convenioId), planos), [
       { id: 'plano_ok', titulo: 'Não é esse plano' },
       { id: 'plano_restrito', titulo: 'É esse / não sei' },
+      { id: 'falar_humano', titulo: 'Falar c/ atendente' },
     ]);
   }
   if (convenioRequerAutorizacao(s.convenioId) && (s.docsAutorizacaoRecebidos ?? 0) < 2) {
@@ -871,6 +901,7 @@ async function tratarConfirmacaoPlano(from: string, s: ConversaState, e: Entrada
   return enviarBotoes(from, mensagemAvisoPlanoNaoAtendido(convenio, planos), [
     { id: 'plano_ok', titulo: 'Não é esse plano' },
     { id: 'plano_restrito', titulo: 'É esse / não sei' },
+    { id: 'falar_humano', titulo: 'Falar c/ atendente' },
   ]);
 }
 
@@ -884,11 +915,16 @@ async function pedirConvenioOuConfirmar(from: string, s: ConversaState) {
   if (s.convenioId) return avancarAposConvenio(from, s);
   const populares = CONVENIOS_POPULARES
     .map((nome) => CONVENIOS.find((c) => c.nome === nome))
-    .filter((c): c is NonNullable<typeof c> => Boolean(c));
+    .filter((c): c is NonNullable<typeof c> => Boolean(c))
+    // 8 (não os 9 da lista): sobram 2 lugares — "Outro convênio" e "Falar com
+    // atendente" — sem estourar o limite de 10 itens do WhatsApp. O convênio
+    // que ficar de fora continua digitável via "Outro convênio".
+    .slice(0, 8);
   const itens: Array<{ id: string; titulo: string; descricao?: string }> = populares.map((c) => ({ id: `conv:${c.id}`, titulo: c.nome }));
   itens.push({ id: 'conv_outro', titulo: 'Outro convênio', descricao: 'Não está na lista? Digite o nome' });
   return enviarLista(from, mensagemPedirConvenio(s.nome?.split(' ')[0] ?? ''), 'Ver convênios', [
     { titulo: 'Convênios', itens },
+    { titulo: 'Outra opção', itens: [{ id: 'falar_humano', titulo: 'Falar c/ atendente' }] },
   ]);
 }
 
@@ -914,7 +950,11 @@ async function mostrarConfirmacao(from: string, s: ConversaState) {
   await enviarBotoes(
     from,
     mensagemResumoAgendamento(s.nome ?? '', conv, linhas),
-    [{ id: 'confirmar_sim', titulo: 'Confirmar ✅' }, { id: 'confirmar_nao', titulo: 'Cancelar' }],
+    [
+      { id: 'confirmar_sim', titulo: 'Confirmar ✅' },
+      { id: 'confirmar_nao', titulo: 'Cancelar' },
+      { id: 'falar_humano', titulo: 'Falar c/ atendente' },
+    ],
   );
 }
 
@@ -1081,6 +1121,7 @@ async function tratarImagem(from: string, s: ConversaState, e: Entrada) {
   return enviarBotoes(from, mensagemPedidoIdentificado(lista), [
     { id: 'img_sim', titulo: 'Sim, agendar' },
     { id: 'img_nao', titulo: 'Não' },
+    { id: 'falar_humano', titulo: 'Falar c/ atendente' },
   ]);
 }
 

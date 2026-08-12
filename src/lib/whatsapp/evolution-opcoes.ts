@@ -58,10 +58,22 @@ export async function resolverOpcaoEvolution(numero: string, texto: string): Pro
 
   // vários números na mesma mensagem — só faz sentido selecionar mais de um
   // exame de uma vez; em qualquer outro menu, cai para o comportamento normal.
+  // "Falar com atendente" (presente em quase todo menu) não conta para essa
+  // checagem — sem isso, o menu de exames deixaria de aceitar "1 3 6" assim
+  // que o botão de escape fosse adicionado à lista.
   const numeros = [...new Set((t.match(/\d+/g) ?? []).map(Number))].filter((n) => n >= 1 && n <= opcoes.length);
   if (numeros.length > 1) {
-    const ehMenuDeExames = opcoes.every((o) => o.id.startsWith('ex:'));
-    if (ehMenuDeExames) return numeros.map((n) => opcoes[n - 1].id);
+    const semEscape = opcoes.filter((o) => o.id !== 'falar_humano');
+    const ehMenuDeExames = semEscape.length > 0 && semEscape.every((o) => o.id.startsWith('ex:'));
+    if (ehMenuDeExames) {
+      const ids = numeros.map((n) => opcoes[n - 1].id);
+      // pediu pra falar com atendente JUNTO de outros números ("1 3 e falar
+      // com atendente" digitado como número por engano) → prioriza a saída,
+      // ignora o resto: misturar exame + escape na mesma mensagem é raro
+      // demais pra valer a pena tentar decidir por ele.
+      if (ids.includes('falar_humano')) return ['falar_humano'];
+      return ids;
+    }
   }
 
   const low = t.toLowerCase();
