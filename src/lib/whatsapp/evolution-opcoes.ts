@@ -24,7 +24,18 @@ export async function salvarOpcoesEvolution(numero: string, opcoes: OpcaoNumerad
   }
 }
 
-export async function resolverOpcaoEvolution(numero: string, texto: string): Promise<string | null> {
+/**
+ * Resolve a resposta em texto do paciente para 1+ ids do menu numerado
+ * enviado por último. Sempre devolve uma LISTA (mesmo para 1 item só) — quem
+ * chama decide o que fazer com múltiplos (ver route.ts).
+ *
+ * Múltiplos números na mesma mensagem ("1 2 3", "1,2,3", "1, 3 e 6") só são
+ * aceitos quando o menu atual é de EXAMES (todo id começa com "ex:") — é o
+ * único menu onde escolher mais de um item faz sentido. Num menu de 2
+ * opções (ex.: Adulto/Criança), "1 2" continua sem resposta clara e cai no
+ * comportamento de sempre (texto livre → IA).
+ */
+export async function resolverOpcaoEvolution(numero: string, texto: string): Promise<string[] | null> {
   const id = docId(numero);
   const t = texto.trim();
   if (!id || !t) return null;
@@ -42,14 +53,22 @@ export async function resolverOpcaoEvolution(numero: string, texto: string): Pro
 
   if (/^\d+$/.test(t)) {
     const n = Number(t);
-    if (n >= 1 && n <= opcoes.length) return opcoes[n - 1].id;
+    if (n >= 1 && n <= opcoes.length) return [opcoes[n - 1].id];
+  }
+
+  // vários números na mesma mensagem — só faz sentido selecionar mais de um
+  // exame de uma vez; em qualquer outro menu, cai para o comportamento normal.
+  const numeros = [...new Set((t.match(/\d+/g) ?? []).map(Number))].filter((n) => n >= 1 && n <= opcoes.length);
+  if (numeros.length > 1) {
+    const ehMenuDeExames = opcoes.every((o) => o.id.startsWith('ex:'));
+    if (ehMenuDeExames) return numeros.map((n) => opcoes[n - 1].id);
   }
 
   const low = t.toLowerCase();
   const porId = opcoes.find((o) => o.id.toLowerCase() === low);
-  if (porId) return porId.id;
+  if (porId) return [porId.id];
   const porTitulo = opcoes.find((o) => o.titulo.toLowerCase() === low);
-  return porTitulo?.id ?? null;
+  return porTitulo ? [porTitulo.id] : null;
 }
 
 /** Monta o corpo de texto com opções *1* … *N* para o paciente responder. */

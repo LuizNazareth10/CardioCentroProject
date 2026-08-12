@@ -151,17 +151,20 @@ export async function POST(req: NextRequest) {
 
     if (!(await primeiraVez(key.id))) return NextResponse.json({ ok: true }); // retry da Evolution — já tratamos essa mensagem
 
-    let entrada = normalizarEntrada(data);
-    if (!entrada) return NextResponse.json({ ok: true });
+    const entrada0 = normalizarEntrada(data);
+    if (!entrada0) return NextResponse.json({ ok: true });
 
     // Responde sempre no formato internacional BR (55…), que a Evolution espera.
     const destino = numero.startsWith('55') ? numero : `55${numero}`;
 
     // Menus do Evolution vão em texto numerado (botões/listas quebram no WA comum).
-    // Se o paciente responder "1", "2"…, traduzimos para o id interativo esperado pelo agente.
-    if (entrada.tipo === 'texto') {
-      const idOpcao = await resolverOpcaoEvolution(destino, entrada.valor);
-      if (idOpcao) entrada = { tipo: 'interativo', valor: idOpcao };
+    // Se o paciente responder "1", "2"…, traduzimos para o(s) id(s) interativo(s)
+    // esperado(s) pelo agente. "1 2 3" num menu de exames vira 3 entradas —
+    // processadas em sequência abaixo, exatamente como 3 toques separados.
+    let entradas: Entrada[] = [entrada0];
+    if (entrada0.tipo === 'texto') {
+      const ids = await resolverOpcaoEvolution(destino, entrada0.valor);
+      if (ids?.length) entradas = ids.map((valor) => ({ tipo: 'interativo', valor }));
     }
 
     const t0 = Date.now();
@@ -171,12 +174,14 @@ export async function POST(req: NextRequest) {
         // transporte de captura garante que NADA chega ao paciente. O
         // rascunho vai para o webhook de observação (Slack/Discord).
         const rascunhos: Array<Record<string, unknown>> = [];
-        await comTransporte(transporteCaptura(rascunhos), () =>
-          processarMensagem(destino, entrada, {
-            pushName: typeof data?.pushName === 'string' ? data.pushName : undefined,
-          }),
-        );
-        const textoEntrada = entrada.tipo === 'texto' ? entrada.valor : `[${entrada.tipo}]`;
+        await comTransporte(transporteCaptura(rascunhos), async () => {
+          for (const entrada of entradas) {
+            await processarMensagem(destino, entrada, {
+              pushName: typeof data?.pushName === 'string' ? data.pushName : undefined,
+            });
+          }
+        });
+        const textoEntrada = entrada0.tipo === 'texto' ? entrada0.valor : `[${entrada0.tipo}]`;
         await encaminharRascunhoShadow(destino, textoEntrada, rascunhos);
         await registrarEvento(numero, decisao, 'shadow', { ms: Date.now() - t0 });
         return NextResponse.json({ ok: true });
@@ -185,11 +190,13 @@ export async function POST(req: NextRequest) {
       // AGUARDA o processamento (diferente do webhook da Meta): em runtime
       // serverless (Vercel), uma promise "solta" pode ser encerrada assim que
       // a resposta HTTP é enviada, antes do envio de saída terminar.
-      await comTransporte(transporteEvolution, () =>
-        processarMensagem(destino, entrada, {
-          pushName: typeof data?.pushName === 'string' ? data.pushName : undefined,
-        }),
-      );
+      await comTransporte(transporteEvolution, async () => {
+        for (const entrada of entradas) {
+          await processarMensagem(destino, entrada, {
+            pushName: typeof data?.pushName === 'string' ? data.pushName : undefined,
+          });
+        }
+      });
       await registrarEvento(numero, decisao, 'atendido', { ms: Date.now() - t0 });
     } catch (err) {
       await registrarEvento(numero, decisao, 'erro', {
