@@ -381,15 +381,15 @@ export function mensagemErroImagem(): string {
   return [
     'Não consegui abrir a imagem agora. 😕',
     '',
-    'Você pode me dizer quais exames deseja agendar, ou responder *menu* para ver as opções.',
+    'Sem problema: você pode escolher os exames pela lista, ou falar com uma de nossas atendentes — é só escolher abaixo.',
   ].join('\n');
 }
 
 export function mensagemPedidoNaoIdentificado(): string {
   return [
-    'Não consegui identificar os exames na imagem. 🤔',
+    'Recebi sua foto, mas não consegui identificar os exames nela. 🤔',
     '',
-    'Pode digitar os exames desejados ou responder *menu* para ver a lista completa.',
+    'Para não te deixar sem resposta: você pode escolher os exames pela lista, ou falar com uma de nossas atendentes, que consegue ver o pedido com você.',
   ].join('\n');
 }
 

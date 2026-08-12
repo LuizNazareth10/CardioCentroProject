@@ -272,17 +272,50 @@ export async function obterPaciente(id: string): Promise<Paciente | null> {
  * Acha um paciente pelo telefone (últimos 8 dígitos, tolera DDI/DDD/9º
  * dígito). Query indexada — usada pelo agente do WhatsApp a cada conversa.
  */
+/**
+ * DDD + número local (8 dígitos), sem DDI e sem o 9º dígito: "32 91685272" e
+ * "32 991685272" viram a MESMA chave, mas DDDs diferentes ficam distintos.
+ */
+function partesTelefone(telefone: string): { ddd: string; local: string } {
+  const d = soDigitos(telefone).replace(/^55/, '');
+  return { local: d.slice(-8), ddd: d.slice(0, -8).replace(/9$/, '').slice(-2) };
+}
+
+/**
+ * Escolhe, entre os cadastros que terminam nos mesmos 8 dígitos, o que é
+ * mesmo DESTE telefone.
+ *
+ * O índice `telefoneSufixo` guarda só o número local, então dois pacientes de
+ * DDDs diferentes com o mesmo final caem no mesmo balde — e pegar o primeiro
+ * (`limit(1)`) fazia o agente chamar a pessoa pelo nome de um homônimo de
+ * telefone, além de poder expor o agendamento de outra pessoa. Um cadastro
+ * SEM DDD (comum na base antiga) segue valendo como segunda opção: não dá
+ * para desempatar melhor, e rejeitá-lo faria o agente deixar de reconhecer
+ * pacientes que já são conhecidos.
+ */
+function melhorCandidato(alvo: string, candidatos: Paciente[]): Paciente | null {
+  const a = partesTelefone(alvo);
+  const mesmoDdd = candidatos.find((p) => {
+    const x = partesTelefone(p.telefone);
+    return x.ddd && a.ddd && x.ddd === a.ddd;
+  });
+  if (mesmoDdd) return mesmoDdd;
+  return candidatos.find((p) => !partesTelefone(p.telefone).ddd || !a.ddd) ?? null;
+}
+
 export async function obterPacientePorTelefone(telefone: string): Promise<Paciente | null> {
   const sufixo = soDigitos(telefone).slice(-8);
   if (!sufixo) return null;
   if (!isFirestore) {
-    return memoria.pacientes.find((p) => soDigitos(p.telefone).slice(-8) === sufixo) ?? null;
+    return melhorCandidato(telefone, memoria.pacientes.filter((p) => soDigitos(p.telefone).slice(-8) === sufixo));
   }
   return medir(
     'obterPacientePorTelefone()',
     async () => {
-      const snap = await (await fs()).collection('pacientes').where('telefoneSufixo', '==', sufixo).limit(1).get();
-      return snap.empty ? null : (snap.docs[0].data() as Paciente);
+      // limit(10) e não (1): precisamos VER os homônimos de sufixo para
+      // escolher pelo DDD, em vez de aceitar o primeiro que o índice devolver.
+      const snap = await (await fs()).collection('pacientes').where('telefoneSufixo', '==', sufixo).limit(10).get();
+      return melhorCandidato(telefone, snap.docs.map((d) => d.data() as Paciente));
     },
     (r) => (r ? 1 : 0),
   );
@@ -302,7 +335,8 @@ async function acharPacienteDuplicado(dados: Pick<Paciente, 'cpf' | 'telefone'>)
   if (!isFirestore) {
     const porCpf = cpf ? memoria.pacientes.find((p) => soDigitos(p.cpf) === cpf) : null;
     if (porCpf) return porCpf;
-    return sufixo ? memoria.pacientes.find((p) => soDigitos(p.telefone).slice(-8) === sufixo) ?? null : null;
+    if (!sufixo) return null;
+    return melhorCandidato(dados.telefone, memoria.pacientes.filter((p) => soDigitos(p.telefone).slice(-8) === sufixo));
   }
 
   const col = (await fs()).collection('pacientes');
@@ -311,8 +345,13 @@ async function acharPacienteDuplicado(dados: Pick<Paciente, 'cpf' | 'telefone'>)
     if (!snap.empty) return snap.docs[0].data() as Paciente;
   }
   if (sufixo) {
-    const snap = await col.where('telefoneSufixo', '==', sufixo).limit(1).get();
-    if (!snap.empty) return snap.docs[0].data() as Paciente;
+    // mesmo cuidado de obterPacientePorTelefone: o índice é só o número
+    // LOCAL, então casar pelo sufixo sozinho funde dois pacientes reais de
+    // DDDs diferentes num cadastro só — pior que um nome errado, é perda de
+    // dado. O DDD tem que bater (ou faltar de um dos lados).
+    const snap = await col.where('telefoneSufixo', '==', sufixo).limit(10).get();
+    const achado = melhorCandidato(dados.telefone, snap.docs.map((d) => d.data() as Paciente));
+    if (achado) return achado;
   }
   return null;
 }

@@ -75,9 +75,19 @@ function agoraJF(): string {
 const nomeExame = (id: string) => nomeExameDisplay(id);
 const nomeMedico = (id: string) => MEDICOS.find((m) => m.id === id)?.nome ?? id;
 
-/** Primeiro nome para saudação: cadastro da sessão, senão pushName do WhatsApp. */
+/**
+ * Primeiro nome para saudação: pushName do WhatsApp ANTES do cadastro.
+ *
+ * A ordem importa e já causou erro real: o cadastro é casado pelo TELEFONE, e
+ * quem está escrevendo nem sempre é o titular da linha — marido, filha,
+ * mesmo aparelho da família, número reaproveitado. Saudar a paciente pelo
+ * nome do titular ("Olá, Marcio!" para quem se identifica como Natiaê) é bem
+ * pior do que não usar nome nenhum. O pushName é como a própria pessoa se
+ * apresenta no WhatsApp, então é a fonte mais confiável para tratar por nome;
+ * o nome do cadastro continua valendo para o prontuário e o agendamento.
+ */
 function primeiroNome(s: ConversaState): string | undefined {
-  const bruto = (s.nome ?? s.pushName ?? '').trim();
+  const bruto = (s.pushName ?? s.nome ?? '').trim();
   if (!bruto) return undefined;
   // evita usar número/JID como "nome"
   if (/^\d+$/.test(bruto.replace(/\D/g, '')) && bruto.replace(/\D/g, '').length >= 8) return undefined;
@@ -1181,13 +1191,27 @@ async function tratarImagem(from: string, s: ConversaState, e: Entrada) {
   }
 
   await enviarTexto(from, mensagemRecebendoPedido());
+
+  // Os dois becos sem saída da leitura de imagem (não abriu / abriu mas não
+  // reconheceu nenhum exame) mandavam só texto, sem NENHUM botão: o paciente
+  // que já tinha se dado ao trabalho de fotografar o pedido ficava sem
+  // caminho, e quem não entendia a instrução escrita simplesmente parava ali.
+  // Agora toda falha de imagem oferece explicitamente a saída para a
+  // recepção — é o caso clássico em que uma pessoa resolve na hora.
+  const saidasDaFoto = [
+    { id: 'add_exame', titulo: 'Escolher da lista' },
+    { id: 'falar_humano', titulo: 'Falar c/ atendente' },
+  ];
+
   const midia = await baixarMidia(e.valor);
   if (!midia) {
-    return enviarTexto(from, mensagemErroImagem());
+    s.etapa = 'escolhendo_exames'; await salvarSessao(from, s);
+    return enviarBotoes(from, mensagemErroImagem(), saidasDaFoto);
   }
   const ids = await lerPedidoMedico(midia.base64, midia.mime);
   if (ids.length === 0) {
-    return enviarTexto(from, mensagemPedidoNaoIdentificado());
+    s.etapa = 'escolhendo_exames'; await salvarSessao(from, s);
+    return enviarBotoes(from, mensagemPedidoNaoIdentificado(), saidasDaFoto);
   }
   s.examesSelecionados = ids; s.etapa = 'menu'; await salvarSessao(from, s);
   const lista = ids.map((id, i) => `${i + 1}. ${nomeExame(id)}`).join('\n');
