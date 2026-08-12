@@ -106,9 +106,28 @@ diferente do rollout. Ligue em **Configurações → Agente de WhatsApp**.
 Faça em **horário de baixo movimento** — começo da manhã, antes de abrir, é o
 ideal. Com a recepção avisada.
 
+### 3.0 Preflight — antes de encostar no celular
+
 ```bash
 gcloud compute ssh evolution-vps --zone=us-east1-b
 cd ~/cardiocentro
+git pull                 # traz o deploy.sh com preflight/settings
+./deploy.sh              # aplica o docker-compose atualizado (sem -v, não pede QR)
+./deploy.sh preflight
+```
+
+O preflight confere, de uma vez: as 7 variáveis do `deploy/.env` preenchidas
+(inclusive `EVOLUTION_WEBHOOK_SECRET`, a que mais some), os containers de pé, o
+TLS respondendo e o estado da instância. **Não avance com falha nenhuma** — cada
+item ali já foi, em algum momento, a causa de "conectou e ficou mudo".
+
+> Se `EVOLUTION_WEBHOOK_SECRET` estiver vazia no `deploy/.env`, gere um valor,
+> coloque **o mesmo** na Vercel (`EVOLUTION_WEBHOOK_SECRET`) e faça Redeploy.
+> Sem isso o passo 3.1 falha e o agente não responde nada.
+
+### 3.1 Ler o QR
+
+```bash
 ./deploy.sh qr
 ```
 
@@ -125,7 +144,7 @@ Confirme que conectou:
 
 E no celular, a Evolution deve aparecer na lista de dispositivos conectados.
 
-### 3.1 Cadastrar o webhook com o segredo
+### 3.2 Cadastrar o webhook com o segredo
 
 **Não pule este passo** — é a causa mais provável de "conectou mas o agente não
 responde nada".
@@ -143,16 +162,41 @@ Vercel):
 
 Confira nos logs da Vercel que as chamadas passaram a responder 200.
 
-### 3.2 O que NÃO vai acontecer (e por quê)
+> O webhook **global** foi desligado no `docker-compose.yml`. Ele entregava a
+> mesma mensagem sem header nenhum, o que fazia cada conversa chegar duas vezes
+> na Vercel — uma 200 pela instância e uma 401 pelo global. Agora há um caminho
+> só, autenticado. Em troca, este passo 3.2 virou **obrigatório**: sem ele não
+> chega mensagem nenhuma.
 
-Ao parear, a Evolution sincroniza o histórico do aparelho. Sem proteção, isso
-faria o agente responder de uma vez a semanas de conversas antigas já tratadas
-pela recepção — na frente de centenas de pacientes.
+### 3.3 Mensagens antigas: por que o agente não vai responder o histórico
 
-O webhook descarta mensagens com mais de **10 minutos**
-(`EVOLUTION_JANELA_FRESCOR_MIN`). Nos logs da Vercel você vai ver várias linhas
-`ignorado: mensagem fora da janela de frescor` logo após o pareamento. **É o
-comportamento correto** — é a proteção funcionando.
+Ao parear, a Evolution sincroniza o aparelho. Sem proteção, isso faria o agente
+responder de uma vez a semanas de conversas já tratadas pela recepção — na
+frente de centenas de pacientes. Há **duas** barreiras, e elas são independentes:
+
+1. **Na fonte** — `syncFullHistory=false` na instância, aplicado pelo
+   `./deploy.sh qr` antes de gerar o QR. O histórico nem é puxado.
+2. **No app** — o webhook descarta qualquer mensagem com mais de **10 minutos**
+   (`EVOLUTION_JANELA_FRESCOR_MIN`), mesmo que alguma escape da primeira.
+
+Nos logs da Vercel você pode ver linhas `ignorado: mensagem fora da janela de
+frescor` logo após o pareamento. **É o comportamento correto** — é a segunda
+barreira trabalhando.
+
+Se a instância **já existia** de um teste anterior, os ajustes de criação não
+valem retroativamente. O `./deploy.sh qr` reaplica sozinho, mas dá para conferir
+e forçar a qualquer momento:
+
+```bash
+./deploy.sh settings
+```
+
+Espere ver `syncFullHistory=false`, `groupsIgnore=true`, `readMessages=false`,
+`alwaysOnline=false`, `rejectCall=false`.
+
+> `readMessages=false` é o que protege a recepção: em `true`, a Evolution
+> marcaria como lida **toda** mensagem que chega — inclusive os 95% que são da
+> equipe — e o "não lido" deixaria de existir para todo mundo.
 
 ---
 

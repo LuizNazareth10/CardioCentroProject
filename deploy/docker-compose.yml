@@ -77,9 +77,16 @@ services:
       CACHE_REDIS_ENABLED: 'false'
       CACHE_LOCAL_ENABLED: 'true'
       # --- webhook: aponta para o app na Vercel ---
-      WEBHOOK_GLOBAL_ENABLED: 'true'
-      WEBHOOK_GLOBAL_URL: ${WEBHOOK_URL} # ex.: https://SEU-APP.vercel.app/api/whatsapp/evolution/webhook
-      WEBHOOK_EVENTS_MESSAGES_UPSERT: 'true'
+      # DESLIGADO de propósito. O webhook GLOBAL entrega a URL, mas não manda
+      # header nenhum — e o app é fail-closed em `x-evolution-secret`. Com ele
+      # ligado, cada mensagem chegava DUAS vezes na Vercel: uma pela instância
+      # (com o header, 200) e outra pelo global (sem header, 401). O 401 não
+      # atende ninguém, mas gasta invocação e polui o log justo onde a gente
+      # precisa enxergar o canary.
+      #
+      # Quem entrega de verdade é o webhook POR INSTÂNCIA, cadastrado com o
+      # header pelo `./deploy.sh webhook`. Caminho único e autenticado.
+      WEBHOOK_GLOBAL_ENABLED: 'false'
     volumes:
       - evolution_instances:/evolution/instances # <- sessão do WhatsApp
     depends_on:
