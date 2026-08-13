@@ -45,8 +45,14 @@ export interface ConversaState {
   opcoes?: Array<{ rotulo: string; itens: ItemProposto[] }>;
   // dados de identificação coletados
   nome?: string;
-  /** Nome de exibição do WhatsApp (pushName), usado só para saudação até o paciente informar o nome completo */
-  pushName?: string;
+  /**
+   * true quando `nome` veio do PRÓPRIO paciente digitando na conversa (etapa
+   * "identificacao"), não de um cadastro achado pelo telefone. Só nesse caso
+   * é seguro usar o nome para saudação — o cadastro é casado por telefone, e
+   * quem escreve nem sempre é o titular da linha (marido, filha, mesmo
+   * aparelho da família, número reaproveitado, etc.).
+   */
+  nomeInformado?: boolean;
   convenioId?: string;
   pacienteId?: string;
   // true enquanto esperamos o paciente digitar o nome de um convênio fora da lista

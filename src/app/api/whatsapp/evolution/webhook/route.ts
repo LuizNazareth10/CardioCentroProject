@@ -182,9 +182,7 @@ export async function POST(req: NextRequest) {
         const rascunhos: Array<Record<string, unknown>> = [];
         await comTransporte(transporteCaptura(rascunhos), async () => {
           for (const entrada of entradas) {
-            await processarMensagem(destino, entrada, {
-              pushName: typeof data?.pushName === 'string' ? data.pushName : undefined,
-            });
+            await processarMensagem(destino, entrada);
           }
         });
         const textoEntrada = entrada0.tipo === 'texto' ? entrada0.valor : `[${entrada0.tipo}]`;
@@ -198,9 +196,7 @@ export async function POST(req: NextRequest) {
       // a resposta HTTP é enviada, antes do envio de saída terminar.
       await comTransporte(transporteEvolution, async () => {
         for (const entrada of entradas) {
-          await processarMensagem(destino, entrada, {
-            pushName: typeof data?.pushName === 'string' ? data.pushName : undefined,
-          });
+          await processarMensagem(destino, entrada);
         }
       });
       await registrarEvento(numero, decisao, 'atendido', { ms: Date.now() - t0 });

@@ -90,8 +90,9 @@ export function mensagemPedirNome(): string {
   return 'Quase lá! ✨\nQual é o seu *nome completo*?';
 }
 
-export function mensagemPedirConvenio(primeiroNome: string): string {
-  return `Obrigada, *${primeiroNome}*! 💙\nQual é o seu convênio?`;
+export function mensagemPedirConvenio(primeiroNome?: string): string {
+  const abertura = primeiroNome ? `Obrigada, *${primeiroNome}*! 💙` : 'Obrigada! 💙';
+  return `${abertura}\nQual é o seu convênio?`;
 }
 
 export function mensagemConvenioOutro(): string {

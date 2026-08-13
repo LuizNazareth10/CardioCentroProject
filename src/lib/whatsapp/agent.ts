@@ -77,18 +77,17 @@ const nomeExame = (id: string) => nomeExameDisplay(id);
 const nomeMedico = (id: string) => MEDICOS.find((m) => m.id === id)?.nome ?? id;
 
 /**
- * Primeiro nome para saudação: pushName do WhatsApp ANTES do cadastro.
- *
- * A ordem importa e já causou erro real: o cadastro é casado pelo TELEFONE, e
- * quem está escrevendo nem sempre é o titular da linha — marido, filha,
- * mesmo aparelho da família, número reaproveitado. Saudar a paciente pelo
- * nome do titular ("Olá, Marcio!" para quem se identifica como Natiaê) é bem
- * pior do que não usar nome nenhum. O pushName é como a própria pessoa se
- * apresenta no WhatsApp, então é a fonte mais confiável para tratar por nome;
- * o nome do cadastro continua valendo para o prontuário e o agendamento.
+ * Primeiro nome para saudação: só o que o PRÓPRIO paciente digitou nesta
+ * conversa (`nomeInformado`), nunca o pushName do WhatsApp nem o nome do
+ * cadastro achado por telefone. Os dois são casados pelo número da linha, e
+ * quem escreve nem sempre é o titular — marido, filha, mesmo aparelho da
+ * família, número reaproveitado, apelido diferente do nome real. Saudar
+ * errado é pior do que não usar nome nenhum, então só trata por nome depois
+ * que a própria pessoa se identifica no fluxo de agendamento.
  */
 function primeiroNome(s: ConversaState): string | undefined {
-  const bruto = (s.pushName ?? s.nome ?? '').trim();
+  if (!s.nomeInformado) return undefined;
+  const bruto = (s.nome ?? '').trim();
   if (!bruto) return undefined;
   // evita usar número/JID como "nome"
   if (/^\d+$/.test(bruto.replace(/\D/g, '')) && bruto.replace(/\D/g, '').length >= 8) return undefined;
@@ -132,13 +131,8 @@ function ehRespostaSolta(e: Entrada, vlow: string): boolean {
 export async function processarMensagem(
   from: string,
   e: Entrada,
-  meta?: { pushName?: string },
 ): Promise<void> {
   const s = await carregarSessao(from);
-  if (meta?.pushName?.trim() && !s.pushName) {
-    s.pushName = meta.pushName.trim();
-    await salvarSessao(from, s);
-  }
 
   // (0) imagem de pedido médico — tratada em qualquer etapa
   if (e.tipo === 'imagem') return tratarImagem(from, s, e);
@@ -457,7 +451,7 @@ async function efetivarRemarcacao(from: string, s: ConversaState) {
   }
 
   await aplicarRemarcacao(resultado.plano);
-  const nome = s.nome?.split(' ')[0] ?? 'Paciente';
+  const nome = primeiroNome(s) ?? 'Paciente';
   await limparSessao(from);
   await enviarTexto(from, mensagemRemarcacaoConfirmada(nome, fmtData(destino.inicio), fmtHora(destino.inicio)));
 }
@@ -862,7 +856,7 @@ function acharConvenio(texto: string) {
 
 async function tratarIdentificacao(from: string, s: ConversaState, e: Entrada) {
   if (!s.nome) {
-    s.nome = e.valor.trim(); await salvarSessao(from, s);
+    s.nome = e.valor.trim(); s.nomeInformado = true; await salvarSessao(from, s);
     return pedirConvenioOuConfirmar(from, s);
   }
   if (e.valor === 'conv_outro') {
@@ -1036,7 +1030,7 @@ async function pedirConvenioOuConfirmar(from: string, s: ConversaState) {
     .slice(0, 8);
   const itens: Array<{ id: string; titulo: string; descricao?: string }> = populares.map((c) => ({ id: `conv:${c.id}`, titulo: c.nome }));
   itens.push({ id: 'conv_outro', titulo: 'Outro convênio', descricao: 'Não está na lista? Digite o nome' });
-  return enviarLista(from, mensagemPedirConvenio(s.nome?.split(' ')[0] ?? ''), 'Ver convênios', [
+  return enviarLista(from, mensagemPedirConvenio(primeiroNome(s)), 'Ver convênios', [
     { titulo: 'Convênios', itens },
     { titulo: 'Outra opção', itens: [{ id: 'falar_humano', titulo: 'Falar c/ atendente' }] },
   ]);
@@ -1125,7 +1119,7 @@ async function tratarConfirmacao(from: string, s: ConversaState, e: Entrada) {
     } catch (err) {
       console.error('[agente] falha ao registrar lead quente:', err);
     }
-    await enviarPosConfirmacao(from, s.nome?.split(' ')[0] ?? 'Paciente', primeiro.inicio, exameIds);
+    await enviarPosConfirmacao(from, primeiroNome(s) ?? 'Paciente', primeiro.inicio, exameIds);
     return;
   }
   return s.remarcandoId ? mostrarConfirmacaoRemarcacao(from, s) : mostrarConfirmacao(from, s);

@@ -1,11 +1,13 @@
 /**
  * Dois erros relatados pela clínica, ambos vistos em conversas reais:
  *
- * 1. O agente chamava o paciente pelo nome ERRADO. Duas causas somadas:
- *    a busca por telefone casava só os 8 últimos dígitos (ignorando o DDD) e
- *    pegava o primeiro resultado, e o nome do cadastro sobrepunha o pushName
- *    do WhatsApp — então quem escrevia de um aparelho de família era saudado
- *    pelo nome do titular da linha.
+ * 1. O agente chamava o paciente pelo nome ERRADO. Causas somadas: a busca
+ *    por telefone casava só os 8 últimos dígitos (ignorando o DDD) e pegava
+ *    o primeiro resultado; e a saudação usava o nome do cadastro (ou o
+ *    pushName do WhatsApp) — ambos casados pelo TELEFONE, e quem escreve nem
+ *    sempre é o titular da linha. Agora só trata por nome depois que a
+ *    própria pessoa se identifica no fluxo (`nomeInformado`); nem cadastro
+ *    nem pushName são usados para saudação.
  * 2. Quando a leitura da foto do pedido médico falhava, o agente mandava só
  *    texto, sem NENHUM botão: quem tinha acabado de fotografar o pedido
  *    ficava sem caminho e sem como pedir ajuda humana.
@@ -52,18 +54,37 @@ async function run() {
   const semNono = await obterPacientePorTelefone('553291685272'); // sem o 9º dígito
   check('o 9º dígito não atrapalha o casamento', semNono?.nome === 'FERNANDO DE TAL');
 
-  // ---------- 2) saudação usa o pushName, não o titular da linha ----------
+  // ---------- 2) saudação só usa nome que o próprio paciente digitou ----------
   const n1 = '5532991685272';
   const s1 = await carregarSessao(n1);
-  s1.nome = 'FERNANDO DE TAL';   // veio do cadastro (casado por telefone)
-  s1.pushName = 'Mara';          // como a pessoa se identifica no WhatsApp
+  s1.nome = 'FERNANDO DE TAL';   // veio do cadastro (casado por telefone), NÃO informado por quem escreve
   await salvarSessao(n1, s1);
 
   const envios1: Array<Record<string, unknown>> = [];
   await comTransporte(captura(envios1), () => processarMensagem(n1, { tipo: 'texto', valor: 'oi' }));
   const textos1 = JSON.stringify(envios1);
-  check('saúda pelo pushName ("Mara")', textos1.includes('Mara'));
-  check('NÃO usa o nome do titular do cadastro ("Fernando")', !/Fernando/i.test(textos1));
+  check('NÃO usa o nome do cadastro achado por telefone ("Fernando") sem confirmação', !/Fernando/i.test(textos1));
+
+  // telefone SEM cadastro: fluxo pede o nome explicitamente, e só a partir
+  // daí (nomeInformado) a saudação usa o nome digitado.
+  const n1b = '5532991685299';
+  const envios1b: Array<Record<string, unknown>> = [];
+  await comTransporte(captura(envios1b), async () => {
+    await processarMensagem(n1b, { tipo: 'interativo', valor: 'agendar' });
+    await processarMensagem(n1b, { tipo: 'interativo', valor: 'ex:eco-doppler' });
+    await processarMensagem(n1b, { tipo: 'interativo', valor: 'concluir_exames' });
+    await processarMensagem(n1b, { tipo: 'interativo', valor: 'idade_adulto' });
+    await processarMensagem(n1b, { tipo: 'interativo', valor: 'med_qualquer' });
+    await processarMensagem(n1b, { tipo: 'interativo', valor: 'slot:0' });
+  });
+  check('sem cadastro, o fluxo pede o nome explicitamente', (await carregarSessao(n1b)).etapa === 'identificacao');
+  check('e a sessão ainda não marca nomeInformado', !(await carregarSessao(n1b)).nomeInformado);
+
+  const envios1c: Array<Record<string, unknown>> = [];
+  await comTransporte(captura(envios1c), () => processarMensagem(n1b, { tipo: 'texto', valor: 'Natiaê' }));
+  const textos1c = JSON.stringify(envios1c);
+  check('depois que a própria pessoa digita o nome, a saudação usa esse nome ("Natiaê")', textos1c.includes('Natiaê'));
+  check('sessão marca nomeInformado a partir do que foi digitado', Boolean((await carregarSessao(n1b)).nomeInformado));
 
   // ---------- 3) falha ao abrir a foto oferece transbordo ----------
   const n2 = '5532910000010';
