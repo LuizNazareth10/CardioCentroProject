@@ -183,7 +183,7 @@ export const MEDICOS: Medico[] = [
       { weekday: 1, inicio: '13:30', fim: '17:00', exames: [ECO, CARO, ERGO] }, // seg tarde
       { weekday: 2, inicio: '09:15', fim: '11:30', exames: [ECO, CARO, ERGO] }, // ter manhã
       { weekday: 2, inicio: '13:30', fim: '17:00', exames: [ECO, CARO, ERGO] }, // ter tarde
-      { weekday: 4, inicio: '09:00', fim: '11:30', exames: [ECO, CARO] },       // qui manhã
+      { weekday: 4, inicio: '09:15', fim: '11:30', exames: [ECO, CARO] },       // qui manhã (Dr. Daher chega 9h15, não mais 9h)
       { weekday: 4, inicio: '13:30', fim: '17:00', exames: [ECO, CARO] },       // qui tarde
       { weekday: 5, inicio: '13:40', fim: '16:00', exames: [ECO, CARO] },       // sex tarde
     ],
