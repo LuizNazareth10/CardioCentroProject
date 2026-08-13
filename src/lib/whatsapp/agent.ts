@@ -43,6 +43,7 @@ import {
   mensagemPerguntarIdade,
   mensagemPreferenciaMedico,
   mensagemRecebendoPedido,
+  respostaFAQ,
   mensagemResumoAgendamento,
   mensagemSemHorarios,
   mensagemSemMedicoUnico,
@@ -94,6 +95,40 @@ function primeiroNome(s: ConversaState): string | undefined {
   return bruto.split(/\s+/)[0];
 }
 
+const AFIRMACOES = /^(sim|ss+|ok|okay|okey|blz|beleza|isso|isso mesmo|confirmo|confirmado|confirmada|confirmar|pode ser|pode sim|pode|claro|certo|ta certo|tudo certo|combinado|estarei|estarei la|vou sim|irei|compareco|com certeza|positivo|ta bom|tudo bem|perfeito|otimo|obrigad)/;
+const NEGACOES = /^(nao|n|nao vou|nao posso|nao consigo|infelizmente|nao da|nao vai dar|preciso desmarcar|quero desmarcar|cancelar)/;
+
+/**
+ * minúsculas sem acento PRESERVANDO os espaços — ao contrário de
+ * `normalizarTexto`, que também remove separadores. Aqui os espaços são
+ * essenciais: sem eles "sim, quero agendar" vira "simqueroagendar" e a
+ * checagem de palavra inteira (\bagendar\b) deixa de casar, fazendo um pedido
+ * de marcação ser lido como resposta solta.
+ */
+function semAcentos(t: string): string {
+  return t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+
+function ehAfirmacao(vlow: string): boolean {
+  return AFIRMACOES.test(semAcentos(vlow));
+}
+
+/**
+ * Mensagem curta que RESPONDE alguma coisa, sem o agente ter perguntado nada
+ * — típico de quem está respondendo à recepção. Curta de propósito: "sim" e
+ * "não posso" entram, mas um texto longo é assunto novo e segue para a IA.
+ * Pedido explícito de agendar/remarcar nunca entra aqui: ali o paciente está
+ * abrindo um fluxo, não respondendo a alguém.
+ */
+function ehRespostaSolta(e: Entrada, vlow: string): boolean {
+  if (e.valor === 'lembrete_confirmar') return true;
+  if (e.tipo !== 'texto') return false;
+  const t = semAcentos(vlow);
+  if (t.length > 40) return false;
+  if (/\b(agendar|marcar|remarcar|agendamento|novo exame|outro exame)\b/.test(t)) return false;
+  return AFIRMACOES.test(t) || NEGACOES.test(t);
+}
+
 export async function processarMensagem(
   from: string,
   e: Entrada,
@@ -133,14 +168,24 @@ export async function processarMensagem(
     return falarComHumano(from);
   }
 
-  // (1.6) confirmação do lembrete de presença (1 dia antes) — só quando não
-  // há fluxo de agendamento em andamento, para não interferir na etapa "confirmando"
-  if (
-    (s.etapa === 'inicio' || s.etapa === 'menu') &&
-    (e.valor === 'lembrete_confirmar' || (e.tipo === 'texto' && /^sim\b|^confirmo\b|^confirmar\b|^confirmado\b/.test(vlow)))
-  ) {
-    const confirmou = await confirmarAgendamentoPorLembrete(from);
-    if (confirmou) return;
+  // (1.6) RESPOSTA SOLTA a algo que o agente não perguntou.
+  //
+  // A recepção manda "podemos confirmar seu exame de amanhã?" direto do
+  // celular, e o paciente responde horas depois — às vezes no dia seguinte.
+  // As mensagens da recepção NÃO são guardadas em lugar nenhum, então quando
+  // esse "sim" chega o agente não tem como saber a que ele se refere; até
+  // agora ele respondia com o menu genérico de agendamento, o que soa como
+  // se ninguém tivesse lido a resposta.
+  //
+  // Duas saídas, nenhuma delas genérica: se dá para achar um exame marcado
+  // deste telefone, confirma de verdade; se não dá, quem tem o contexto é a
+  // recepção — transborda em vez de chutar.
+  if ((s.etapa === 'inicio' || s.etapa === 'menu') && ehRespostaSolta(e, vlow)) {
+    if (ehAfirmacao(vlow) || e.valor === 'lembrete_confirmar') {
+      const confirmou = await confirmarAgendamentoPorLembrete(from);
+      if (confirmou) return;
+    }
+    return falarComHumano(from);
   }
 
   // (2) chegada pelo deep link ("olá, gostaria de agendar um exame") → já inicia o fluxo
@@ -1096,6 +1141,21 @@ async function rotearIA(from: string, s: ConversaState, texto: string, intentPro
   // não gera leitura extra se outra parte do fluxo já carregou).
   // `intentPronto` evita uma segunda chamada à IA quando quem chamou já
   // precisou interpretar o mesmo texto (ver tratarConfirmacaoExames).
+  // Dúvida geral (endereço, horário, exames, convênios): responde na hora,
+  // sem chamar a IA e sem abrir o fluxo de marcação — quem só quer o endereço
+  // não quer começar um agendamento. Só oferece o menu depois se a pessoa
+  // NÃO estiver no meio de uma marcação; estando, responde e deixa o fluxo
+  // exatamente onde estava.
+  if (!intentPronto) {
+    const faq = respostaFAQ(texto);
+    if (faq) {
+      await enviarTexto(from, faq);
+      const noMeioDeUmaMarcacao = s.examesSelecionados.length > 0 || (s.etapa !== 'inicio' && s.etapa !== 'menu');
+      if (noMeioDeUmaMarcacao) return;
+      return menuPrincipal(from, s);
+    }
+  }
+
   let intent = intentPronto;
   if (!intent) {
     const futuro = s.examesSelecionados.length ? null : await carregarAgendamentoFuturo(from, s);
@@ -1138,9 +1198,21 @@ async function confirmarAgendamentoPorLembrete(from: string): Promise<boolean> {
   const pac = await acharPacientePorTelefone(from);
   if (!pac) return false;
   const ags = await listarAgendamentos({ pacienteId: pac.id });
-  const pendente = ags
-    .filter((a) => a.status === 'agendado' && a.lembreteEnviadoEm)
-    .sort((a, b) => a.inicio.localeCompare(b.inicio))[0];
+  const agora = agoraJF();
+  // 48h à frente: cobre "seu exame é amanhã" mandado hoje, inclusive quando o
+  // paciente só responde no fim da noite ou na manhã seguinte.
+  const limite = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+
+  const futuros = ags
+    .filter((a) => a.status === 'agendado' && a.inicio > agora)
+    .sort((a, b) => a.inicio.localeCompare(b.inicio));
+
+  // Preferimos o que já recebeu lembrete do sistema; se nenhum recebeu, vale
+  // o próximo exame dentro de 48h. Esse segundo caminho é o que faz a
+  // confirmação funcionar quando quem pediu foi a RECEPÇÃO, na mão — hoje
+  // TODOS os agendamentos futuros estão sem `lembreteEnviadoEm`, então sem
+  // ele nenhuma confirmação de paciente era registrada.
+  const pendente = futuros.find((a) => a.lembreteEnviadoEm) ?? futuros.find((a) => a.inicio <= limite);
   if (!pendente) return false;
   await atualizarAgendamento(pendente.id, { status: 'confirmado' });
   await enviarTexto(from, mensagemConfirmacaoLembreteRecebida(pac.nome.split(' ')[0], fmtData(pendente.inicio), fmtHora(pendente.inicio)));

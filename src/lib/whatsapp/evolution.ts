@@ -61,6 +61,16 @@ async function enviarTextoPlano(to: string, texto: string): Promise<void> {
   const limpo = texto.replace(/\\u([0-9a-fA-F]{4})/gi, (_m, hex: string) =>
     String.fromCharCode(parseInt(hex, 16)),
   );
+  // Mesma resposta, de novo, poucos segundos depois: quase sempre é o
+  // paciente mandando 2 ou 3 fotos do pedido em sequência, e cada foto
+  // disparava o mesmo par de mensagens ("recebi, deixa eu ver…" + resultado).
+  // O paciente terminava com 6 mensagens idênticas do agente. Repetir não
+  // acrescenta nada — a primeira resposta já está lá, logo acima na conversa.
+  if (await ehRepeticaoRecente(to, limpo)) {
+    console.info('[evolution] resposta idêntica repetida em poucos segundos — não reenviada');
+    return;
+  }
+
   // ANTES de mandar: fecha a corrida descrita em `houveEnvioRecente`. Precisa
   // estar gravado no banco antes de a mensagem sair, porque o webhook do eco
   // pode chegar antes de esta função terminar.
@@ -115,6 +125,45 @@ function chaveEnvio(numero: string): string {
  * custo de errar para MENOS é o agente se calar sozinho (ver abaixo).
  */
 const JANELA_ENVIO_EM_VOO_MS = 20_000;
+
+/**
+ * Janela em que repetir EXATAMENTE a mesma resposta é considerado eco inútil.
+ * Curta de propósito: o alvo é a rajada (várias fotos seguidas), não impedir
+ * que a mesma pergunta seja refeita minutos depois, quando repetir é legítimo.
+ */
+const JANELA_REPETICAO_MS = 45_000;
+
+/** hash curto do texto — evita guardar a mensagem inteira só para comparar. */
+function hashTexto(t: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < t.length; i++) {
+    h ^= t.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+/**
+ * true se ESTA mensagem, idêntica, já foi mandada para este número há poucos
+ * segundos. Quando devolve false, registra a mensagem como a última enviada.
+ * Falha de banco nunca bloqueia o envio: preferimos uma resposta repetida a
+ * um paciente sem resposta.
+ */
+async function ehRepeticaoRecente(numero: string, texto: string): Promise<boolean> {
+  try {
+    const { db } = await import('../db/firestore');
+    const ref = db().collection('evolution_ultima_resposta').doc(chaveEnvio(numero));
+    const d = (await ref.get()).data() as { hash?: string; em?: number } | undefined;
+    if (d?.hash === hashTexto(texto) && typeof d.em === 'number' && Date.now() - d.em <= JANELA_REPETICAO_MS) {
+      return true;
+    }
+    await ref.set({ hash: hashTexto(texto), em: Date.now() });
+    return false;
+  } catch (e) {
+    console.error('[evolution] falha ao checar repetição (enviando mesmo assim):', e);
+    return false;
+  }
+}
 
 /** Registra que o agente está enviando algo para este número AGORA. */
 async function marcarEnvioEmVoo(numero: string): Promise<void> {

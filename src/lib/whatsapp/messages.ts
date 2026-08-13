@@ -1,4 +1,4 @@
-import { CONTATO } from '../seed-data';
+import { CONTATO, CONVENIOS, EXAMES } from '../seed-data';
 
 const SEP = '─────────────────';
 
@@ -543,4 +543,78 @@ export function mensagemConfirmarExames(lista: string): string {
 
 export function mensagemDuvidaFallback(): string {
   return 'Posso te ajudar a agendar um exame cardiológico. Quer ver as opções? 😊';
+}
+
+// ─── Dúvidas gerais (FAQ) ───────────────────────────────────────
+// Perguntas básicas — endereço, exames, horário, convênios — têm resposta
+// DIRETA e determinística, montada a partir dos mesmos dados que o resto do
+// sistema usa. Existe por dois motivos: essas perguntas não podem depender da
+// IA estar disponível/rápida (é a informação mais pedida no WhatsApp), e
+// respondê-las não pode empurrar o paciente para o fluxo de agendamento —
+// quem só quer saber o endereço não quer abrir uma marcação.
+
+/** minúsculas sem acento, para casar "endereço" com "endereco". */
+function normalizar(t: string): string {
+  return t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+export function mensagemEndereco(): string {
+  return [
+    '📍 *Onde ficamos*',
+    '',
+    CONTATO.enderecoCompleto,
+    '',
+    `Telefone: *${CONTATO.telefoneFixo}*`,
+  ].join('\n');
+}
+
+export function mensagemHorarioFuncionamento(): string {
+  return ['🕗 *Nosso horário*', '', ...CONTATO.horarios.map((h) => `• ${h}`)].join('\n');
+}
+
+export function mensagemExamesOferecidos(): string {
+  return [
+    '🫀 *Exames que realizamos*',
+    '',
+    ...EXAMES.filter((e) => e.ativo).map((e) => `• ${e.nome}`),
+  ].join('\n');
+}
+
+export function mensagemConveniosAceitos(): string {
+  const nomes = CONVENIOS.filter((c) => c.ativo).map((c) => c.nome);
+  return [
+    '💳 *Convênios atendidos*',
+    '',
+    ...nomes.map((n) => `• ${n}`),
+    '',
+    'Também atendemos *particular*.',
+    '',
+    '_Alguns planos específicos não são atendidos — me diga o seu que eu confirmo._',
+  ].join('\n');
+}
+
+/**
+ * Responde de imediato as dúvidas gerais mais comuns. Devolve `null` quando a
+ * pergunta não é uma dessas — aí segue para a IA normalmente.
+ */
+export function respostaFAQ(texto: string): string | null {
+  const t = normalizar(texto);
+
+  // pedido de agendamento tem prioridade: "quero marcar um exame" cita
+  // "exame" mas NÃO é a pergunta "quais exames vocês fazem".
+  if (/\b(quero|gostaria|preciso|pode|vamos)\b.*\b(agendar|marcar|remarcar)\b/.test(t)) return null;
+
+  if (/(endereco|onde (fica|voces|e|eh|estao|situa)|como chego|como chegar|localiza|qual a rua|em que rua|referencia)/.test(t)) {
+    return mensagemEndereco();
+  }
+  if (/(que horas|horario de (funcionamento|atendimento)|ate que horas|abre|fecha|funcionam? (de|das)|atendem de)/.test(t)) {
+    return mensagemHorarioFuncionamento();
+  }
+  if (/(quais.*(exames|procedimentos)|que (exames|tipos de exame)|exames (voces|vcs|que voces)|o que voces fazem|tipos de exame)/.test(t)) {
+    return mensagemExamesOferecidos();
+  }
+  if (/(convenio|convenios|plano de saude|planos de saude|aceitam (qual|quais)|atendem (qual|quais)|unimed|particular\?)/.test(t)) {
+    return mensagemConveniosAceitos();
+  }
+  return null;
 }
