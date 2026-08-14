@@ -220,6 +220,8 @@ export const MEDICOS: Medico[] = [
       { weekday: 3, inicio: '09:00', fim: '11:15', exames: [ECO, CARO], quinzenal: true },                   // qua manhã (quinzenal) — só eco/carótida
       { weekday: 5, inicio: '09:00', fim: '11:30', exames: [CARDIOPULM, ECO, CARO], exigeExame: CARDIOPULM }, // sex manhã
     ],
+    // Não atende em setembro/2026 nestes dias (informado pela clínica).
+    ausencias: ['2026-09-11', '2026-09-14', '2026-09-16', '2026-09-18'],
     ativo: true,
   },
   {
@@ -237,6 +239,8 @@ export const MEDICOS: Medico[] = [
       { weekday: 4, inicio: '13:20', fim: '16:20', exames: [ERGO] },
       { weekday: 5, inicio: '13:20', fim: '15:20', exames: [ERGO] },
     ],
+    // Não atende em setembro/2026 nestes dias (informado pela clínica).
+    ausencias: ['2026-09-09', '2026-09-10', '2026-09-11'],
     ativo: true,
   },
   // -----------------------------------------------------------

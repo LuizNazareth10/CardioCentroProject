@@ -1,7 +1,8 @@
 import bcrypt from 'bcryptjs';
 import type { Agendamento, Conversa, FichaMedica, Lead, Paciente, TipoAparelho, Triagem, Usuario } from '../types';
 import { APARELHOS, CONVENIOS, EXAMES, MEDICOS } from '../seed-data';
-import { hhmmToMin, semanaQuinzenalAtiva } from '../scheduling/time';
+import { hhmmToMin } from '../scheduling/time';
+import { janelasDoDia } from '../scheduling/engine';
 
 // =============================================================
 // Store em memória (modo DATA_BACKEND=memory).
@@ -117,7 +118,6 @@ function hojeJF(): string {
 
 const HOJE = hojeJF();
 const WD = new Date(`${HOJE}T12:00:00Z`).getUTCDay();
-const SEMANA_ATIVA = semanaQuinzenalAtiva(HOJE);
 
 function isoDeHoje(minutos: number): string {
   const hh = String(Math.floor(minutos / 60)).padStart(2, '0');
@@ -138,7 +138,7 @@ function proximoPaciente() {
 
 // 1) até 2 agendamentos por médico ativo hoje (respeita quinzenal)
 for (const m of MEDICOS.filter((x) => x.ativo)) {
-  const janelas = m.disponibilidade.filter((j) => j.weekday === WD && (!j.quinzenal || SEMANA_ATIVA));
+  const janelas = janelasDoDia(m, HOJE);
   if (janelas.length === 0) continue;
   const j = janelas[0];
   const exIds = j.exames ?? m.examesHabilitados;

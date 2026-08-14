@@ -4,7 +4,8 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { APARELHOS, MEDICOS, EXAMES } from '@/lib/seed-data';
 import type { Agendamento, Medico, StatusAgendamento, TipoAparelho, Weekday } from '@/lib/types';
-import { hhmmToMin, minToHHMM, semanaQuinzenalAtiva, toISO, weekdayOf } from '@/lib/scheduling/time';
+import { hhmmToMin, minToHHMM, toISO, weekdayOf } from '@/lib/scheduling/time';
+import { janelasDoDia } from '@/lib/scheduling/engine';
 import { fmtData, fmtHora, hojeJF } from '@/lib/format';
 import { DataPagina } from '@/components/DataPagina';
 import { STATUS_AGENDAMENTO_COR, STATUS_AGENDAMENTO_LABEL } from '@/lib/status-agendamento';
@@ -147,13 +148,9 @@ function AgendaConteudo() {
   }, [novoId, carregando, ags, data, router]);
 
   const wd = weekdayOf(data);
-  const semanaAtiva = semanaQuinzenalAtiva(data);
   const ehHoje = data === hojeJF();
 
-  const janelasDia = useCallback(
-    (m: Medico) => m.disponibilidade.filter((j) => j.weekday === wd && (!j.quinzenal || semanaAtiva)),
-    [wd, semanaAtiva],
-  );
+  const janelasDia = useCallback((m: Medico) => janelasDoDia(m, data), [data]);
 
   // resumo do horário de atendimento do médico no dia (ex.: "08:00–12:00")
   const resumoJanelas = useCallback(

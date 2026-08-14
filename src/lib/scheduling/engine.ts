@@ -136,8 +136,13 @@ function ocupacoesDoDia(
     .map((a) => [fromISO(a.inicio).min, fromISO(a.fim).min] as [number, number]);
 }
 
-/** janelas de um médico num dia (respeita quinzenal) */
-function janelasDoDia(medico: Medico, date: string) {
+/**
+ * Janelas de um médico num dia (respeita quinzenal e ausências pontuais).
+ * Fonte única usada pelo motor, pela agenda da recepção e pelo painel — um
+ * dia de ausência some de todos ao mesmo tempo.
+ */
+export function janelasDoDia(medico: Medico, date: string) {
+  if (medico.ausencias?.includes(date)) return [];
   const wd = weekdayOf(date);
   const ativa = semanaQuinzenalAtiva(date);
   return medico.disponibilidade.filter((j) => j.weekday === wd && (!j.quinzenal || ativa));

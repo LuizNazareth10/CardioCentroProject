@@ -184,5 +184,35 @@ const noSegundoZero = gerarSlots(exame('eco-doppler'), MEDICOS, [], {
 });
 check('No segundo exato do slot, ele ainda é ofertado', noSegundoZero.some((s) => s.inicio === `${SEG}T13:30:00-03:00`));
 
+// ---- 14: ausências pontuais (dias em que o médico não atende) ----
+// Set/2026: Dra. Fernanda fora nos dias 09, 10 e 11; Dr. Júlio nos dias
+// 11, 14, 16 e 18. Nenhuma janela deles pode abrir nessas datas.
+const AUSENCIAS: Array<[string, string, string[]]> = [
+  ['med-lanzoni', 'Dra. Fernanda', ['2026-09-09', '2026-09-10', '2026-09-11']],
+  ['med-lovisi', 'Dr. Júlio', ['2026-09-11', '2026-09-14', '2026-09-16', '2026-09-18']],
+];
+for (const [medicoId, apelido, dias] of AUSENCIAS) {
+  const medico = MEDICOS.find((m) => m.id === medicoId)!;
+  for (const dia of dias) {
+    const nenhum = medico.examesHabilitados.every(
+      (id) =>
+        gerarSlots(exame(id), MEDICOS, [], {
+          dataInicio: dia, dias: 1, medicoPreferidoId: medicoId,
+          examesSessao: medico.examesHabilitados,
+        }).length === 0,
+    );
+    check(`${apelido} não tem NENHUM horário em ${dia.slice(8)}/${dia.slice(5, 7)}`, nenhum);
+  }
+}
+// e a grade normal continua de pé fora das ausências
+const lanzoniDepois = gerarSlots(exame('ergometrico'), MEDICOS, [], {
+  dataInicio: '2026-09-16', dias: 1, medicoPreferidoId: 'med-lanzoni',
+});
+check('Dra. Fernanda volta a atender na quarta seguinte (16/09)', lanzoniDepois.length > 0);
+const lovisiDepois = gerarSlots(exame('cardiopulmonar'), MEDICOS, [], {
+  dataInicio: '2026-09-21', dias: 1, medicoPreferidoId: 'med-lovisi',
+});
+check('Dr. Júlio volta a atender na segunda seguinte (21/09)', lovisiDepois.length > 0);
+
 console.log('\nResumo:', falhas === 0 ? 'TODOS OS TESTES PASSARAM 🎉' : `${falhas} falha(s)`);
 process.exit(falhas === 0 ? 0 : 1);

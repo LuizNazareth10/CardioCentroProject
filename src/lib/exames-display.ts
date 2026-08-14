@@ -25,11 +25,6 @@ export function nomeExameLista(id: string): string {
   return full.length <= 24 ? full : full.slice(0, 24);
 }
 
-/** Descrição da linha na lista — só duração para não repetir o título. */
-export function descricaoExameLista(_id: string, duracaoMin: number): string {
-  return `${duracaoMin} min`;
-}
-
 /** Restaura o nome completo a partir do id de uma linha de lista (`ex:eco-doppler`). */
 export function resolverTituloLista(id: string, tituloFallback: string): string {
   if (id.startsWith('ex:')) return nomeExameDisplay(id.slice(3));

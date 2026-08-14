@@ -55,7 +55,7 @@ import {
 } from './messages';
 import { carregarSessao, limparSessao, salvarSessao, type AgendamentoFuturoState, type ConversaState } from './session';
 import { interpretar, lerPedidoMedico, type Intencao } from './ai';
-import { nomeExameDisplay, nomeExameLista, descricaoExameLista } from '../exames-display';
+import { nomeExameDisplay, nomeExameLista } from '../exames-display';
 
 // entrada normalizada do webhook
 export interface Entrada {
@@ -463,10 +463,11 @@ async function efetivarRemarcacao(from: string, s: ConversaState) {
 async function enviarListaExames(from: string, jaSelecionados: string[] = []) {
   const disponiveis = EXAMES.filter((e) => e.ativo && !jaSelecionados.includes(e.id));
   await enviarLista(from, mensagemListaExames(), 'Ver exames', [
+    // sem descrição: a duração ao lado do nome é imprecisa (varia por médico)
+    // e polui a tela do paciente — só o nome do exame na linha.
     { titulo: 'Exames', itens: disponiveis.map((e) => ({
       id: `ex:${e.id}`,
       titulo: nomeExameLista(e.id),
-      descricao: descricaoExameLista(e.id, e.duracaoMin),
     })) },
     { titulo: 'Outra opção', itens: [{ id: 'falar_humano', titulo: 'Falar c/ atendente' }] },
   ]);

@@ -75,6 +75,12 @@ export interface Medico {
   combinacoes?: CombinacaoExames[];
   /** grade fixa semanal de atendimento */
   disponibilidade: JanelaDisponibilidade[];
+  /**
+   * Datas ("YYYY-MM-DD") em que este médico NÃO atende, apesar da grade
+   * semanal (férias, congresso, folga pontual). Nenhuma janela dele abre
+   * nesses dias — nem na agenda da recepção, nem para o agente do WhatsApp.
+   */
+  ausencias?: string[];
   ativo: boolean;
 }
 

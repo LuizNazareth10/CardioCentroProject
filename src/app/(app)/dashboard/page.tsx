@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { listarAgendamentos } from '@/lib/db';
 import { EXAMES, MEDICOS } from '@/lib/seed-data';
 import { fmtHora, hojeJF } from '@/lib/format';
-import { weekdayOf, semanaQuinzenalAtiva } from '@/lib/scheduling/time';
+import { janelasDoDia } from '@/lib/scheduling/engine';
 import { DataPagina } from '@/components/DataPagina';
 
 export const dynamic = 'force-dynamic';
@@ -17,13 +17,7 @@ export default async function Dashboard() {
     .filter((a) => a.status !== 'cancelado')
     .sort((a, b) => a.inicio.localeCompare(b.inicio));
 
-  const wd = weekdayOf(hoje);
-  const semanaAtiva = semanaQuinzenalAtiva(hoje);
-  const medicosHoje = MEDICOS.filter(
-    (m) =>
-      m.ativo &&
-      m.disponibilidade.some((j) => j.weekday === wd && (!j.quinzenal || semanaAtiva)),
-  );
+  const medicosHoje = MEDICOS.filter((m) => m.ativo && janelasDoDia(m, hoje).length > 0);
 
   const confirmados = doDia.filter((a) => a.status === 'confirmado' || a.status === 'chegou' || a.status === 'em_atendimento').length;
   const naClinica = doDia.filter((a) => a.status === 'chegou' || a.status === 'em_atendimento').length;
