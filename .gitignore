@@ -57,6 +57,10 @@ Desktop.ini
 *.pem
 *.key
 
+# Retroalimentação: backups e prévias contêm dados de paciente (LGPD) —
+# ficam só na máquina de quem roda o import, nunca no repositório.
+retroalimentacao/backups/
+
 # QR code de pareamento do WhatsApp (teste local via deploy/)
 deploy/*.png
 .vercel
