@@ -7,8 +7,5 @@
         { "key": "Cache-Control", "value": "no-store" }
       ]
     }
-  ],
-  "crons": [
-    { "path": "/api/cron/lembretes", "schedule": "0 12 * * *" }
   ]
 }
