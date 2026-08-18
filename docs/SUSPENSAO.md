@@ -1,6 +1,6 @@
 # Suspensão da operação — agosto/2026
 
-> **Estado atual: SUSPENSO desde 17/08/2026.**
+> **Estado atual: SUSPENSO desde 18/08/2026.**
 > No ar apenas a **landing page pública** (`/`, `/privacidade`, `/termos`).
 > Fora do ar: agente de IA do WhatsApp e área restrita inteira.
 
@@ -42,7 +42,7 @@ Contraintuitivo, e é o detalhe que faz a diferença na fatura:
 
 Ou seja: parar a VM e *deixar o IP reservado* faria a conta **subir** de US$ 0
 para ~US$ 7,44/mês. Preços conferidos na Cloud Billing Catalog API em
-17/08/2026 (SKUs `Static Ip Charge` e `External IP Charge on a Standard VM`).
+18/08/2026 (SKUs `Static Ip Charge` e `External IP Charge on a Standard VM`).
 
 O custo disso é que, na volta, o IP será **outro** — e o DNS precisa ser
 repontado. Cinco minutos de trabalho, descritos abaixo.

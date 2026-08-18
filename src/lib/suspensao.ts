@@ -30,7 +30,7 @@
 export const OPERACAO_SUSPENSA = process.env.NEXT_PUBLIC_OPERACAO_SUSPENSA !== 'false';
 
 /** Data em que a suspensão entrou em vigor — usada nos logs e avisos. */
-export const SUSPENSA_DESDE = '2026-08-17';
+export const SUSPENSA_DESDE = '2026-08-18';
 
 /**
  * Resposta padrão das rotas de API suspensas.

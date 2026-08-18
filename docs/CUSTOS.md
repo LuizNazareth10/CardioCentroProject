@@ -1,16 +1,16 @@
 # Estimativa de custos — Sistema CardioCentro
 
-> ⚠️ **Sistema SUSPENSO desde 17/08/2026** — ver [`SUSPENSAO.md`](SUSPENSAO.md).
+> ⚠️ **Sistema SUSPENSO desde 18/08/2026** — ver [`SUSPENSAO.md`](SUSPENSAO.md).
 > Só a landing page continua no ar. As seções 1 a 5 abaixo descrevem o custo
 > da operação **completa**, para quando ela voltar.
 
 > O corpo original deste documento é de **junho/2026** e era uma estimativa
 > feita a partir de tabelas públicas. Os números do quadro abaixo foram
-> **conferidos na Cloud Billing Catalog API em 17/08/2026** e substituem as
+> **conferidos na Cloud Billing Catalog API em 18/08/2026** e substituem as
 > estimativas onde houver divergência.
 > Câmbio de referência: ~R$ 5,50/US$ (varia; ajuste conforme o dia).
 
-## Resumo executivo — verificado em 17/08/2026
+## Resumo executivo — verificado em 18/08/2026
 
 | Item | Situação real | Custo mensal |
 |------|---------------|--------------|
@@ -138,7 +138,7 @@ reativo e **sem** campanhas de marketing:
 - IA Haiku: **~R$ 5**
 - **Total: ~R$ 115/mês** (ou **~R$ 5–10/mês** se hospedar no Cloud Run em vez da Vercel)
 
-> Atualização de 17/08/2026: a VPS da Evolution API, criada depois desta
+> Atualização de 18/08/2026: a VPS da Evolution API, criada depois desta
 > estimativa, **não** somou custo — e2-micro em `us-east1`, disco de 30 GB e
 > IP anexado cabem inteiros no free tier da GCP.
 
