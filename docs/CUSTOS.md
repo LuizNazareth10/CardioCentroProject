@@ -1,23 +1,64 @@
 # Estimativa de custos — Sistema CardioCentro
 
-> Valores verificados nas páginas oficiais de preços em **junho de 2026**.
-> Câmbio usado como referência: ~R$ 5,50/US$ (varia; ajuste conforme o dia).
+> ⚠️ **Sistema SUSPENSO desde 18/08/2026** — ver [`SUSPENSAO.md`](SUSPENSAO.md).
+> Só a landing page continua no ar. As seções 1 a 5 abaixo descrevem o custo
+> da operação **completa**, para quando ela voltar.
 
-## Resumo executivo
+> O corpo original deste documento é de **junho/2026** e era uma estimativa
+> feita a partir de tabelas públicas. Os números do quadro abaixo foram
+> **conferidos na Cloud Billing Catalog API em 18/08/2026** e substituem as
+> estimativas onde houver divergência.
+> Câmbio de referência: ~R$ 5,50/US$ (varia; ajuste conforme o dia).
 
-| Item | Plano | Custo mensal estimado |
-|------|-------|----------------------|
-| **Vercel** (hospedagem do app) | Pro (uso comercial) | **~US$ 20 (~R$ 110)** |
-| **GCP Firestore** (banco de dados) | Free tier | **~R$ 0** |
-| **WhatsApp Cloud API** (conversas reativas) | Direto com a Meta | **~R$ 0** |
-| **WhatsApp — lembretes proativos** (opcional) | Mensagem utilitária | **~R$ 0,05 por lembrete** |
-| **Anthropic API** (IA do agente, modelo Haiku) | Pay-as-you-go | **poucos reais/mês** |
-| **Domínio próprio** (opcional) | — | ~R$ 40–60/ano |
-| | **TOTAL** | **≈ R$ 110–160/mês** |
+## Resumo executivo — verificado em 18/08/2026
 
-O custo é **dominado pela assinatura da Vercel**. Toda a parte de dados e de
-conversas de WhatsApp fica essencialmente **gratuita** no volume de uma clínica
-pequena/média.
+| Item | Situação real | Custo mensal |
+|------|---------------|--------------|
+| **Vercel** (hospedagem) | ⚠️ plano **não confirmado** — ver nota abaixo | **US$ 0 ou 20** |
+| **GCP — VM `evolution-vps`** (e2-micro, us-east1) | dentro do free tier | **US$ 0** |
+| **GCP — disco 30 GB pd-standard** | free tier cobre 30 GiB/mês | **US$ 0** |
+| **GCP — IP externo** | grátis enquanto anexado a VM ligada (744 h/mês) | **US$ 0** |
+| **GCP Firestore** | muito abaixo da cota gratuita | **US$ 0** |
+| **WhatsApp Cloud API** (reativo) | direto com a Meta, sem BSP | **US$ 0** |
+| **Anthropic API** (Haiku/Sonnet) | pay-as-you-go, só em texto livre | **poucos US$** |
+| **Domínio próprio** | anual | ~R$ 40–60/ano |
+
+**Conclusão que mudou em relação à versão de junho:** a infraestrutura de
+nuvem inteira — VM da Evolution API inclusive, que nem existia quando este
+documento foi escrito — cabe no **free tier da GCP** e custa **US$ 0**. O
+único gasto recorrente possível é a **Vercel**.
+
+### ⚠️ Sobre o plano da Vercel
+
+A versão de junho deste documento **assumiu** o plano Pro (US$ 20/mês) por
+causa da cláusula de uso comercial dos termos da Vercel. Isso nunca foi
+verificado na conta. Para conferir de fato:
+
+```bash
+npx vercel login
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://api.vercel.com/v2/teams/team_QuRNB4KIhHrZEZpjXnkJuNTU" \
+  | jq '.billing.plan'
+```
+
+Se a resposta for `"hobby"`, o custo real de nuvem do projeto é **R$ 0/mês** —
+com a ressalva de que os termos da Vercel restringem o plano Hobby a uso não
+comercial, e um site de clínica se enquadra como comercial.
+
+### 🪤 Armadilha do IP estático
+
+Um IP externo é **grátis enquanto anexado a uma VM ligada** (744 h/mês
+cobertas), mas custa **US$ 0,01/h ≈ US$ 7,44/mês** quando fica **reservado e
+ocioso** — inclusive quando está preso a uma VM *parada*.
+
+Consequência prática: **desligar a VM sem liberar o IP AUMENTA a fatura.** Foi
+por isso que a suspensão de agosto liberou a reserva `evolution-ip` em vez de
+apenas parar a máquina.
+
+SKUs conferidos (serviço `6F81-5844-456A`, Compute Engine):
+- `Static Ip Charge` — 1ª hora grátis, depois US$ 0,01/h
+- `External IP Charge on a Standard VM` — 744 h grátis, depois US$ 0,005/h
+- `Storage PD Capacity` — 30 GiB/mês grátis, depois US$ 0,04/GiB
 
 ---
 
@@ -91,11 +132,15 @@ menus) zerando este item.
 Assumindo ~40 atendimentos/dia, agenda consultada o dia todo, agente de WhatsApp
 reativo e **sem** campanhas de marketing:
 
-- Vercel Pro: **R$ 110**
+- Vercel Pro: **R$ 110** — ⚠️ *supondo Pro; não confirmado, ver o resumo executivo*
 - Firestore: **R$ 0**
 - WhatsApp (reativo): **R$ 0**
 - IA Haiku: **~R$ 5**
 - **Total: ~R$ 115/mês** (ou **~R$ 5–10/mês** se hospedar no Cloud Run em vez da Vercel)
+
+> Atualização de 18/08/2026: a VPS da Evolution API, criada depois desta
+> estimativa, **não** somou custo — e2-micro em `us-east1`, disco de 30 GB e
+> IP anexado cabem inteiros no free tier da GCP.
 
 > Observação: estes números são estimativas de boa fé baseadas nos preços
 > públicos de junho/2026. Preços de nuvem mudam; reveja antes de fechar contrato.

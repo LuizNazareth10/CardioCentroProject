@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Reveal } from './Reveal';
 import { contato, whatsappLink, examesAgendamento } from './content';
+import { OPERACAO_SUSPENSA } from '@/lib/suspensao';
 
 type Fields = {
   nome: string; telefone: string; email: string; exame: string;
@@ -43,6 +44,75 @@ function mascararTelefone(valor: string): string {
 
 function hojeISO(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+}
+
+/**
+ * Painel que substitui o formulário enquanto a operação está suspensa.
+ *
+ * O formulário gravava o lead no Firestore, e quem LIA esses leads era a
+ * área restrita — que saiu do ar junto com o agente. Mantê-lo no ar seria
+ * prometer ao paciente um retorno que ninguém veria: ele preencheria,
+ * receberia "nossa equipe entrará em contato" e ficaria esperando.
+ *
+ * Então o caminho de contato passa a ser o que de fato tem alguém do outro
+ * lado: o WhatsApp e o telefone fixo da recepção. O código do formulário
+ * continua logo abaixo, intacto, para voltar quando a área restrita voltar.
+ */
+function ContatoDireto() {
+  return (
+    <div className="flex min-h-[420px] flex-col justify-center">
+      <h3 className="font-serif text-2xl font-bold tracking-tight text-navyblue-900">
+        Fale com a nossa recepção
+      </h3>
+      <p className="mt-3 text-sm leading-relaxed text-gray-600">
+        O agendamento é feito diretamente com a nossa equipe, de segunda a
+        sexta em horário comercial. Escolha o canal que preferir — respondemos
+        pelos dois.
+      </p>
+
+      <a
+        href={whatsappLink}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="cta-primary mt-8 w-full text-base"
+      >
+        <MessageCircle className="h-5 w-5" aria-hidden />
+        Agendar pelo WhatsApp
+      </a>
+
+      <a href={contato.telefoneLink} className="cta-ghost mt-3 w-full text-base">
+        <Phone className="h-5 w-5" aria-hidden />
+        Ligar para {contato.telefoneFixo}
+      </a>
+
+      <div className="mt-8 rounded-2xl border border-navyblue-100/70 bg-white/60 p-5">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 flex-none place-items-center rounded-lg bg-navyblue-50 text-navyblue-700">
+            <Clock className="h-4 w-4" aria-hidden />
+          </span>
+          <div>
+            <div className="text-sm font-bold text-navyblue-900">
+              Horário de atendimento
+            </div>
+            {contato.horarios.map((h) => (
+              <p key={h} className="text-sm text-gray-600">
+                {h}
+              </p>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <p className="mt-6 text-center text-xs text-gray-400">
+        Tenha em mãos o pedido médico e a carteirinha do convênio — agiliza a
+        marcação. Consulte também nossa{' '}
+        <Link href="/privacidade" className="underline hover:text-navyblue-700">
+          Política de Privacidade
+        </Link>
+        .
+      </p>
+    </div>
+  );
 }
 
 export function Agendamento() {
@@ -124,9 +194,9 @@ export function Agendamento() {
               Vamos cuidar do seu coração juntos
             </h2>
             <p className="mt-4 text-lg text-gray-600">
-              Preencha o formulário e nossa equipe entrará em contato para
-              confirmar o melhor horário — sem burocracia. Respondemos em
-              horário comercial, geralmente em poucas horas.
+              {OPERACAO_SUSPENSA
+                ? 'Chame nossa equipe no WhatsApp ou ligue para a recepção e marcamos o melhor horário para você — sem burocracia. Atendemos em horário comercial.'
+                : 'Preencha o formulário e nossa equipe entrará em contato para confirmar o melhor horário — sem burocracia. Respondemos em horário comercial, geralmente em poucas horas.'}
             </p>
 
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
@@ -159,12 +229,14 @@ export function Agendamento() {
           {/* formulário */}
           <Reveal direction="left">
             <div className="glass rounded-[2rem] p-7 shadow-glass sm:p-9">
-              {status !== 'success' && (
+              {!OPERACAO_SUSPENSA && status !== 'success' && (
                 <h3 className="mb-6 font-serif text-2xl font-bold tracking-tight text-navyblue-900">
                   Agende aqui
                 </h3>
               )}
-              {status === 'success' ? (
+              {OPERACAO_SUSPENSA ? (
+                <ContatoDireto />
+              ) : status === 'success' ? (
                 <div className="flex min-h-[420px] flex-col items-center justify-center text-center">
                   <span className="grid h-16 w-16 place-items-center rounded-full bg-success/15 text-success">
                     <CheckCircle2 className="h-8 w-8" aria-hidden />
