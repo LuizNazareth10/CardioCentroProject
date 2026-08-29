@@ -53,7 +53,7 @@ export default function TermosPage() {
           <section>
             <h2 className="font-serif text-2xl font-bold text-navyblue-900">3. Agendamentos</h2>
             <p className="mt-3">
-              As solicitações feitas pelo formulário ou pelo WhatsApp são um pedido de
+              As solicitações feitas pelo WhatsApp ou pelo telefone são um pedido de
               agendamento, confirmado pela nossa equipe conforme a disponibilidade da agenda.
               A realização de exames exige a apresentação do pedido médico no dia do
               atendimento. Cancelamentos e remarcações devem ser feitos pelo telefone{' '}
